@@ -1,0 +1,677 @@
+/* CASCADING STYLE SHEET - Element Styling - by Richard */
+
+
+
+/* To create a comment. Shown in code only. Indent 2 spaces */
+
+
+.ADD-IN-HTML {
+    <link rel="stylesheet" type="text/css" href="CSS.css">
+  }
+  
+  
+  .PRIORITY {
+    <Browser default /* usually padding, fonts and sizes */
+    <User default /* usually sizes and fonts */
+    <External and internal style sheets /* each selector gives 001, 010 or 100; the bigger the more important */
+      <elements and pseudo-elements /* p, p::first-line, p::before; 001 */
+      <class, attributes and pseudo-classes /* .class, a[title], a:hover; 010 */
+      <id /* #id; 100 */
+    <Inline style (inside an HTML element) /* should be avoided; for maintenance reasons */
+    <!important /* body { color: red !important; } */
+  }
+  
+  
+  .BEM {
+    /* naming convention based on Block, Element and Modifiers */
+    .block-name {} /* .card */
+    .block-name__element-name {} /* .card__header */
+    .block-name--modifier-name {} /* .card--red */
+    .block-name__element-name--modifier-name {} /* .card__header--red */
+  }
+  
+  
+  .DECLARATION-ORDER {
+    >Positionning /* position, right, bottom... */
+    >Box-model /* display, float, width, height, padding, margin, border, overflow, clip, clear... */
+    >Text /* font, text-align, list-style, cursor... */
+    >Color /* color, background */
+    >Other /* opacity, visibility, transform, animation, transition... */
+  }
+  
+  
+  .VENDOR-PREFIX {
+         -o-prefix: opera;
+       -moz-prefix: mozilla;
+    -webkit-prefix: chrome, safari, android;
+        -ms-prefix: ie;
+  }
+  
+  
+  .SELECT-HTML
+    * {} /* Selects all elements */
+    *, *:before, *:after {} /* better to reach really everything; for example, it is used broadly for box-sizing */
+    html {} /* Selects <html> element */
+    body {} /* Selects <body> element */
+    p {} /* Selects all <p> elements*/
+    div, p {} /* Selects all <div> elements and all <p> elements */
+    div p {} /* Selects all <p> elements inside <div> elements */
+    div > p {} /* Selects all <p> elements where the parent is a <div> element */
+    div + p {} /* Selects first <p> element that is placed immediately after <div> elements */
+    div ~ p {} /* Selects all <p> element that are placed after a <div> element */
+    .main {} /* Selects all elements with class="main" */
+    #main {} /* Selects the element with id="main" */
+    p.main {} /* Selects p elements with class="main" */
+    p * {} /* Selects everything in p */
+  
+    /* Pseudo elements; style a certain part of an element */
+    p::first-line {} /* Selects first line of <p> */
+    p::first-letter {} /* Selects first letter of <p> */
+    p::before {content: "Read this -";} /* Insert some content before the content of <p>; it can be empty */
+    p::before {content: attr(href);} /* Display the href value of p tag; can also be other attribute value */
+    p::after {content: " -Read more… ";} /* Insert some content after the content of <p>; it can be empty */
+    p::selection {} /* Selects the portion of <p> that is selected by a user */
+    li::marker {} /* Selects a list item; you can specify its color, font-size, content */
+    ::placeholder {}; /* Selects placeholder value */
+  
+    /* Pseudo classes; style an element according to its state */
+    a:link {} /* Selects all unvisited links */
+    a:visited {} /* Selects all visited links */
+    a:hover {} /* Selects links on mouse over */
+    a:active {} /* Selects the active link; when you click on it */
+    a:focus {} /* Selects focused link; mainly for input */
+    a:target {} /* Selects the target link (eg: #about); very useful to make things pop up when reached */
+  
+    p:first-child {} /* selects first element in p */
+    p:first-child {} /* Selects first p among a group of p elements (if another element is the first-child, it returns nothing) */
+    p:nth-child(2) {} /* Selects 2d p; or other */
+    p:nth-child(n) {} /* Selects nth p */
+    p:nth-child(even) {} /* Selects even'th child (or 2n); can be odd (or 2n+1) */
+    p:only-child {} /* Selects the only p element */
+    p:last-child {} /* Selects the last p only */
+    p:nth-last-child(2) {} /* Selects 2d last child; or other */
+    p:first-of-type {} /* Selects first p element */
+    p:nth-of-type(odd) {} /* Selects odd p elements */
+    p:nth-of-type(2n+3) {} /* Selects every 2nd plate starting from the 3rd */
+    p:only-of-type {} /* Selects p if its the only p in there */
+    p:last-of-type {} /* Selects last p element */
+    p:empty {} /* Selects empty p elements */
+    p:not(.main) /* Selects p without .main class */
+    p:not(:empty) /* Selects non empty p elements */
+    p:is(.main, .second) /* Selects p with classes .main or .second !!NOT READY */
+  
+    :required {} /* Selects required form elements */
+    :valid {} /* Selects valid form elements */
+    :invalid {} /* Selects invalid form elements */
+    :focus {} /* Selects focused form element */
+    :enabled {} /* Selects enabled element */
+    :disabled {} /* Selects disabled element */
+    :checked {} /* Selects checked radio and checbox elements */
+  
+    a[target="_blank"] {} /* Selects all elements with that attribute and value */
+    [title~="flower"] {} /* Selects elements with an attribute value containing a specified word */
+    [class|="top"] {} /* Selects elements with the specified attribute starting with the specified value */
+    [class^="top"] {} /* Selects elements whose attribute value begins with a specified value */
+    [class$="test"] {} /* Selects elements whose attribute value ends with a specified value */
+    [class*="te"] {} /* Selects elements whose attribute value contains a specified value */
+    input[type="button"] {} /* Selects elements with type="button" */
+  
+    p {color: red !important;} /* become most important */
+  
+  
+  :root {
+    --main-color: red;
+    --semi-transparent: rgba(256, 256, 256, .6);
+    --anything: 10px;
+  }
+  .CSS-VARIABLES {
+    color: red; border: solid 2px currentColor; /* will have border red because currentColor refers to element's color */
+    color: var(--main-color); /* uses variable and colors to red */
+    background: var(--semi-transparent); /* uses variable to color background */
+    padding: var(--anything, 10px); /* uses variable for padding and a fallback value used if the variables is undefined */
+    --local-variable: 300px; /* can only be used in this element block */
+    width: var(--local-variable);
+    color: initial; /* reset value */
+  }
+  
+  
+  .CSS-MATH {
+    width: calc(100% - 80px); /* calculates */
+    width: min(10px, 10vw); /* takes the smallest value !!IE */
+    width: max(10vw, 100px); /* takes the largest value !!IE */
+    width: clamp(10px, 10vw, 100px); /* takes a value with a min and max !!IE */
+  }
+  
+  
+  .MEDIA-QUERIES {
+    @media only screen and (min-width: 768px) and (min-height: 1080px) {} /* screen width +768 and height +1080 */
+    @media only screen and (min-width: 360px) and (orientation: portrait) {} /* screen +360 and portrait */
+    @media only screen and (min-width: 360px), (orientation: portrait) {} /* screen +360 or portrait */
+    @media only screen and (min-width: 360px) and (orientation: portrait), (min-resolution: 300dpi) {} /* screen +360 and portrait or resolution +300dpi */
+    @media only screen and (min-resolution: 150dpi) {} /* screen resolution +150dpi */
+    @media only screen and (orientation: landscape) {} /* screen landscape */
+    @media only screen and (orientation: portrait) {} /* screen portrait */
+    @media only print {} /* styles applied to print only */
+    @media not print {} /* styles applied to anything but print  */
+    @media (prefers-color-scheme: dark) {} /* user preference for dark theming */
+    @media (prefers-color-scheme: light) {} /* user preference for light theming */
+    @media screen and (min-width:0\0) {} /* target IE9 & IE10 */
+    @media all and (-ms-high-contrast: none), (-ms-high-contrast: active) {} /* target IE10 & IE11 */
+  }
+  
+  
+  .SUPPORTS {
+    @supports (display: grid) {} /* browser understands grid display */
+    @supports (display: grid) and (display: flex) {} /* browser understands grid and flex display */
+    @supports (display: grid) or (display: flex) {} /* browser understands grid or flex display */
+    @supports not (display: grid) {} /* browser does not understand grid display */
+    @supports not ((display: grid) or (display: flex)) {} /* browser does not understand grid or flex display */
+  }
+  
+  
+  .FONT {
+    font-family: "Times New Roman", Times, serif; /* font-family with backup fonts */
+    font-family: serif sans-serif monospace cursive fantasy; /* main native font types; times, arial, console-like, comic, papyrus */
+    font-family: "Fontname"; /* non-native font */
+    font-style: normal italic oblique; 
+    font-size: 14px 14em 14rem 14vh 14vw 14%; /* Use one. 1em = 16px; 1rem is based on root font-size while 1em is based on parent(context) font-size */ 
+    font-weight: bold normal; /* Weight work also with %, ... */
+    font-variant: small-caps; /* Small capitalized letters */
+    font: italic bold 20px/1.2 Arial, Helvetica, sans-serif; /* shorthand property; style, weight, size, line-height, family; size and family are mandatory */
+  }
+  
+  
+  @font-face {
+    font-family: Fontname; /* define the name of new font to be used as font-family */
+    src: url(font.ttf); /* locate the font */
+    font-weight: 400; /* useful when multiple font sources are names the same; define the font-weight to use other font source */
+    font-style: normal; /* useful when multiple font sources are names the same; define the font-style to use other font source */
+    font-display: optional; /* adapts layout before font loads */
+  }
+  
+  
+  .COLOR {
+    color: red; /* color text in red */
+    color: #ff0000; /* red text */
+    color: rgb(255, 0, 0); /* red text */
+    color: transparent; /* will make anything transparent */
+  }
+  
+  
+  .BACKGROUND {
+    background-color: lightblue; /* use color as bg */
+    background-image: url(""); /* use img as bg */
+    background-repeat: no-repeat repeat-y repeat-x repeat space round; /* by default, bg img will repeat */
+    background-size: cover contain; /* fit to horizontal; fit to vertical; possible to define height and width */
+    background-size: 100% 100vh; /* fit while size, can also be pixels */
+    background-position: center top; /* will adjust background position; right, bottom, left also */
+    background-position: bottom 10px right 10px; /* you can be more precise with this */
+    background-attachment: fixed scroll local; /* Fix the background image, local is default */
+    background: url("") no-repeat center/contain; /* shorthand property */
+    background: url("") top, url("") bottom; /* 2 different background images; first will be on top */
+    background-clip: padding-box content-box border-box; /* border box is default; padding clip to padding; content clip to content */
+    -webkit-background-clip: text; /* to show background through text */
+    -webkit-text-fill-color: transparent; /* needed with clip-text for non webkit navigators; 'unset' to disable */
+  }
+  
+  
+  .GRADIENT {
+    background: blue; /* best practice to set a backup background color for unsupporting browsers */
+    background-image: linear-gradient(blue, green); /* gradient from blue(top) to green(bottom) */
+    background-image: linear-gradient(to right, blue, green); /* to change direction; bottom right possible; 180deg also */
+    background-image: linear-gradient(to top left, blue, green, yellow); /* more colors possible */
+    background-image: linear-gradient(to top, rgba(0, 0, 0, 0), rgba(0, 0, 0, 1)); /* you can use it with transparency of course */
+    background-image: linear-gradient(to right, blue 0%, green 30%); /* % or pixels to change space of each color */
+    background-image: radial-gradient(circle at center, white, green); /* radial gradient; other positions available; ellipse too */
+    background-image: repeating-linear-gradient(45deg, yellow 0px, yellow 40px, black 40px, black 80px); /* repeats pattern; not working before IE11 */
+    /* conical-gradient to come one day */
+  }
+  
+  
+  .BORDERS {
+    border-style: solid dotted dashed double groove ridge inset outset none hidden; /* use one */
+    border-style: dotted dashed solid double; /* each side different border type */
+    border-width: 5px; /* or medium */
+    border-color: red;
+    border: solid 5px red; /* shorthand property */
+    border-top: solid 5px red; /* only one side */
+    border-right: solid 5px red;
+    border-bottom: solid 5px red;
+    border-left: solid 5px red;
+    border-width: 10px 5px 20px 15px; /* make some irregular borders */
+    border-image: url(""); /* image in border */
+    border-image: linear-gradient(blue, green); /* gradient borders */
+    border-radius: 5px; /* round borders */
+    border-radius: 20px 5px 10px 15px; /* make some irregular radius */
+    border-radius: 20px / 10px; /* top-left & bottom-right / top-right & bottom-left */
+    border-radius: 70% 30% 30% 70% / 60% 40% 60% 40%; /* top-left top-right bottom-right bottom-left / left-top right-top right-bottom left-bottom */
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+  }
+  
+  
+  .HALF-CIRCLE {
+    height: 100px;
+    width: 50px;
+    border-radius: 100px 0 0 100px; /* change places for other side */
+  }
+  
+  
+  .QUARTER-CIRCLE {
+    height: 100px;
+    width: 100px;
+    border-radius: 100% 0 0 0; /* Change places for another side */
+  }
+  
+  
+  /*
+  https://css-tricks.com/the-shapes-of-css/
+  */
+  
+  
+  .CLIP-PATH { 
+    /* Clip an element to a certain shape !!IE & Edge & Safari */
+    clip-path: url(svg.svg);
+    clip-path: circle(50%);
+    clip-path: polygon(0 100%, 0 50%, 100% 100%);
+  }
+  
+  
+  .MARGIN { 
+    /* Space around elements */
+    padding-top: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    margin: 10px 5px; /* shorthand property; vertical horizontal */
+    margin: 10px 5px 10px 5px; /* shorthand property; top right bottom left */
+    margin: auto; /* center element; need to specify width */
+    margin: inherit; /* gets the value from parent element */
+    /* margin collapse causes 2 succint margins to collapse keeping only the biggest margin of the 2 */
+    /* h1 {margin-bottom: 50px;} and h2 {margin-top: 20px;} will result in 50px margin */
+  }
+  
+  
+  .PADDING { 
+    /* Space around content */
+    padding-top: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding: 10px 5px; /* shorthand property; vertical horizontal */
+    padding: 10px 5px 10px 5px; /* shorthand property; top right bottom left */
+  }
+  
+  
+  .HEIGHT { 
+    /* px are fixed; em and % depend on parents, ch is equal to with of '0' char, and vh, vw, vmin and vmax depend on viewport */
+    height: 200px;
+    max-height: 100%;
+    min-height: 20em;
+    height: 10vh; /* 10% of viewport height */
+    height: 10vmin; /* 10% of smaller viewport dimension (vh or vw) */
+  }
+  
+  
+  .WIDTH { 
+    /* px are fixed; em and % depends on parents, ch is equal to with of '0' char, and vh, vw, vmin and vmax depends on viewport */
+    width: 400px;
+    max-width: 100%;
+    min-width: 20em;
+    width: 10vw; /* 10% of viewport width */
+    width: 10vmax; /* 10% of bigger viewport dimension (vh or vw) */
+  }
+  
+  
+  .OUTLINE { 
+    /* very similar to borders, it stands just outside it; it is used in forms for the focus color */
+    outline-style: solid dotted dashed double groove ridge inset outset; /* use one */
+    outline: 5px dotted red; /* shorthand property */
+  }
+  
+  
+  .TEXT {
+    color: red; /* contrast should be 4.5 or superior to be readable easily; B/W is 21 */
+    text-align: center left right justify start end; /* justify(=text of exact same width); start & end are preferred for text */
+    text-decoration: none; /* very useful for links */
+    text-decoration-line: overline underline line-through;
+    text-decoration-style: solid dotted dashed double wavy;
+    text-decoration-color: red;
+    text-decoration: underline dashed red;
+    text-decoration-thickness: 0.5rem; /* not implemented yet!! */
+    text-decoration-offset: 2px; /* not implemented yet!! */
+    text-transform: uppercase lowercase capitalize none;
+    text-indent: 50px; /* alineas */
+    letter-spacing: 3px; /* space between letters */
+    word-spacing: 3px; /* space between words */
+    overflow-wrap: break-word normal; /* break word to make it fit in box */
+    word-break: break-all keep-all break-word normal; /* similar to overflow-wrap; break all breaks everything */
+    white-space: nowrap pre-wrap pre-line pre normal; /* sets how white space inside an element is handled */
+    overflow: hidden; text-overflow: ellipsis; /* hide too long text and replace last word with '...' */
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; /* hide and replace lines exceeding the clamp with '...' !!IE */
+    line-height: .8; /* space between lines; common practice is to set around 150% */
+    direction: rtl; /* change text direction to right-to-left */
+    writing-mode: horizontal-tb vertical-rl vertical-lr; /* used to write vertical text */
+    vertical-align: middle text-top text-bottom top bottom; /* align image to text */
+    text-shadow: 2px 2px 1px #FF0000; /* shadow;  offset-x offset-y blur-radius color  */
+    text-shadow: 1px 1px #fff, 2px 2px #333; /* multiple text shadows */
+    -webkit-text-fill-color: transparent; /* color of the text */
+    -webkit-text-stroke: red; /* color of the text stroke */
+  }
+  
+  
+  .LIST {
+    list-style-type: circle square disc upper-roman lower-alpha none; /* kind of listing for ul */
+    list-style-type: upper-roman lower-alpha; /* kind of listing for ol */
+    list-style-image: url('sqpurple.gif'); /* img listing for ul */
+    list-style-position: inside; /* inside or outside the content flow (outside by default) */
+    list-style: square inside url("sqpurple.gif"); /* shorthand property */
+  }
+  
+  
+  .TABLE {
+    table-layout: fixed auto; /* auto by default fits table to content; fixed doesn't check width */
+    border: solid 1px; /* set to table, th and td it make it look like a table (thanks to borders) */
+    border-spacing: 2px; /* sets distance between borders of adjacent cells */
+    border-collapse: collapse separate; /* sets cells to share borders or not */
+    vertical-align: bottom top middle baseline sub super text-top text-bottom; /* align vertically */
+    caption-side: top bottom; /* display title on top or underneath */
+    empty-cells: hide show; /* can hide empty cells */
+  }
+  
+  
+  .DISPLAY { 
+    display: inline; /* by default for <a> <span> <img> displays elements in line; cannot set width on inline elements, they expend to fit all the inner content */
+    display: block; /* by default for most of tags displays elements by full width block; can set width */
+    display: none; /* hide item and affect layout; no space will be taken by this element */
+    display: inline-block; /* displays elements in line as blocks; allows to set width and vertical-align */
+    visibility: hidden; /* hide item but takes the place it should have when shown; visible by default */
+  }
+  
+  .sr-only {
+    /* add this class to element only meant for screen readers  */
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    top: auto;
+    overflow: hidden;
+  }
+  
+  
+  .POSITION {
+    position: static; /* by default, they are not affected by top-right-bottom-left properties */
+    position: relative; /* follow properties */
+    position: fixed; /* is fixed on viewport -> does not move when scrolling */
+    position: absolute; /* is positioned relative to the nearest positioned ancestor; top-left corner if no box around it */
+    position: sticky; /* switches from relative to fixed depending on the scroll; 'top' needs to be defined; !!IE */
+    position: -webkit-sticky; /* for safari */
+    z-index: -1; /* defines stack order -> bigger is in front! if not defined, last will be in front */
+    overflow: hidden scroll; /* hide content when over element size or create scroll bar to access the rest */
+    overflow-x: hidden; /* Hide horizontal scrollbar */
+    overflow-y: scroll; /* Add vertical scrollbar */
+    overflow: auto; /* chose best option */
+  }
+  
+  
+  .FLOAT {
+    float: right left none inline-start inline-end; /* item floats to a side */
+    clear: right left both; /* stop floating for next items, both clears right and left */
+    overflow: auto; /* needed if an element is taller than the element containing it */
+  }
+  
+  
+  .ALIGN {
+    margin: auto; /* center element but need to specify width */
+    text-align: center; /* center text or image inside element */
+    padding-top: 30px; /* if div padding defined, will by default be centered horizontally */
+    line-height: 100px; /* if div and line height are the same, it will be centered vertically */
+    top: 50%; left: 50%; transform: translate(-50%, -50%); /* will center horizontally */
+  }
+  
+  
+  .OPACITY {
+    opacity: .5; /* from 1 to 0, very useful with :hover; effect on other elements too ! */
+    background: rgba(76, 175, 80, .5); /* works also with rgba; better way because it changes only this element */
+  }
+  
+  
+  .SHADOW {
+    box-shadow: 6px 6px 3px 3px black inset; /* horizontal, vertical, blur, spread, color, in/out the box */
+    text-shadow: 6px 6px 6px black; /* horizontal, vertical, blur, color */
+    box-shadow: 6px 6px 3px 3px black, 12px 12px 3px 3px black; /* multiple shadow effects possible with comas */
+    filter: drop-shadow(2px 4px 8px black); /* make shadow appear based on the image; works well with png */
+  }
+  
+  
+  .TRANSFORM-2D {
+    transform: translate(50px, 100px); /* moves 50px to right and 100px down */
+    transform: rotate(45deg); /* rotate 45 degrees clockwise; counter-clockwise if negative */
+    transform: scale(.5, .5); /* decrease and/or increase size via width and height */
+    transform: skew(20deg, 20deg); /* skew horizontally and/or vertically */
+    transform: scale(.7) rotate(30deg); /* shorthand property */
+    transform-origin: 0px 100px; /* default is 50% 50%; specifies x and y origin for transformations */
+    -webkit-transform: rotate(10deg); /* for unsupporting browser */
+        -ms-transform: rotate(10deg); /* for unsupporting browser */
+            transform: rotate(10deg); /* for unsupporting browser */
+  }
+  
+  
+  .TRANSFORM-3D {
+    transform: rotateX(150deg); /* rotate around X-axis */
+    transform: rotateY(150deg); /* rotate around Y-axis */
+    transform: rotateZ(150deg); /* rotate around Z-axis */
+    transform: rotate3d(x, y, z); /* shorthand property */
+    transform: translate3d(x, y, z); /* translation */
+    transform: scale3d(x, y, z); /* scale */
+    transform: rotate(180deg) translateX(100px); /* multiple transformation; if written in two different transforms it cancels the first one (as other css properties) */
+    backface-visibility: hidden; /* useful when you want to use 2 different blocks to result a 2 faces card */
+    -webkit-transform: rotateZ(150deg); /* for unsupporting browser */
+        -ms-transform: rotateZ(150deg); /* for unsupporting browser */
+            transform: rotateZ(150deg); /* for unsupporting browser */
+  }
+  
+  
+  .TRANSITION {
+    /* multiple transformations all at once */
+    transition-property: background-color, width, height; /* change those properties; they must be defined elsewhere */
+    transition-duration: 1s; /* the time it takes to make the transition */
+    transition-delay: .5s; /* the time before transition starts */
+    transition-timing-function: ease linear ease-in ease-out ease-in-out; /* different type of transition */
+    transition: color 2s ease 1s; /* shorthand property; property duration timing-function delay */
+    transition: color 2s ease, width 1s linear; /* shorthand property with 2 */
+    transition: all 1.5s ease; /* handle all transition at once */
+  }
+  
+  
+  @keyframes keyframe_name { /* needed for animation */
+    0% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(150px);
+    }
+    100% {
+      transform: translateX(150px) rotate(30deg);
+    }
+  }
+  
+  @-webkit-keyframes keyframe_name { /* needed for animation on chrome safari and opera */
+    0% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(150px);
+    }
+    100% {
+      transform: translateX(150px) rotate(30deg);
+    }
+  }
+  
+  @keyframes shortcut {
+    0%, 5%, 15%, 100% { /* 0% and 100% are not even needed here */
+      transform: translateY(0);
+    }
+    10% {
+      transform: translateY(10px);
+    }
+  }
+  
+  .ANIMATION {
+    /* multiple animations step by step; need @keyframes */
+    animation-name: keyframe_name; /* link to the @keyframes */
+    animation-duration: 2s; /* time for the animation */
+    animation-timing-function: ease linear ease-in ease-out ease-in-out step-start step-end steps(1); /* different type of animation; cubic-bezier() function possible for custom animation */
+    animation-delay: 1s; /* delay before animation; can be negative value */
+    animation-direction: normal reverse alternate alternate-reverse; /* specify different direction; 0-100, 100-0, 0-100-0, 100-0-100 */
+    animation-iteration-count: 3 infinite; /* number of time the animation will be played */
+    animation-fill-mode: none forwards backwards both; /* how the animation apply style to its target */
+    animation-play-state: running paused; /* run or pause the animation */
+    -webkit-animation: keyframe_name 2s; /* for safari and chrome */
+            animation: keyframe_name 2s; /* use animation created before in @keyframes */
+    -webkit-animation: keyframe_name 2s linear alternate infinite steps(1); /* for chrome and safari */
+            animation: keyframe_name 2s linear alternate infinite steps(1); /* alternate to make it play a loop; infinite for never-ending animation; steps for steps in seconds */
+    -webkit-animation: keyframe_name 2s, another_keyframe_name 2s; /* multiple animations */
+            animation: keyframe_name 2s, another_keyframe_name 2s; /* multiple animations */
+  }
+  
+  
+  .CURSOR {
+    cursor: progress wait crosshair help move grab pointer zoom-in zoom-out text not-allowed; /* different types of cursors */
+    cursor: n-resize ne-resize e-resize se-resize s-resize sw-resize w-resize nw-resize; /* direction of resize */
+    cursor: url(https://picsum.photos/20/20), auto; /* image cursor */
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'  width='40' height='48' viewport='0 0 100 100' style='fill:black;font-size:24px;'><text y='50%'>🚀</text></svg>"), auto; /* Emoji cursor */
+  }
+  
+  
+  .USER-SELECT {
+    -webkit-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+            user-select: none;
+  }
+  
+  
+  .BUTTON {
+    -webkit-appearance: button; /* especially useful for iOS browsers to render buttons correctly */
+  }
+  
+  
+  .BOX-MODEL {
+    box-sizing: border-box; /* keep border and padding inside the height and width of elements; use with '*' is better */
+    box-sizing: content-box; /* border and padding are not kept inside height and width of elements; default value */
+  }
+  
+  
+  .IMAGE {
+    max-width: 100%; height: auto; /* easy resize images */
+    object-fit: fill cover contain none scale-down; /* sets how the content of a replaced element, such as an <img> or <video>, should be resized to fit its container !!IE */
+    object-position: center right top left bottom; /* specifies the alignment of the selected replaced element's contents within the element's box !!IE */
+    aspect-ratio: 16 / 9; /* sets a preferred aspect ratio for the box !!NOT READY */
+    filter: grayscale(100%) sepia(100%) saturate(100%) brightness(100%) invert(100%) contrast(100%) blur(5px) hue-rotate(90deg) initial; /* set a filter !!IE */
+    display: block; /* removes weird space below image */
+  }
+  
+  
+  .SCROLL {
+    scroll-behavior: smooth auto; /* smoothen the scroll from links !!IE Edge Safari */
+    scroll-margin-top: 60px; /* defines the top margin of the scroll snap area that is used for snapping this box to the snapport !!IE */
+    scroll-snap-type: x y both mandatory proximity; /* defines scroll snap */
+    scroll-snap-align: center start end; /* defines snap alignement to scroll snap */
+  }
+  
+  
+  .SCROLLBAR {
+    overflow: auto; /* to force the scroll when content > container */
+    scrollbar-color: #666 transparent; /* thumb color and track color !only FF */
+  }
+  .SCROLLBAR ::-webkit-scrollbar {
+    height: 8px; /* height of thumb; if vertical, need to change it to width */
+  }
+  .SCROLLBAR ::-webkit-scrollbar-track {
+    background: transparent; /* track color */
+  }
+  .SCROLLBAR ::-webkit-scrollbar-thumb {
+    border-radius: 8px; /* thumb border-radius */
+    background: #666; /* thumb color */
+  }
+  
+  
+  .FLEX-CONTAINER {
+    display: flex;/* in a container, change the disposition to flex and allow following properties */
+    flex-direction: column row column-reverse row-reverse; /* vertical, horizontal or in opposite order */
+    flex-wrap: wrap wrap-reverse; /* by default items will stay on same line; wrap helps going down */
+    justify-content: flex-start flex-end center space-between space-around space-evenly; /* how items will display on a lign; works also with column direction; manage primary axis */
+    align-items: stretch flex-end flex-start center baseline; /* manage secondary axis; how items will display in a column or lign */
+    align-content: flex-start flex-end center space-between space-around space-evenly stretch; /* manage secondary axis if there is multiple lines */
+    flex-flow: row wrap; /* shorthand property to direction and wrap */
+  }
+  
+  .FLEX-ITEMS {
+    margin: auto; /* center all elements; need to be on items and not on container */
+    align-self: stretch center start end; /* align a single item differently; influence on secondary axis */
+    flex: 1; /* equal height and width columns */
+    flex-grow: 2; /* the higher, the bigger compared other flex items; base is 1 */
+    flex-shrink: 2; /* the higher, the smaller compared other flex items; base is 1 */
+    flex-basis: 100px; /* size basis for flex items before any shrink or grow */
+    flex: 2 2 100px; /* shorthand property for grow, shrink and basis; default is 0 1 auto; specify for IE10 */
+    order: 2; /* change order of html code; need to order every item; 0 by default */
+  }
+  
+  
+  .MULTI-COLUMNS {
+    /* not so useful; probably better to use grids */
+    -webkit-columns: 4 100px; /* Chrome, Safari, Opera */
+       -moz-columns: 4 100px; /* Firefox */
+            columns: 4 100px; /* IE */
+    column-count: 4; /* 4 columns */
+    column-width: 200px; /* width of columns */
+    column-gap: 50px; /* gap bewteen columns */
+    column-rule: 2px solid black; /* as a border between columns */
+    column-span: all; /* to span over multiple (all) columns a title for example */
+    /* check columns jumps */
+  }
+  
+  
+  .GRIDS {
+    /* not fully available in IE; use autoprefixer and follow https://css-tricks.com/css-grid-in-ie-css-grid-and-the-new-autoprefixer */
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 2 fraction of remaining space */
+    grid-template-columns: repeat(5, 20%); /* 5 columns of 20% */
+    grid-template-columns: auto min-content max-content; /* first will be spaced auto and two last cols are based on content */
+    grid-template-columns: 100px minmax(50px, 200px) fit-content(10rem); /* first col is 100px wide, second has min 50px and max 200px and third fits content with a max of 10rem */
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); /* put the content with flexibility; try auto-fit as well */
+    grid-template-rows: 50vh 50vh; /* 50% of vertical height each */
+    grid-template: 50vh 50vh / 60vw 40vw; /* shorter template method; rows / columns */
+    grid-template-areas: "header header" "nav main" "footer footer"; /* define grid-areas with names */
+    grid-column-gap: 10px; /* gap between columns */
+    grid-row-gap: 20px; /* gap between rows */
+    grid-gap: 20px 10px; /* shorthand property to define row and column gap */
+    gap: 20px 10px; /* newer property not very well supported !!! */
+    grid-auto-flow: dense column row; /* controls how the auto-placement algorithm works; useful to make clean layouts without empty space */
+    grid-auto-rows: 5px; /* implicit rows: rows that are not ruled by the template; needs grid-auto-flow: row */
+    grid-auto-columns: 5px; /* implicit columns: columns that are not ruled by the template; needs grid-auto-flow: column */
+    grid: 50px 50px / auto-flow 50px; /* shorter property for template and flow */
+    justify-content: start center end space-around space-between space-evenly; /* horizontal alignement; space- will space between grid cells */
+    align-content: start center end space-around space-between space-evenly; /* vertical alignement; space- will space between grid cells */
+    justify-items: start center end stretch; /* horizontal align inside grid cells */
+    align-items: start center end stretch; /* vertical align inside grid cells */
+  }
+  
+  .GRIDS-ELEMENTS {
+    grid-column-start: 1; /* starts at vertical line 1 */
+    grid-column-end: 3; /* ends at 3 vertical line */
+    grid-column: 1 / 3; /* shorter method */
+    grid-column: span 2; /* span 2 columns */
+    grid-row-start: 1; /* starts at horizontal line 1 */
+    grid-row-end: 3; /* ends at 3 horizontal line */
+    grid-row: 1 / -1; /* starts at horizontal line 1 and ends at last horizontal line */
+    grid-area: 1 / 2 / 4 / 6; /* row-start / column-start / row-end / column-end */
+    grid-area: header; /* use names from grid-template-areas */
+    justify-self: start center end stretch; /* self horizontal alignement */
+    align-self: start center end stretch; /* self vertical alignement */
+    order: 1; /* default is 0; 1 means this item will be the last; -1 will be first */
+  }
+  
