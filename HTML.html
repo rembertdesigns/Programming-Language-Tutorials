@@ -1,0 +1,546 @@
+<!-- HYPERTEXT MARKUP LANGUAGE - Page Structure - by Richard -->
+
+
+
+<!-- To create a comment. Shown in code only. Indent 2 spaces -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<!-- Schema markup are useful for SEO -->
+<!-- 
+  Doc: https://schema.org/docs/schemas.html
+  Helper: https://www.google.com/webmasters/markup-helper/u/0/
+  Tester: https://developers.google.com/search/docs/advanced/structured-data
+-->
+
+<!-- HEAD ELEMENTS -->
+<head><!-- Everything about title, CSS link, SEO, description, ... -->
+
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- Compatibility mode forced to move to most recent version; should be first after <head> -->
+  <meta charset="utf-8"> <!-- allow special characters to be displayed -->
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- make media queries work; add this to prevent from zooming => "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" -->
+
+  <title>HTML</title> <!-- tab title -->
+  <meta name="description" content="description">
+  <meta name="robots" content="index, follow" /> <!-- tell bots to index page / tell bots to crawl links on the page / also noindex, nofollow -->
+  <meta name="robots" content="nosnippet"> <!-- removes description from search engines results -->
+  <meta name="googlebot" content="nosnippet"> <!-- same but specific to google -->
+  <meta name="theme-color" content="#00796B"> <!-- sets color of PWA on mobile devices -->
+
+  <meta http-equiv="refresh" content=""> <!-- Only use in devopment !! refresh page every x sec depending on content value -->
+  
+  <meta property="og:title" content="Title Here"> <!-- open graph data; for Facebook -->
+  <meta property="og:description" content="Description Here">
+  <meta property="og:locale" content="en_GB"> <!-- defines natural language of the page -->
+  <meta property="og:type" content="website"> <!-- article, audio, video, etc. -->
+  <meta property="og:url" content="https://www.example.com/">
+  <meta property="og:image" content="https://example.com/image.jpg"><!-- full URL is needed to work; 1200x630; better to use .jpg for linkedin -->
+  <meta property="og:image:width" content="1200"> <!-- once width and height are specified, Facebook can directly fetch the image -->
+  <meta property="og:image:height" content="600">
+  <meta property="og:image:alt" content="Alt text">
+  <meta property="fb:admins" content="Facebook numeric ID">
+
+  <meta name="twitter:card" content="summary_large_image"> <!-- Twitter Card data -->
+  <meta name="twitter:title" content="Page Title">
+  <meta name="twitter:description" content="Page description less than 200 characters">
+  <meta property="og:url" content="https://www.example.com/">
+  <meta name="twitter:image" content="https://www.example.com/image.jpg"> <!-- Twitter Summary card images must be at least 200x200px -->
+  <meta name="twitter:image:alt" content="Alt text">
+
+  <link rel="icon" type="image/png" href="PNG.png"> <!-- tab icon -->
+  <link rel="apple-touch-icon" href="PNG.png"> <!-- apple icon -->
+
+  <link href="https://fonts.googleapis.com/css?..." rel="stylesheet"> <!-- more fonts via google -->
+  <link rel="stylesheet" href="CSSS.css"> <!-- link to CSS file -->
+  <link rel="stylesheet" href="CSSS.css" media="print" onload="this.media='all'"> <!-- asynchronous CSS file -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"> <!-- font awesome icons -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons"> <!-- google icons -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"> <!-- bootstrap icons -->
+  <link rel="stylesheet" href="https://cdn.rawgit.com/konpa/devicon/master/devicon.min.css"> <!-- Dev icons -->
+
+  <style></style> <!-- Defines CSS but it is better to use an extern file -->
+
+  <!-- because of use of html5 tags, need to add following link to JS to let IE to run the page -->
+  <!-- more IE conditionals https://www.quirksmode.org/css/condcom.html -->
+  <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+  <![endif]-->
+  
+</head>
+<!--// HEAD ELEMENTS -->
+
+
+
+
+<!-- BODY ELEMENTS -->    
+<body><!-- Visible content of the page -->
+
+  <div id="id">div with id</div><!-- id="" allows to target elements in CSS using # ; useful to link to a place in the page --><br>
+  <div class="">div with class</div><!-- class="" allows to target elemnts in CSS using '.' --><br>
+  <div class="class1 class2 class-etc">div with multiple class</div><!-- multiple class --><br>
+  <hr>
+
+  
+  <!-- MAIN TAGS -->
+  <header>header of page</header><!-- header of a page --><br>
+  <main role="main">main of page</main><!-- main content of a page; role useful for IE --><br>
+  <footer>footer of page</footer><!-- footer of a page --><br>
+  <h1>title h1</h1><!-- 1 to 6, decreasing size --><br>
+  <h2>title h2</h2><br>
+  <h3>title h3</h3><br>
+  <h4>title h4</h4><br>
+  <h5>title h5</h5><br>
+  <h6>title h6</h6><br>
+  <p title="I'm a tooltip">paragraph</p><!-- paragraph, title shows when cursor over text --><br>
+  <div>div</div><!-- Very useful to structure the code in blocks --><br>
+  <span>span</span><!-- Very useful to structure the code in lines --><br>
+  <hr>
+
+
+  <!-- LINKS -->
+  <a href="url" target="_blank" rel="noreferrer noopener">url</a><!-- to create a link, blank open in a new tab; noopener/noreferrer is useful for security and performance on _blank links --><br>
+  <a href="url" title="bull text">url with bubble</a><!-- link with some bull text --><br>
+  <a href="url" accesskey="u">url with bubble</a><!-- link with accesskey for disabled readers; access it with "u" key --><br>
+  <a href="url" tabindex="0">url with bubble</a><!-- force element to have focus with tab key; link and input have that by default; set to -1 to disable it --><br>
+  <a href="mailto:votrenom@bidule.com">mail</a><!-- link to send mail --><br>
+  <a href="img/html.jpg">url to image</a><!-- link to image only --><br>
+  <a href="file.txt" download="file.txt">url to download</a><!-- download file --><br>
+  <a href="#id">reach #id</a><!-- reach the id="id" section of the page --><br>
+  <a href="url"><img src="img/html.jpg" width="200px"></a><!-- link on an image --><br>
+  <a href="#0">fake link</a><!-- fake link --><br>
+  <hr>
+
+
+  <!-- IMAGES OR FRAMES -->
+  <img src="img/html.jpg" alt="" width="200px"><!-- to insert an image, can also be .png, .jpg, .gif --><br>
+  <img src="img/html.jpg" alt="" title="bull text" width="200px"><!-- infobull --><br>
+  <img src="img/html.jpg" alt="" style="width: 200px"><!-- better to use style than width to be prior to external css --><br>
+  <img src="img/html.jpg" alt="" srcset="img/html-sm.jpg 768w, img/html-md.jpg 992w"><!-- 100w defines the window width; srcset not working in !!IE --><br>
+  <img src="https://via.placeholder.com/600x300" alt="placeholder"><!-- great for neutral image placeholder; https://placeholder.com/ -->
+  <img src="https://picsum.photos/600/300" alt="lorem picsum"><!-- great for random image; https://picsum.photos/ -->
+  <picture><!-- define different images based on page width -->
+    <source media="(min-width: 768px)" srcset="img/html.jpg">
+    <source media="(min-width: 1024px)" srcset="img/html.jpg">
+    <img src="img/html.jpg" alt="" style="width: auto;">
+  </picture>
+  <iframe src="HTML.html"></iframe><!-- display content from another origin --><br>
+  <iframe src="HTML.html" sandbox="allow-scripts allow-modals"></iframe><!-- sandbox offers to filter the permissions of the iframe --><br>
+  <iframe src="https://www.youtube.com/embed/xxxxxxxxx"></iframe><!-- to insert a Youtube video; add ?rel=0 at the end of the url to remove related videos at the end; other parameters possible --><br>
+  <div style="padding:56.25% 0 0 0;position:relative;"><iframe src="https://www.youtube.com/embed/xxxxxxxxx" style="position:absolute;left:0;top:0;width:100%;height:100%;"></iframe></div><!-- responsive video frame -->
+  <embed src="PDF.pdf" style="width: 800px; height: 1200px;"><!-- display PDF content on page; more options here: https://stackoverflow.com/questions/20562543/zoom-to-fit-pdf-embedded-in-html -->
+  <object data="PDF.pdf#pagemode=none&toolbar=0" type="application/pdf" width="100%" height="800px"><!-- display +- responsive PDF -->
+    <p>It appears you don't have a PDF plugin for this browser. <a href="PDF.pdf">Click here to download the PDF file</a>.</p>  
+  </object>
+  <hr>
+
+
+  <!-- NAVIGATION -->
+  <nav><!-- for navigation links (menu with <a> tags); directly inline -->
+    <a href="">One</a>
+    <a href="">Two</a>
+    <a href="">Three</a>
+  </nav>
+  <hr>
+
+  <nav>
+    <ul style="display: inline-block;"><!-- navigation links; inline-block-ed; comments are used to remove white space in-between -->
+      <li><a href="">One</a></li><!--
+      --><li><a href="">Two</a></li><!--
+      --><li><a href="">Three</a></li>
+    </ul>
+  </nav>
+  <hr>
+
+
+  <!-- ORDERED LIST -->
+  <ol type="A" start="3" reversed><!-- can also be "a" "I" "i"; start property does not work with reversed -->
+    <li>One</li><!-- list elements -->
+    <li>Two</li>
+    <li>Three</li>
+  </ol>
+  <hr>
+  <!--// ORDERED LIST -->
+
+
+  <!-- UNORDERED LIST -->
+  <ul>
+    <li>Blue</li><!-- list element-->
+    <li>Red</li>
+    <li>Yellow</li>
+  </ul>
+  <hr>
+  <!--// UNORDERED LIST -->
+
+
+  <!-- DESCRIPTIVE LIST -->
+  <dl>
+    <dt>Tiger</dt><!-- term -->
+    <dd>best animal</dd><!-- description -->
+    <dt>Spider</dt>
+    <dd>worst animal</dd>
+  </dl>
+  <hr>
+  <!--// DESCRIPTIVE LIST -->
+
+
+  <!-- TABLE -->
+  <!-- scope attribute helps to improve accessibility; use it on first row/col elements -->
+  <table border="solid">
+    <caption>Table caption</caption><!-- table title; very useful for accessibility -->
+    <thead><!-- head of table -->
+      <tr><!-- table row -->
+        <th scope="col">Company Name</th><!-- column title -->
+        <th scope="col">Number of Items to Ship</th>
+        <th scope="col">Next Action</th>
+      </tr>
+    </thead>    
+    <tbody><!-- body of table -->
+      <tr>
+        <td scope="row">Strike Fitness</td><!-- column content -->
+        <td>1</td>
+        <td>Enter Order</td>
+      </tr>
+      <tr>
+        <td scope="rowgroup" rowspan="3">Adam's Greenworks</td><!-- merge 2 vertical cells in 1; will fill 3 boxes -->
+        <td scope="colgroup" colspan="2">No order</td><!-- merge 2 horizontal cells in 1; will fill 2 boxes -->
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Send Invoice</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Enter Order</td>
+      </tr>
+      <tr>
+        <td scope="row">Miss Sally's Southern</td>
+        <td>4</td>
+        <td>Ship</td>
+      </tr>
+    </tbody>    
+    <tfoot><!-- foot of table; better to put it between thead and tbody -->
+      <tr>
+        <td scope="row">Total</td>
+        <td>28</td>
+      </tr>
+    </tfoot>
+  </table>
+  <hr>
+  <!--// TABLE -->
+
+
+  <!-- TEXT MODIFICATIONS -->
+  <b>bold</b><!-- bold --><br>
+  <i>italic</i><!-- italic --><br>
+  <u>underline</u><!-- underline --><br>
+  <s>crossed</s><!-- crossed --><br>
+  <small>small</small><!-- small text; footnotes or copyright for example --><br>
+  <mark>highlight</mark><!-- highlighted --><br>
+  <sup>exponent</sup><!-- exponent --><br>
+  <sub>subscripted</sub><!-- subscripted --><br>
+  <strong>strong</strong><!--bold; important content--><br>
+  <em>emphasized</em><!--italic; emphasized content--><br>
+  <ins>underline</ins><!-- underline; inserted content --><br>
+  <del>crossed</del><!-- crossed; removed content --><br>
+  <code>computer code</code><!-- computer code --><br>
+  <pre>&lt;html&gt;</pre><!-- used for code snippet; the pre tag preserves both spaces and line breaks --><br>
+  <kbd>ctrl</kbd><!-- keybord input --><br>
+  <var>x</var><!-- name of variables --><br>
+  <samp>Press F1</samp><!-- sample output from a program --><br>
+  <dfn title="Laughing out loud">Lol</dfn><!-- definition in italic --><br>
+  <time datetime="2022-07-10">Monday the 10th</time><!-- useful for disabled people and screen readers --><br>
+  <hr>
+  <!--// TEXT MODIFICATIONS -->
+
+
+  <!-- ICONS -->
+  <i class="fa fa-cloud" aria-hidden="true" style="font-size:24px;"></i><!-- font-awesome icon, use fa-1x to fa-5x to resize --><br>
+  <i class="glyphicon glyphicon-cloud" style="font-size:36px;"></i><!-- bootstrap icon --><br>
+  <i class="material-icons" style="font-size:48px;color:red;">cloud</i><!-- google icon --><br>
+  <i class="devicon-html5-plain colored"></i><!-- dev icon --><br>
+  <hr>
+  <!--// ICONS -->
+
+
+  <!-- BREAKS -->
+  <hr><!-- horizontal bar -->
+  <br><!-- new line or <br/> -->
+
+
+  <!-- PROGRESS & METER -->
+  <progress value="60" max="100"></progress><!-- display progress bar; takes color as background --><br>
+  <meter value="4" min="0" max="10">4 out of 10</meter><!-- display scalar measurement within a defined range, or a fractional value; eg; a gauge !!IE --><br>
+
+
+  <!-- QUOTES -->
+  <q>Quote</q><!-- "Quote text" --><br>
+  <blockquote cite="url">Block quote</blockquote><!-- Indented quote from another source --><br>
+  <abbr title="Hypertext Markup Language">HTML</abbr><!-- help with abbreviations and acronyms --><br>
+  <address>Address</address><!-- Show address in italic --><br>
+  <cite>Work title</cite><!-- Define title of a work in italic --><br>
+  <bdo dir="rtl">right to left</bdo><!-- write text from right to left --><br>
+  <hr>
+  <!--// QUOTES -->
+
+
+  <!-- HTML5 TAGS -->
+  <article>Article</article><!-- Defines an article in the document --><br>
+  <aside>Aside</aside><!-- Defines content aside from the page content --><br>
+  <canvas>Canvas</canvas><!-- Draw graphics, on the fly, via scripting; what's in between the tags will be rendered to old browsers than do not process canvas --><br>
+  <section>Section</section><!-- Defines a section in the document --><br>
+  <dialog>Dialog</dialog><!-- Defines a dialog box or window --><br>
+  <figure><!-- Defines self-contained content, like illustrations -->
+    Figure
+    <figcaption>figure footer</figcaption><!-- img footer -->
+  </figure><br>
+  <legend>media legend</legend><!-- legend to medias --><br>
+  <hr>
+  <!--// HTML5 TAGS -->
+
+
+  <!-- SCALABLE VECTOR GRAPHIC -->
+  <svg>
+    <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+    <!-- circle; cx & cy for positioning; r for radius; stroke for highlighted lines; fill for color -->
+  </svg><br>
+  <svg>
+    <rect width="400" height="100" fill="red" style="stroke-width:10;stroke:rgb(0,0,0)" />
+    <!-- rectangle; you can chose to modif in style or outside; use shape-rendering="crispEdges" to remove white lines between rect elements -->
+  </svg><br>
+  <svg>
+    <line x1="10" y1="10" x2="200" y2="100" stroke="black" />
+    <!-- line; with no stroke we won't see the line ofc -->
+  </svg><br>
+  <svg>
+    <polygon points="100,10 40,198 190,78 10,78 160,198" style="fill:lime;stroke:purple;stroke-width:5;fill-rule:evenodd;" />
+    <!-- will create form based on points; fill-rule to chose how to fill; auto close of the points -->
+  </svg><br>
+  <svg>
+    <polyline points="100 100, 150 150, 200 100" stroke-linejoin="miter" stroke="black" stroke-width="10" fill="none" />
+    <!-- quite similar to polygon; links only between 2 points side by side -->
+  </svg><br>
+  <svg>
+    <ellipse cx="200" cy="100" rx="150" ry="75" fill="green" />
+    <!-- radius x and y to adjust size -->
+  </svg>
+  <svg viewBox="0 0 300 300">
+    <!-- viewBox sets min-x, min-y, width and height -->
+  </svg><br>
+  <hr>
+  <!--// SCALABLE VECTOR GRAPHIC -->
+
+
+  <!-- VIDEO -->
+  <video controls width="200px" poster="img/html.jpg" style="position:absolute;left:0;top:0;width:100%;height:100%;"><!-- video; poster is for image before start; loop, autoplay, playsinline, preload(auto, none); use preload="none" to ensure poster is showing -->
+    <source src="video/html.mp4" type="video/mp4"><!-- use different format to work on all browsers -->
+    Your browser does not support the video tag. <!-- Message to non-supporting browsers -->
+  </video><br>
+  <div style="padding:56.25% 0 0 0;position:relative;"><!-- Responsive video -->
+    <video controls width="200px" poster="img/html.jpg" style="position:absolute;left:0;top:0;width:100%;height:100%;">
+      <source src="video/html.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </div>
+  <hr>
+  <!--// VIDEO -->
+
+
+  <!-- AUDIO -->
+  <audio controls><!-- audio; use loop, autoplay, preload(auto, none) -->
+    <source src="audio/ukulele.mp3" type="audio/mp3"><!-- use different format to work on all browsers -->
+    Your browser does not support the audio tag. <!--Message to non-supporting browsers -->
+  </audio>
+  <hr>
+  <!--// AUDIO -->
+
+
+  <!-- IMAGE MAP -->
+  <img src="img/html.jpg" alt="Milky Way" usemap="#map" style="width:145px;height:126px;"/><!-- image with clickable areas -->
+  <map name="map">
+    <area shape="rect" coords="0,0,82,126" alt="Sun" href="#"/>
+    <area shape="circle" coords="90,58,3" alt="Mercury" href="#"/>
+    <area shape="poly" coords="124,58,8,80,145,126" alt="Asteroids" href="#"/>
+  </map>
+  <hr>
+  <!--// IMAGE MAP -->
+
+
+  <!-- FORMS -->
+  <form action="action-page.php" method="get" autocomplete="on"><!-- method="post" also available and not visible in url =safer; autocomplete allow to get previous answers (autocomplete="off") -->
+    <fieldset><!-- borders the questions; can create different parts in the form -->
+      <legend>Basic inputs</legend><!-- name of the fieldset -->
+      <input type="text" name="firstname"><!-- one line field to answer --><br>
+      <input type="text" name="firstname" autofocus><!-- autofocus to focus directly on that input --><br>
+      <input type="text" name="firstname" placeholder="firstname"><!-- places helper text which disappear when typing --><br>
+      <input type="text" name="firstname" required><!-- need to fill it to be able to submit --><br>
+      <input type="text" name="firstname" required minlength="3" maxlength="16"><!-- need to write min 3 characters (and max 16) to be able to submit; !!IE => use pattern=".{3,16}" --><br>
+      <input type="text" name="firstname" readonly><!-- makes the input uneditable --><br>
+      <input type="text" name="zipcode" pattern="[A-Za-z]{4}" required><!-- input required and made from 4 letters; pattern works with regexp --><br>
+      <input type="text" spellcheck="true"><!-- input with spellcheck --><br>
+    </fieldset>
+
+    <fieldset>
+      <legend>Input types</legend>
+      <label for="label">Label</label><input type="text" name="label" id="label"><!-- Label helps the user to know what he has to write in the form; need for & id --><br>
+      <textarea name="quote" rows="3" cols="30"></textarea><!-- long text area --><br>
+      <input type="password" name="psw"><!-- password field --><br>
+      <input type="number" name="quantity" min="1" max="5" step="1"><!-- let type number between from 1 to 5 --><br>
+      <input type="date" name="bday" max="1979-12-31"><!-- date before 1980; not working in !!IE --><br>
+      <input type="email" name="email"><!-- check it's an email format --><br>
+      <input type="tel" name="tel" placeholder="Telephone" pattern="^((\+|00)32\s?|0)4(60|[789]\d)(\s?\d{2}){3}$"><!-- telephone input with pattern to match Belgian phone numbers; useful for mobile --><br>
+      <input type="url" name="url"><!-- check if it's url format --><br>
+      <input type="file" name="file" accept=".png, .jpg, .jpeg" multiple><!-- upload a file; or multiple if specified --><br>
+      <input type="file" name="camera" capture="user" accept="image/*"><!-- open camera on mobiles; 'user' for front and 'environment' for back camera --><br>
+      <input type="search" name=""><!-- create a search area --><br>
+      <input type="range" name="range" id="range" min="0" max="10" step="2"><!-- cursor range --><br>
+      <input type="color" name="color" value="#ffffff"><!-- color input; not working in !!IE --><br>
+    </fieldset>
+
+    <fieldset>
+      <legend>Autocomplete</legend>
+      <input name="name" autocomplete="name"><!-- helps autocomplete browser features -->
+      <input type="email" name="email" autocomplete="email"><!-- https://developer.mozilla.org/fr/docs/Web/HTML/Attributs/autocomplete -->
+    </fieldset>
+
+    <fieldset>
+      <legend>radio inputs</legend>
+      <input type="radio" name="radio" id="radio1" value="Radio1" checked><!-- button to chose one between different options; 'checked' is radio by default -->
+      <label for="radio1">Radio1</label>
+      <input type="radio" name="radio" id="radio2" value="Radio2"><!-- must be same 'name' to force not to click on both answers -->
+      <label for="radio2">Radio2</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>checkbox input</legend>
+      <input type="checkbox" name="check" id="check1"><!-- button to chose multiple options -->
+      <label for="check1">Check1</label>
+      <input type="checkbox" name="check" id="check2" checked><!-- this checkbox will be 'check' by default -->
+      <label for="check2">Check2</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Select dropdown</legend>
+      <select><!-- dropdown field -->
+        <option value="select1" selected>Select1</option><!-- 'selected' by default -->
+        <option value="select2">Select2</option>
+        <optgroup label="optgroup">
+          <option>Select3</option>
+        </optgroup>
+      </select>
+    </fieldset>
+
+    <fieldset>
+      <legend>Input options with datalist</legend>
+      <input list="datalist">
+      <datalist id="datalist">
+        <option>Datalist1</option>
+        <option>Datalist2</option>
+        <option>Datalist3</option>
+      </datalist>
+    </fieldset>
+
+    <fieldset>
+      <input type="button" onclick="alert('Hello')" value="pop-up"><!-- display message --><br>
+      <input type="reset" value="reset"><!-- reset fields --><br>
+      <input type="submit" value="submit"><!-- submit button to send answers --><br>
+    </fieldset>
+  </form>
+  <hr>
+  <!--// FORMS -->
+
+
+  <!-- CONTENT EDITABLE -->
+  <p contenteditable="true">Edit me.</p>
+  <hr>
+
+
+  <!-- CONTENT DRAGGABLE -->
+  <p draggable="true">Drag and drop me.</p> <!-- !!IE -->
+  <hr>
+
+
+  <!-- EXPANDABLE -->
+  <details> <!-- Details and summary elements; no need of javascript to use expandables; !!IE & Edge not working -->
+    <summary>
+      Distribution and habitat
+    </summary>
+    <p>The red panda is endemic to the temperate forests of the Himalayas, and ranges from the foothills of western Nepal to China in the east. Its easternmost limit is the Qinling Mountains of the Shaanxi Province in China. Its range includes southern Tibet, Sikkim and Assam in India, Bhutan, the northern mountains of Burma, and in south-western China, in the Hengduan Mountains of Sichuan and the Gongshan Mountains in Yunnan.</p>
+  </details>
+  <details>
+    <summary>
+      Curious facts
+    </summary>
+    <p>The red panda's local names differ from place to place. The Lepcha people call it sak nam. In Nepal, the species is called bhalu biralo (bear-cat) and habre.</p>
+    <p>The red panda was recognized as the state animal of Sikkim in the early 1990s, and was the mascot of the Darjeeling Tea Festival.</p>
+  </details>
+  <hr>
+  <!--// EXPANDABLE -->
+
+
+  <!-- TEMPLATE IE!! -->
+  <template> <!-- content that is hidden from the user, but will be used to instantiate HTML code repeatedly; work with JS to render it => cloneNode() -->
+    <p>Lorem ipsum</p>
+  </template>
+  <!--// TEMPLATE -->
+
+
+  <!-- MAIL FORM -->
+  <form action="mailto:mail@mail.com?subject=form%20submission&body=Hello%20world%20!" method="post" enctype="text/plain"> <!-- send mail -->
+    <fieldset>
+      <legend>Mail</legend>
+      <input type="text" name="name">
+      <input type="submit" name="submit">
+    </fieldset>
+  </form>
+  <hr>
+  <!--// MAIL FORM -->
+
+
+  <!-- SYMBOLS -->
+  <p>less than = < = &lt; = &#60; </p><br>
+  <p>greater than = > = &gt; = &#62; </p><br>
+  <p>ampersand = & = &amp; = &#38; </p><br>
+  <p>quote = " = &quot; = &#34; </p><br>
+  <p>apostrophe = ' = &apos; = &#39; </p><br>
+  <p>euro = € = &euro; = &#8364; </p><br>
+  <p>copyright = © = &copy; = &#169; </p><br>
+  <p>registered = ® = &reg; = &#174; </p><br>
+  <p>trademark = ™ = &trade; = &#8482; </p><br>
+  <hr>
+  <!--// SYMBOLS -->
+
+
+  <!-- ACCESSIBILITY -->
+  <h1>H1 Title</h1><!-- use once per page, and be consistent with hierarchy of other header tags --><br>
+  <strong>Important content</strong><!-- use to make text important --><br>
+  <em>Emphasized content</em><!-- use to make text emphasized --><br>
+  <table><caption>Table description</caption></table><!-- use caption to describe a table --><br>
+  <img src="img/html.jpg" alt="image description"><!-- use alt to describe the image --><br>
+  <div role="navigation">Navigation</div><!-- role can be used to make any element understood as anything (button, navigation, search...) --><br>
+  <div tabindex="0">Focusable element</div><!-- force element to have focus with tab key; link and input have that by default; set to -1 to disable it --><br>
+  <p aria-label="description of the element">Described element</p><!-- use aria-label to give more description to an element --><br>
+  <p aria-hidden="true">Hidden element for screen readers</p><!-- tells screen readers to ignore this element --><br>
+  <!--// ACCESSIBILITY -->
+
+
+
+  <!-- SCRIPTS -->
+  <?php ?> <? ?> <!-- to code PHP -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script> <!-- jQuery library; always before js files -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script> <!-- IU jQuery for better animations -->
+
+  <script src="JSS.js"></script> <!-- External JS file -->
+
+  <script> 
+    console.log('Javascript text'); // internal JS, always after jquery !
+  </script>
+
+  <noscript>Sorry, your browser does not support JavaScript!</noscript><!-- for user with disabled JS -->
+  <!--// SCRIPTS -->
+
+</body>
+<!--// BODY ELEMENTS --> 
+
+</html>
