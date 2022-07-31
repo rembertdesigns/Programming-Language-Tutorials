@@ -1,0 +1,60 @@
+//- Pug - HTML preprocessor - by Richard
+//- Basic HTML
+doctype html
+html
+  head
+    title
+    link(rel="stylesheet" href="CSSS.css")
+  body
+    header
+    main
+    footer
+    script(src="JSS.js")
+
+
+//- Variables
+- var string = "Hello"
+h1 #{string} World
+
+- var superString = string + " World"
+h1= superString
+
+
+//- Iterations
+each value in ["one", "two", "three"]
+  p= value
+
+while x < 10
+  p= x
+  x++
+
+
+//- Conditionals
+if false
+  h1 This is false !
+else if true
+  h1 This is true !
+else
+  h1 This is bleh !
+
+
+//- Mixin
+mixin image(url, caption)
+  figure
+    img(src=url, alt=caption)
+    figcaption= caption
+  
++image("https://media.giphy.com/media/2NKQ8MmushHi0/giphy.gif", "a sailing pug")
+
+
+//- Includes
+include anotherPugFile.pug
+
+include otherFileTypeAsPlainText.css
+include otherFileTypeAsPlainText.js
+
+
+
+
+//- https://codepen.io/mimoduo/post/pug-js-cheat-sheet
+//- https://pugjs.org/api/getting-started.html
