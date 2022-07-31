@@ -3063,7 +3063,7 @@ fetchData();
 
 
 // LOCALSTORAGE
-// localStorage allows us to save data on the browser; it needs to be a string; window is optional
+// localStorage allows us to save data on the browser; it needs to be a string; window is optional.
 
 
   // set item in localStorage
