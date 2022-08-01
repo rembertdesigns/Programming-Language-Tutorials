@@ -65,3 +65,20 @@ namespace Hello
     }
   }
 }
+
+
+// Types
+var anyType; // var force the compiler to find the right type for us; should be avoided for clarity
+byte number; // integer 0 à 255
+short number; // integer -32768 à 32767
+int number; // integer -2147483648 à 2147483647
+byte number; // integer -9223372036854775808 à 9223372036854775807
+float number; // simple precision -3,402823e38 à 3,402823e38
+double number; // double precision  -1,79769313486232e308 à 1,79769313486232e308
+decimal number; // for financial values with lots of decimals
+char letter; // single character
+string name; // character string
+bool diff; // true or false
+type[] arr; // array of any type (ex int); reference type
+List<type> list; // list of any type (ex int)
+DayOfWeek day; // day of week enum
