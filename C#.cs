@@ -93,3 +93,17 @@ int i = 20; double d = i; // 20 becomes of double type
 int age = 24; string ageStr = Convert.ToString(age); // converts int to string "24"
 string ageStr = "24"; int age = int.Parse(ageStr); // converts string to int 24
 int.TryParse(ageStr, out age); // checks if parse is authorized and stores value in out int; will return true here
+
+
+// Boxing
+int i = 5;
+object o = i;
+o = 6; // i = 5; o = 6
+
+
+// Unboxing
+int i =5;
+object o = i;
+o = 6;
+int j = (int)o;
+j = 7; // i = 5; o = 6; j = 7
