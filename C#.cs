@@ -107,3 +107,19 @@ object o = i;
 o = 6;
 int j = (int)o;
 j = 7; // i = 5; o = 6; j = 7
+
+
+// Console methods
+Console.WriteLine("Hello"); // writes the string
+string input = Console.ReadLine(); // ask user to type a line; needs to be stored
+Console.ReadKey(true); // ask user to type on a key to continue; true prevents the write the key typed on
+ConsoleKeyInfo typed = Console.ReadKey(true).key; // contains the key
+Console.ForegroundColor = ConsoleColor.Black; // color of the text
+Console.BackgroundColor = ConsoleColor.White; // color of background
+Console.ResetColor(); // reset back and fore colors
+Console.Clear(); // clear the screen
+Console.SetCursorPosition(20, 5); // sets cursor at column 20 and line 5
+int x = Console.CursorLeft; // current position of cursor column
+int y = Console.CursorRight; // current position of cursor line
+int w = Console.WindowWidth; // current width of window
+Console.MoveBufferArea(5, 6, 7, 8, 9, 10); // the text in the zone ((5,6),(12,14)) will move to (9,10)
