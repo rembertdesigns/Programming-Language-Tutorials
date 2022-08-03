@@ -123,3 +123,26 @@ int x = Console.CursorLeft; // current position of cursor column
 int y = Console.CursorRight; // current position of cursor line
 int w = Console.WindowWidth; // current width of window
 Console.MoveBufferArea(5, 6, 7, 8, 9, 10); // the text in the zone ((5,6),(12,14)) will move to (9,10)
+
+
+// readline of a number
+static void Main(string[] args)
+{
+  bool inputValid = false;
+  int age = -1;
+  while (!inputValid)
+  {
+    Console.WriteLine("Please type your age");
+    string input = Console.ReadLine();
+    if (int.TryParse(input, out age))
+    {
+      inputValid = true;
+    }
+    else
+    {
+      inputValid = false;
+      Console.WriteLine("Your age input is invalid !");
+    }
+  }
+  Console.WriteLine("You are " + age + " years old");
+}
