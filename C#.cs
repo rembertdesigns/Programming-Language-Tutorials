@@ -193,3 +193,27 @@ enum Days
 }
 // write
 Console.WriteLine(Days.Monday); // Monday
+
+
+// conditions
+namespace Sleep
+{
+  class Program
+  {
+    static void Main(string[] args)
+    {
+      Console.WriteLine("How many hours did you sleep?");
+      Int hours = Console.ReadLine();
+      if(hours >= 8)
+      {
+        Console.WriteLine("You slept enough");
+      }
+      else
+      {
+        Console.WriteLine("You need more sleep");
+      }
+    }
+  }
+}
+// ternary operator
+string test = 18 > 20 ? "passed" : "failed";
