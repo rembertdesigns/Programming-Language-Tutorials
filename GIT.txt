@@ -1,0 +1,35 @@
+GIT COMMANDS
+
+
+
+git init | git init [folder] // Turn an existing directory into a git repository
+git clone [repo URL] | git clone [repo URL] [folder] // Clone an existing repository including files, branches and commits
+git add [directory | file] // add directory or file to staging area
+git commit -m "[message]" // commit staged changes to local repository with specified message
+git push // push changes to remote repository
+git status // show changes; staged, unstaged, untracked
+git log // display history of commit
+git diff // show changes
+git fetch // retrieve changes from remote without merging
+git pull // retrieve changes from remote and merge to local
+
+git branch // list branches
+git branch [branchname] // create a branch with the specified name
+git branch -d [branchname] // delete the specified branch
+git checkout [branchname] // switch to specified branch
+git merge [branchname] // merge current branch with specified branch
+
+git revert [commit] // create new commit undoing changes from specified commit
+git reset --soft HEAD~1 // undo last commit keeping changes
+
+
+
+/!\ It is crucial to keep sensible files (passwords, API, config, etc.) in a .gitignore file (should write paths to ignored files in .gitignore file)
+
+
+
+Master branch handle the working code
+Hotfix branch handle random bugs
+Release branch handle last check before new release
+Develop branch handle improvements to the code , including new features
+Feature branches handle new features to be add to develop
