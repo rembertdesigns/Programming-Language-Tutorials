@@ -61,3 +61,210 @@
     }
   }
 }
+
+
+.MIXINS { /* mixins should always comes before imports to avoid sass error !!! */
+  @mixin backface-visibility($visibility: hidden) { /* default value is passed here; can be override as argument later */
+    backface-visibility: $visibility;
+    -webkit-backface-visibility: $visibility;
+    -moz-backface-visibility: $visibility;
+    -ms-backface-visibility: $visibility;
+    -o-backface-visibility: $visibility;
+  }
+  div { @include backface-visibility(visible); }
+
+  @mixin dashed-border($width, $color: #FFF) {
+    border: {
+      width: $width;
+      color: $color;
+      style: dashed;
+    }
+  }
+  /* only passes non-default argument */
+  span { @include dashed-border(3px); }
+  /* passes both arguments */
+  p { @include dashed-border(3px, green); }
+  /* passes out of order but explicitly defined */
+  div { @include dashed-border(color: purple, width: 5px); }
+
+  @mixin double-box-shadow($shadows...) { /* without the 3dots, mixin will result in an error when getting double shadow; it will think it is 2 arguments !! */
+    box-shadow: $shadows;
+  }
+  div { @include double-box-shadow(0 0 2px #333, 2 2 4px #333); }
+}
+
+
+.MEDIA-QUERIES {
+  @mixin respond-to($type, $query) {
+    @media ($type: $query) {
+      @content
+    }
+  }
+  .element { /* rule will apply under media query rules */
+    @include respond-to(min-width, 900px) {
+      width: 30%;
+    }
+  }
+}
+
+
+.LIST-ARGUMENTS {
+  $stripe-properties: to bottom, 15%, blue, white;
+  @include stripes($stripe-properties...);
+}
+
+
+.STRING-INTERPOLATION {
+  @mixin photo-content($file) {
+    content: url(#{$file}.jpg);
+  }
+  @include photo-content('profile-pic');
+}
+
+
+.SELECTOR-IN-MIXINS {
+  @mixin text-hover($color){
+    &:hover {
+      color: $color; 
+    }
+  }
+  p {
+    @include text-hover(red);
+  }
+}
+
+
+.COLOR-FUNCTIONS {
+  color: rgba(#333333, 0.8); /* rgba(51,51,51,0.8) */
+  color: red + blue; 
+  color: #333333 + #112233; /* #445566; also soustraction, multiplication and division */
+  color: lighten(#333333, 20%); /* 20% lighter -> #666666; also darken()*/
+  color: saturate(#333333, 20%); /* 20% more intense -> #666666; also desaturate()*/
+  color: mix(#ffff00, #107fc9, 30%); /* mix two colors; the third argument goes for the percentage of the first color */
+  color: grayscale(); /* gives a shade of grey */
+  color: invert(); /* invert the given color */
+  color: fade-in(#62fdca, 0.5); 
+  color: fade-out(#62fdca, 0.5);
+  color: adjust-hue(#62fdca, 20%);
+}
+
+
+.ARITHMETIC {
+  height: 100px + 10; /* 110px */
+  height: 10px * 5; /* 50px */
+  height: 100px - 10; /* 90px */
+  height: (100px / 10); /* 10px; division needs parentheses or other workaround such as variables */
+  height: 12 % 5 + 0px; /* 2px */
+  height: 100/4*1%; /* 25% */
+}
+
+
+.MATH-FUNCTIONS {
+  round($number); /* round to closest whole number */
+  ceil($number); /* round up */
+  floor($number); /* round down */
+  abs($number); /* absolute value */
+  min($list); /* min list value */
+  max($list); /* max list value */
+  percentage($number); /* convert to percentage */
+}
+
+
+.EACH-LOOP {
+  $list: (orange, purple, teal);
+  @each $item in $list {
+    .#{$item} {
+      background: $item;
+    }
+  }
+}
+
+
+.FOR-LOOP {
+  $total: 10; //Number of .ray divs in our html
+  $step: 360deg / $total;
+  @for $i from 1 through $total {
+    .ray:nth-child(#{$i}) {
+      background: adjust-hue(blue, $i * $step);
+    }
+  }
+}
+
+
+.WHILE-LOOP {
+  $i: 1;
+  .item {
+    position: absolute;
+    right: 0;
+    @while $i < 4 {
+      top: $i * 30px;
+      $i: $i + 1;
+    }
+  }
+}
+
+
+.CONDITIONALS {
+  width: @if(2 == 2, 50px, 100px); /* condition, if true, if false */
+  width: @if(not true, 100px, 0); // 0
+  width: @if(true and true, 100px, 0); // 100px
+  width: @if(false or true, 100px, 0); // 100px
+
+  $theme: light;
+  header {
+    @if ($theme == dark) {
+      background: #000;
+    } @else if ($theme == pink) {
+      background: pink;
+    } @else {
+      background: #fff;
+    }
+  }
+}
+
+
+.FUNCTIONS { /* use when you want values to be returned */
+  @function setWdith($target, $context) {
+    @return ($target / $context) * 100%;
+  }
+  div { width: setWidth(350px, 1000px); }
+}
+
+
+.IMPORT-PARTIALS {
+  @import "partials-name"; /* note that the real file should use an underscore (_) as prefix */
+}
+
+
+.EXTEND-CLASS { /* better than mixins if there is no argument */
+  .original {
+    color: pink;
+  }
+  .extended {
+    @extend .original; /*gets pink color from .original */
+  }
+}
+
+
+.PLACEHOLDER-SELECTOR { /* the %placeholder will not be processed, only the @extend */
+  %ir {
+    border: 0;
+    font: 0/0 a;
+    text-shadow: none;
+    color: transparent;
+    background-color: transparent;
+  }
+  .logo { @extend %ir; }
+}
+
+
+.MULTIPLE-SHADOW {
+  $list: -1px -1px #fff;
+  $total: 100;
+  @for $i from 1 through $total {
+    $list: #{$list}, #{$i}px #{$i}px #fff; /* adds shadow layers with a list */
+  }
+  .object-shadow {
+    text-shadow: $list;
+  }
+}
