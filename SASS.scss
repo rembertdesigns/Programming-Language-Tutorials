@@ -29,3 +29,35 @@
     bottom: 1px solid grey; /* border-bottom */
   }
 }
+
+
+.VARIABLES {
+  $translucent-white: rgba(255,255,255,0.3);
+  $translucent-white: rgba(256,256,256,0.1) !default; /* !default makes sure it will not override previous variable */
+  background-color: $translucent-white;
+  $header-height: 200px;
+  height: $header-height;
+  $main-font: 12px Arial bold;
+  font: $main-font;
+  $side: top;
+  #{$side}: 10px; /* top: 10px; */
+}
+
+
+.NESTING-PSEUDO-ELEMENTS {
+  div {
+    color: red;
+    &:hover: { /* div:hover */
+      color: blue;
+    }
+  }
+}
+
+.AVOID-NESTING {
+  div {
+    color: red;
+    @at-root body { /* body */
+      color: black
+    }
+  }
+}
