@@ -8,3 +8,24 @@
 /* SASS and SCSS only difference is in the use or not of '{}' and ',' */
 
 /* comment written with double slash // will not be compiled in the css code; they are sass specific */
+
+
+.NESTING-SELECTORS {
+  .parent { /* .parent */
+    width: 100px;
+    .child { /* .parent .child */
+      width: 50px;
+      &.child-one { /* .parent .child.child-one */
+        width: 40px;
+      }
+    }
+  }
+}
+
+
+.NESTING-PROPERTIES {
+  border : {
+    top: 2px solid black; /* border-top */
+    bottom: 1px solid grey; /* border-bottom */
+  }
+}
