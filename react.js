@@ -501,3 +501,97 @@ const numbers = [
 ];
 const list = numbers.filter(number => number.ok).map((numberFiltered, i) => <li key={"number_"+i}>{numberFiltered.n}</li>);
 ReactDOM.render(<ul>{list}</ul>, document.getElementById("app"));
+
+
+
+// COMPONENTS
+
+// React Component
+class MyComponentClass extends React.Component {
+    render() {
+      return <h1>Hello world</h1>;
+    }
+  };
+  ReactDOM.render(<MyComponentClass />, document.getElementById('app'));
+  
+  
+  // React Component multiline
+  class QuoteMaker extends React.Component {
+    render() {
+      return (
+        <blockquote>
+          <p>The world is full of objects, more or less interesting; I do not wish to add any more.</p>
+          <cite>Douglas Huebler</cite>
+        </blockquote>
+      );
+    }
+  };
+  ReactDOM.render(<QuoteMaker />, document.getElementById('app'));
+  
+  
+  // React Component with variables
+  const owl = {
+    title: 'Excellent Owl',
+    src: 'https://s3.amazonaws.com/codecademy-content/courses/React/react_photo-owl.jpg'
+  };
+  class Owl extends React.Component {
+    render() {
+      return (
+        <div>
+          <h1>{owl.title}</h1>
+          <img src={owl.src} alt={owl.title} />
+        </div>
+      );
+    }
+  }
+  ReactDOM.render(<Owl />, document.getElementById('app'));
+  
+  
+  // React Component render with logic
+  class Random extends React.Component {
+    render() {
+      const n = Math.floor(Math.random() * 10 + 1);
+      return <h1>The number is {n}!</h1>;
+    }
+  }
+  ReactDOM.render(<Random />, document.getElementById('app'));
+  
+  
+  // conditionals in components
+  const fiftyFifty = Math.random() < 0.5;
+  class TonightsPlan extends React.Component {
+    render() {
+      if (fiftyFifty) {
+        return <h1>Tonight I'm going out WOOO</h1>;
+      }
+      else {
+        return <h1>Tonight I'm going to bed WOOO</h1>;
+      }   
+    }
+  }
+  ReactDOM.render(<TonightsPlan />, document.getElementById('app'));
+  
+  
+  // Components and this
+  class MyName extends React.Component {
+    get name() {
+      return 'Einstein';
+    }
+    render() {
+      return <h1>My name is {this.name}.</h1>;
+    }
+  }
+  ReactDOM.render(<MyName />, document.getElementById('app'));
+  
+  
+  // Event listener in Component
+  class Button extends React.Component {
+    scream() {
+      alert('AAAAAAAAHHH!!!!!');
+    }
+    render() {
+      return <button onClick={this.scream}>AAAAAH!</button>;
+    }
+  }
+  ReactDOM.render(<Button />, document.getElementById('app'));
+  
