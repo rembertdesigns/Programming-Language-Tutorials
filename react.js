@@ -396,3 +396,36 @@ module.exports = {
       ],
     },
   };
+
+
+
+  // BASICS
+
+// use those import everytime! They are needed in all examples
+import React from "react";
+import ReactDOM from "react-dom";
+
+
+// write JSX elements just as HTML
+const h1 = <h1>React JS</h1>;
+
+// define element attribute just as in HTML
+const a = <a href="#0">What a link!</a>;
+
+// multiline element are possible using parenthesis ()
+const ah1 = (
+  <a href="#0">
+    <h1>
+      What a big link!
+    </h1>
+  </a>
+);
+
+// a JSX expression must have exactly one outermost element
+// good habit is to have a <div>, or <> (<React.Fragment>, <Fragment>) wrapping everything
+const blog = (
+  <div>
+    <h1>Main title</h1>
+    <p>Subtitle</p>
+  </div>
+);
