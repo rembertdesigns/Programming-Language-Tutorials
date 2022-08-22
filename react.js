@@ -429,3 +429,75 @@ const blog = (
     <p>Subtitle</p>
   </div>
 );
+
+
+
+// render your HTML; first argument is the JSX element and the second points to the HTML where it will be rendered
+// -> <div id="app"></div>
+ReactDOM.render(<h1>Hello world</h1>, document.getElementById("app"));
+
+// you can use variable of course
+const myElt = <h1>Render me!</h1>;
+ReactDOM.render(myElt, document.getElementById("app"));
+
+// or create it without JSX
+const myElt = React.createElement("h1", null, "Hello world");
+ReactDOM.render(myElt, document.getElementById("app"));
+
+
+// class property is special, contrary to HTML, JSX need it to be called className
+const myDiv = <div className="big"></div>;
+
+// self closing tags as well, they NEED the back slash
+const myImg = <img src="img.jpg" />;
+const myBr = <br />;
+
+// javascript into JSX thanks to curly braces {}
+const text = "The result of 2 + 3 is:";
+const myJS = <p>{text + " " + 2 + 3}</p>;
+
+// you can have comments that way
+const myCom = (
+  <div>
+    <h1>Comment</h1>
+    {/* here is a commented text */}
+  </div>
+);
+
+
+// create event listeners
+function myFunc() {
+  alert("Click on this image");
+}
+<img onClick={myFunc} />
+
+
+// if else are not possibile inside JSX --> use ternary operator
+const isTrue = <p>{1 === 1 ? "true" : "false"}</p>;
+
+// JSX conditionals; will render the HTML or not based on the left of the logical operator
+const showParagraph = true;
+const myDiv = (
+  <div>{showParagraph && <p>I'm rendered because the const is true</p>}</div>
+);
+const hideParagraph = false;
+const myDiv = (
+  <div>{hideParagraph || <p>I'm rendered because the const is false</p>}</div>
+);
+
+
+// map method and JSX; React understand it needs to make a list out of the array
+// use key attribute to make list item identifiable! makte each key unique and avoid index!!
+const numbers = ["one", "two", "three"];
+const list = numbers.map((number, i) => <li key={"number_"+i}>{number}</li>);
+ReactDOM.render(<ul>{list}</ul>, document.getElementById("app"));
+
+
+// filter helps with filtering maps
+const numbers = [
+  {n: "one", ok: true},
+  {n: "twoo", ok: false},
+  {n: "three", ok: true}
+];
+const list = numbers.filter(number => number.ok).map((numberFiltered, i) => <li key={"number_"+i}>{numberFiltered.n}</li>);
+ReactDOM.render(<ul>{list}</ul>, document.getElementById("app"));
