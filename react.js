@@ -1526,3 +1526,50 @@ export default function App() {
     </section>
   )
 }
+
+
+
+// API CALL WITH CUSTOM HOOK
+
+// external custom hook
+import { useState, useEffect } from 'react';
+// local url eg: http://localhost:3001/ or prod url eg: https://rembertdesigns.co
+const baseUrl = process.env.REACT_APP_API_BASE_URL;
+export default function useFetch(url) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    async function init() {
+      try {
+        const response = await fetch(baseUrl + url);
+        if (response.ok) {
+          const json = await response.json();
+          setData(json);
+        } else {
+          throw response;
+        }
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+  }, [url]);
+  return { data, error, loading };
+}
+
+// app file
+import React, { useState } from 'react';
+import useFetch from './services/useFetch';
+export default function App() {
+const { data: products, loading, error, } = useFetch('products?category=shoes');
+  return (
+    <section>
+      {products.map((p) => (
+        <p>{p.name}</p>
+      ))}
+    </section>
+  )
+}
