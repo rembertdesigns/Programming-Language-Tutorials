@@ -1594,3 +1594,68 @@ const StyleComponent = () => {
       <h1 style={styles}>Styled Title</h1>
   );
 };
+
+
+// EMOTION
+import React from 'react';
+import styled from '@emotion/styled';
+const Box = styled.div`
+  background-color: #ddd;
+  color: #444;
+  padding: 10px;
+`;
+const BoxComponent = () => {
+  return (
+    <div>
+      <h1>Box component</h1>
+      <Box>I'm a box!</Box>
+    </div>
+  );
+};
+export default BoxComponent;
+
+
+// EMOTION EXTERNAL
+import { forwardRef } from 'react';
+import Styled from './Component.styled';
+const Component = forwardRef((props, ref) => (
+  <Styled.Component ref={ref} {...props}>
+    Content of the <span>component</span>
+    <Styled.AsBox textColor="blue" />
+    <Styled.AsBox isRed />
+  </Styled.Component>
+));
+export default Component;
+
+import styled from '@emotion/styled';
+// styled system allows fast css with props -> m="10px" will return 'margin: 10px;'
+import { layout, space, typography } from 'styled-system';
+import { Box } from 'components';
+export default {
+  Component: styled.p`
+    // a theme.js is adviced for consistency
+    ${(p) => `
+      font-size: ${p.theme.fontSizes[2]};
+      text-align: center;
+      margin: ${p.theme.space[4]}px 0;
+      span {
+        color: ${p.theme.colors.red};
+      }
+    `}
+    ${layout}
+    ${space}
+    ${typography}
+  `,
+  AsBox: styled(Box)`
+    // AsBox will take all CSS from Box component + those defined here
+    background: black;
+    // will apply the value passed to textColor prop
+    color: ${(p) => p.textColor};
+    // these styles will apply only if component has 'isRed' prop
+    ${(p) =>
+      p.isRed &&
+      `
+      background: red;
+    `}
+  `
+}
