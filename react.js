@@ -1659,3 +1659,77 @@ export default {
     `}
   `
 }
+
+
+
+// TRANSLATE I18N
+
+// npm install i18next react-i18next i18next-http-backend i18next-browser-languagedetector --save
+// https://react.i18next.com/latest/using-with-hooks
+
+// i18n.js next to index.js
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import Backend from 'i18next-http-backend';
+import LanguageDetector from 'i18next-browser-languagedetector';
+i18n
+  .use(Backend)
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    fallbackLng: 'en',
+    debug: true,
+    interpolation: {
+      escapeValue: false,
+    }
+  });
+export default i18n;
+
+// update index.js with i18n import
+import './i18n';
+
+// add translation to App.js
+import React, { Suspense } from 'react';
+export default function App() {
+  return (
+    <Suspense fallback="loading">
+      <MyComponent />
+    </Suspense>
+  );
+}
+
+// create translation files (./public/locales/en/translation.json)
+{
+  "text": "This text comes from translation",
+  "translations": "Translations",
+  "anything": "Anything",
+  "withVariable": "With a variable of: {{var}}",
+  "item_one": "Item",
+  "item_other": "Items"
+}  
+
+// add translation to a component
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+function MyComponent() {
+  const { t, i18n } = useTranslation();
+  const [lang, setLang] = useState(i18n.language);
+  function changeLang(lng) {
+    setLang(lng);
+    i18n.changeLanguage(lng);
+  }
+  return (
+    <div className="App">
+      <h1>
+        i18n {lang.toUpperCase()} {t('translations')}
+      </h1>
+      <h2>{t('text')}</h2>
+      <p>{t('anything')}</p>
+      <p>{t('withVariable', { var: 40 })}</p>
+      <p>{t('item', { count: 1 })}</p>
+      <p>{t('item', { count: 2 })}</p>
+      <button onClick={() => changeLang('en')}>EN</button>
+      <button onClick={() => changeLang('fr')}>FR</button>
+    </div>
+  );
+}
