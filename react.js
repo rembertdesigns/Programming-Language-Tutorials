@@ -1224,3 +1224,107 @@ const EventComponents = () => (
     {/* and many more -> https://reactjs.org/docs/events.html */}
     </>
   )
+
+
+  // FORMS (controlled, react manage the state of the form)
+import { useState } from 'react';
+const ControlledInput = () => {
+  const [input, setInput] = useState('');
+  const [textarea, setTextarea] = useState('');
+  const [select, setSelect] = useState(1);
+  const [checkbox, setCheckbox] = useState(false);
+  const [radio, setRadio] = useState(false);
+  function handleChange(e) {
+    setInput(() => e.target.value);
+  }
+  return (
+    <div>
+      <form>
+        <label htmlFor="input">Name:</label>
+        <input id="input" type="text" name="name" value={input} onChange={handleChange} />
+        {/* external OR inline onChange function */}
+        <input value={input} onChange={(e) => setInput(e.target.value)} />
+        <textarea value={textarea} onChange={(e) => setTextarea(e.target.value)} />
+        <select value={select} onChange={(e) => setSelect(e.target.value)}>
+          <option value={1}>1</option>
+          <option value={2}>2</option>
+        </select>
+        <input type="checkbox" checked={checkbox} onChange={(e) => setCheckbox(e.target.value)} />
+        <input type="radio" checked={radio} onChange={(e) => setRadio(e.target.value)} />
+      </form>
+      <p>Input value: {input}</p>
+      <p>Textarea value: {textarea}</p>
+      <p>Select value: {select}</p>
+      <p>Checkbox value: {checkbox.toString()}</p>
+      <p>Radio value: {radio.toString()}</p>
+    </div>
+  )
+};
+
+
+// 'react-hook-form' to build forms faster (uncrontrolled forms & more performance)
+import { useForm } from "react-hook-form";
+function ReactHookForm() {
+  const { register, handleSubmit, watch, formState: { errors } } = useForm();
+  const onSubmit = data => console.log(data);
+  console.log(watch("example")); // watch input value by passing the name of it
+  return (
+    /* "handleSubmit" will validate your inputs before invoking "onSubmit" */
+    <form onSubmit={handleSubmit(onSubmit)}>
+      {/* register your input into the hook by invoking the "register" function */}
+      <input defaultValue="test" {...register("example")} />
+      {/* include validation with required or other standard HTML validation rules */}
+      <input {...register("exampleRequired", { required: true })} />
+      {/* errors will return when field validation fails  */}
+      {errors.exampleRequired && <span>This field is required</span>}
+      <input type="submit" />
+    </form>
+  );
+}
+
+
+// 'formik' to build forms faster (controlled forms)
+import { Formik, Field, Form } from "formik";
+function FormikForm() {
+  return (
+    <Formik
+      initialValues={{ name: "", email: "" }}
+      onSubmit={async (values) => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        alert(JSON.stringify(values, null, 2));
+      }}
+    >
+      <Form>
+        <Field name="name" type="text" />
+        <Field name="email" type="email" />
+        <button type="submit">Submit</button>
+      </Form>
+    </Formik>
+  );
+}
+
+
+// 'yup' helps with validation
+import * as yup from 'yup';
+const schema = Yup.object().shape({
+  name: yup.string().min(2, 'Too short').required('Required'),
+  email: yup.string().email('Invalid email').required('Required')
+});
+
+
+// FORM (uncrontolled, DOM manage the form)
+import React, { useRef, useState } from "react";
+const UncontrolledInput = () => {
+  const fileInput = useRef("");
+  const [fileName, setFileName] = useState("");
+  const func = () => {
+    setFileName(fileInput.current.value);
+  };
+  return (
+    <>
+      <input type="file" ref={fileInput} />
+      <button onClick={func}>Upload file</button>
+      {fileName && <p>You uploaded {fileName}</p>}
+    </>
+  );
+};
