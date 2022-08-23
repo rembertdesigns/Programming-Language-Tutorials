@@ -1733,3 +1733,153 @@ function MyComponent() {
     </div>
   );
 }
+
+
+
+// DEBUGGING
+
+// add debugger anywhere to add a breakpoint
+debugger;
+
+
+
+
+// TESTING WITH JEST
+
+// in package.json -> "scripts": {"test": "jest --watchAll"}
+// run it with yarn test / npm run test
+
+  // TESTING WITH REACT TESTING LIBRARY
+  // npm install --save-dev @testing-library/react
+  // work with file.test.js
+  import { Component } from './Component';
+  import { render, fireEvent, wait } from '@testing-library/react';
+  const r = render(<Component content="Some content" title="Some title" isImportant={true} />);
+  r.getByTitle('Some title');
+  r.getByText('Some content');
+  // better to use describe
+  describe('Component', () => {
+    describe('render', () => {
+      it('should return a container', () => {
+        const { container } = render(
+          <Component />
+        );
+        expect(container).toBeDefined();
+      });
+      it('should display the correct date', () => {
+        // needs the component to have a data-testid="title" defined (value can be anything you want)
+        const { getByTestId } = render(
+          <Component>
+            <h1 data-testid="title">Some title</h1>
+          </Component>
+        );
+        const title = getByTestId('title');
+        expect(title).toHaveTextContent('Some title');
+      });
+      // expect().toHaveValue()
+
+      // SNAPSHOT TESTING
+      it('should not change', () => {
+        const { getByTestId } = render(
+          <Component>
+            <h1 data-testid="title">Some title</h1>
+          </Component>
+        );
+        const title = getByTestId('title').toJSON();
+        expect(title).toMatchSnapshot();
+      });
+
+      // EVENT TESTING
+      it('should increment on click', () => {
+        const { queryByTestId } = render(
+          <Component>
+            <h1 data-testid="title">0</h1>
+          </Component>
+        );
+        const title = getByTestId('title');
+        fireEvent.click(title);
+        expect(title.textContent).toBe('1');
+        fireEvent.click(title);
+        expect(title.textContent).toBe('2');
+      });
+
+      // ASYNC TESTING
+      it('should increment on click', async () => {
+        const { queryByTestId } = render(
+          <Component>
+            <h1 data-testid="title">0</h1>
+          </Component>
+        );
+        const title = getByTestId('title');
+        fireEvent.click(title);
+        await wait(() => {
+          expect(title.textContent).toBe('1');
+        });
+      });
+    });
+
+    // EVENT MOCKS
+    describe('change', () => {
+      it('Should publish the typed text', () => {
+        const fn = jest.fn();
+        const { getByTestId } = render(
+          <Input data-testid="input" onChange={fn} />
+        );
+        const input = getByTestId("input");
+        fireEvent.change(input, { target: { value: 'John' }});
+        expect(fn.mock.calls).toEqual(['John']);
+      });
+    });
+
+    // USEEFFECT HOOK TESTING (possible to mock a hook)
+    describe('image from useEffect and async', () => {
+      it('should render an image with a url', async () => {
+        const { queryByTestId } = render(
+          <Component>
+            <Image data-testid="image" alt="image"/>
+          </Component>
+        );
+        await wait(() => {
+          const image = getByTestId('image');
+          expect(image.src).toMatch(/http/);
+        });
+      });
+    });
+  });
+
+
+
+  // TESTING without external library
+  // very verbose...
+  // work with file.render.test.js
+  import { Component } from './Component';
+  describe('Component', () => {
+    it('should always render a message', () => {
+      const notImportantMessage = Message({
+        content: "I am text inside Component",
+        isImportant: false
+      });
+      expect(notImportantMessage.props.children.props.children)
+        .toBe('I am text inside Component');
+      const importantMessage = Message({
+        content: "I am text inside Component",
+        isImportant: true
+      });
+      expect(importantMessage.props.children.props.children)
+        .toBe('I am text inside Component');
+    });
+    it('should make important message strong', () => {
+      const importantMessage = Message({
+        content: "I am text inside Component",
+        isImportant: true
+      });
+      expect(importantMessage.props.children.type).toBe('strong');
+    });
+    it('should not make not important message strong', () => {
+      const notImportantMessage = Message({
+        content: "I am text inside Component",
+        isImportant: false
+      });
+      expect(notImportantMessage.props.children.type).not.toBe('strong');
+    });
+  });
