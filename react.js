@@ -1053,3 +1053,27 @@ const FunctionalComponent() {
     func('This is data')
     return <></>
   };
+
+
+
+  // STATE
+import { useState } from 'react';
+const FunctionalComponent = () => {
+ const [count, setCount] = useState(0);
+ return (
+   <div>
+     <p>count: {count}</p>
+     <button onClick={() => setCount(count + 1)}>+</button>
+   </div>
+ );
+};
+// OR conditional rendering based on state
+const FunctionalComponent = () => {
+ const [show, setShow] = useState(false);
+ return (
+   <div>
+     <button onClick={() => setShow(!show)}>{show ? 'Hide' : 'Show'}</button>
+     {show && <p>{show ? `Ì'm visible` : `Ì'm not visible`}</p>}
+   </div>
+ );
+};
