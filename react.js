@@ -941,4 +941,115 @@ export class Clock extends React.Component {
     clearInterval(this.intervalID);
   }
 }
+
+
+
+// FUNCTIONAL COMPONENTS
+// state, ref and lyfecycle arrived in react v16.8 with hooks
+// still can't use componentDidError and getSnapshotBeforeUpdate
+
+// React Components
+const FunctionalComponent() {
+    return <h1>Hello world</h1>;
+  };
+  const FunctionalComponent = () => (
+    <h1>Hello world</h1>;
+  );
   
+  
+  
+  // React Component multiline
+  const FunctionalComponent() {
+    return (
+      <div>
+        <h1>Hello world</h1>
+        <p>How you doing?</p>
+      </div>
+    );
+  }
+  const FunctionalComponent = () => (
+    <div>
+      <h1>Hello world</h1>
+      <p>How you doing?</p>
+    </div>
+  );
+  
+  
+  // Render Component
+  import React from "react";
+  const FunctionalComponent = () => { return <h1>Hello world</h1>; };
+  ReactDOM.render(<FunctionalComponent />, document.getElementById('app'));
+  // OR
+  import React from "react";
+  const FunctionalComponent = () => { return <h1>Hello world</h1>; };
+  export default FunctionalComponent;
+  // OR
+  import React from "react";
+  export default function FunctionalComponent() { return <h1>Hello world</h1>; };
+  
+  
+  // Pay attention to the export method !!! 
+  export default function ComponentName() {};
+  import ComponentName from './path';
+  
+  const ComponentName = () => {};
+  export default ComponentName;
+  import ComponentName from './path';
+  
+  export function ComponentName() {};
+  import { ComponentName } from './path';
+  
+  export const ComponentName = () => {};
+  import { ComponentName } from './path';
+  
+  
+  // PROPS
+  import PropTypes from 'prop-types'; // needs 'npm install prop-types'
+  const FunctionalComponent = (props) => {
+   return <h1>Hello, {props.name}</h1>;
+  };
+  // OR
+  const FunctionalComponent = ({ name }) => {
+   return <h1>Hello, {name}</h1>;
+  };
+  // OR
+  const FunctionalComponent = ({ name, ...props }) => {
+   return <h1>Hello, {name} {props.surname}</h1>;
+  };
+  // prop types arrayOf(number), objectOf(string)) -> https://reactjs.org/docs/typechecking-with-proptypes.html
+  FunctionalComponent.propTypes = { 
+    name: PropTypes.string.isRequired,
+    age: PropTypes.number,
+    fun: PropTypes.bool,
+    arr: PropTypes.array,
+    obj: PropTypes.obj,
+    el: PropTypes.element,
+    one: PropTypes.oneOf([number, string])
+  };
+  // default props
+  FunctionalComponent.defaultProps = { age: 16 };
+  <FunctionalComponent name="John" age={25} fun={true} arr={[1, 2]} obj={{yes: 'no'}} el={<AnotherComponent />} one={1} />
+  
+  
+  // PROPS FROM PARENT TO CHILD
+  import { ChildComponent } from './ChildComponent';
+  const ParentComponent = () => {
+   return <ChildComponent name="John" />;
+  };
+  export const ChildComponent = ({ name, ...props }) => {
+   return <h1>Hello, {name}</h1>
+  };
+  
+  
+  // PROPS FROM CHILD TO PARENT
+  import { ChildComponent } from './ChildComponent';
+  const ParentComponent = () => {
+    const getFromChild = (data) => {
+      console.log(data);
+    }
+   return <ChildComponent func={getFromChild} />;
+  };
+  export const ChildComponent = ({ func, ...props }) => {
+    func('This is data')
+    return <></>
+  };
