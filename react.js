@@ -1478,3 +1478,51 @@ const { blogPost } = useParams(); // assuming we are in a <Route>: /blog/:blogPo
 const FunctionalComponent = () => {
   return <p>{blogPost}</p> // /blog/test will render 'test'
 };
+
+
+
+// API CALLS
+
+// external file with logic (./services/productService)
+const baseUrl = process.env.REACT_APP_API_BASE_URL; // local url eg: http://localhost:3001/ or prod url eg: https://rembertdesigns.co
+export async function getProducts(category) {
+  const response = await fetch(baseUrl + 'products?category=' + category);
+  if (response.ok) return response.json();
+  throw response;
+}
+// app file
+import React, { useState, useEffect } from 'react';
+import { getProducts } from './services/productService';
+export default function App() {
+  const [products, setProducts] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  // with promises
+  useEffect(() => {
+    getProducts('shoes')
+      .then((response) => setProducts(response))
+      .catch((e) => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+  // with async/await
+  useEffect(() => {
+    async function init() {
+      try {
+        const response = await getProducts('shoes');
+        setProducts(response);
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+  }, []);
+  return (
+    <section>
+      {products.map((p) => (
+        <p>{p.name}</p>
+      ))}
+    </section>
+  )
+}
