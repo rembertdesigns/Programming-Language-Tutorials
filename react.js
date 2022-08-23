@@ -1416,3 +1416,65 @@ const FunctionalComponent = () => {
     </Router>
   );
 };
+
+
+
+// Link and NavLink
+import { Link, NavLink } from 'react-router-dom';
+const FunctionalComponent = () => {
+  return (
+    <nav>
+      <NavLink to="/" style={isActive => ({color: isActive ? 'red' : ''})}>Home</NavLink>
+      <Link to="/">Blog</Link>
+    </nav>
+  )
+};
+
+// navigate
+import ( useNavigate ) from 'react-router-dom';
+const navigate = useNavigate();
+const FunctionalComponent = () => {
+  return (
+    <>
+      <button onClick={() => navigate('/')}>Go Root</button>
+      {/* navigate and pass data */}
+      <button onClick={() => navigate('/', {data: {title: 'test'}})}>Go Root with title data</button>
+    </>
+  )
+};
+
+// history !stop using in V6! -> useNavigate
+import ( useHistory ) from 'react-router-dom';
+const FunctionalComponent = () => {
+  const history = useHistory();
+  return (
+    <>
+      <button onClick={history.push('/')}>Go Root</button>
+      <button onClick={history.goBack()}>Go Back</button>
+      <button onClick={history.goForward()}>Go Forward</button>
+      <button onClick={history.go(-2)}>Go Back 2</button>
+    </>
+  )
+};
+
+// location; you can check current path or query params
+import { useLocation } from 'react-router-dom';
+const { pathname, search } = useLocation();
+const queryParams = new URLSearchParams(search);
+const FunctionalComponent = () => {
+  return (
+    <>
+      {/* assuming we are on /blog?sort=inverted */}
+      <p>Pathname: {pathname}</p>
+      {pathname === 'blog' && <p>You are on blog page</p>} {/* conditional based on path */}
+      <p>Query params: {queryParams.get('sort')}</p>
+    </>
+  )
+};
+
+// params from the navigation
+import ( useParams ) from 'react-router-dom';
+const { blogPost } = useParams(); // assuming we are in a <Route>: /blog/:blogPost
+const FunctionalComponent = () => {
+  return <p>{blogPost}</p> // /blog/test will render 'test'
+};
