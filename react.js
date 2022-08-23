@@ -1328,3 +1328,41 @@ const UncontrolledInput = () => {
     </>
   );
 };
+
+
+// ERROR BOUNDARIES
+// https://reactjs.org/docs/error-boundaries.html
+
+
+
+
+// HANDLING ERRORS and async
+import { useEffect, useState } from 'react';
+const FunctionalComponent = () => {
+  const [data, setData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  // fake data fetching
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  useEffect(() => {
+    async function delayFunc() {
+      try {
+        // fetch data
+        await delay(2000);
+        setIsLoading(false);
+        setData(["waw"]);
+      }
+      catch (e) {
+        setIsLoading(false);
+        setError(e);
+      }
+    }
+    delayFunc();
+  }, []);
+
+  if (error) return <p>Loading failed: {error}</p>
+  if (isLoading) return <p>Loading...</p>
+  return (
+    <p>{data}</p>
+  )
+}
