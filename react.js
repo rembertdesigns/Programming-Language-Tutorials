@@ -1366,3 +1366,53 @@ const FunctionalComponent = () => {
     <p>{data}</p>
   )
 }
+
+
+
+// ROUTING !!very much different in V6
+
+// install react-router-dom (yarn or npm)
+
+// V6 basics
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+const FunctionalComponent = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<App />}>
+          <Route index element={<Home />} />
+          <Route path="blog">
+            <Route path=":id" element={<BlogPost />} />
+            <Route index element={<Blog />} />
+          </Route>
+          <Route path="about" element={<About />} />
+        </Route>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </BrowserRouter>,
+  )
+}
+
+// V5 basics
+import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
+// import different page components
+const FunctionalComponent = () => {
+  return (
+    <Router>
+      <Switch>
+        <Route path="/" exact>
+          <Home />
+        </Route>
+        <Route path="/blog">
+          <Blog />
+        </Route>
+        <Route path="/blog/:title">
+          <BlogPost />
+        </Route>
+        <Route >
+          <PageNotFound />
+        </Route>
+      </Switch>
+    </Router>
+  );
+};
