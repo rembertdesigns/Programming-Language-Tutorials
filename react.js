@@ -1155,3 +1155,22 @@ const FunctionalComponent = () => {
     </div>
   );
 };
+
+
+
+// MEMO
+// memoize a function to update only when a dependency prop has changed in the array
+import { useMemo } from 'react';
+const memoizedValue = useMemo(() => computeExpensiveValue(a, b), [a, b]);
+
+
+
+// CALLBACK
+// memoize a returned value to update only when a dependency prop has changed in the array
+import { useCallback } from 'react';
+const memoizedCallback = useCallback(
+  () => {
+    doSomething(a, b);
+  },
+  [a, b],
+);
