@@ -1174,3 +1174,30 @@ const memoizedCallback = useCallback(
   },
   [a, b],
 );
+
+
+
+// CONTEXT
+// very useful to pass data deep in the tree
+import { createContext, useState } from 'react';
+export const CountContext = createContext();
+const FunctionalComponent = () => {
+  const [count, setCount] = useState(0);
+  return (
+    <CountContext.Provider value={setCount, count}>
+      <ChildComponent />
+    </CountContext.Provider>
+  )
+}
+
+import { useContext } from 'react';
+import { CountContext } from './FunctionalComponent';
+const ChildComponent = () => {
+  const {setCount, count} = useContext(CountContext);
+  return (
+    <div>
+      <p>count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Click</button>
+    </div>
+  )
+}
