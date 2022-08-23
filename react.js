@@ -825,4 +825,120 @@ class PropsDisplayer extends React.Component {
   }
   Button.defaultProps = {text: 'I am a button'};
   ReactDOM.render(<Button text="heya" />, document.getElementById('app'));
+
+
+
+  // THIS.STATE
+
+
+// setting and accessing a state
+import React from 'react';
+import ReactDOM from 'react-dom';
+class App extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { title: 'Best App' };
+  }
+  // alternative to constructor
+  // state = {
+  //   title: 'Best App'
+  // };
+  render() {
+    return (
+      <h1>
+        {this.state.title}
+      </h1>
+    );
+  }
+}
+ReactDOM.render(<App />, document.getElementById('app'));
+
+
+// update state; don't forget to bind 'this' !; setState automatically calls render !
+import React from 'react';
+import ReactDOM from 'react-dom';
+const green = '#39D1B4';
+const yellow = '#FFD712';
+class Toggle extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {color: green};
+    this.changeColor = this.changeColor.bind(this);
+  }
+  changeColor() {
+    const newColor = this.state.color == green ? yellow : green;
+    this.setState({ color: newColor });
+  }
+  render() {
+    return (
+      <div style={{background: this.state.color}}>
+        <h1>Change my color</h1>
+        <button onClick={this.changeColor}>Change color</button>
+      </div>
+    );
+  }
+}
+ReactDOM.render(<Toggle />, document.getElementById('app'));
+
+
+// react forms (a form is uncontrolled when react doesn't manage it, meaning real DOM is in charge)
+class ControlledInput extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { input: '' };
+    this.handleChange = this.handleChange.bind(this);
+  }
+  handleChange(event) {
+    this.setState({ input: event.target.value });
+  }
+  // to avoid binding we can make handleChange an arrow function
+  // handleChange = (event) => { this.setState({ input: event.target.value }) }
+  render() {
+    return (
+      <div>
+        <input value={this.state.input} onChange={this.handleChange} />
+        <h4>Controlled Input:</h4>
+        <p>{this.state.input}</p>
+      </div>
+    );
+  }
+};
+
+
+// component lifecycle methods
+import React from 'react';
+export class Clock extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { date: new Date() };
+  }
+  startInterval() {
+    let delay = this.props.isPrecise ? 100 : 1000;
+    this.intervalID = setInterval(() => {
+      this.setState({ date: new Date() });
+    }, delay);
+  }
+  render() {
+    return (
+      <div>
+        {this.props.isPrecise
+          ? this.state.date.toISOString()
+          : this.state.date.toLocaleTimeString()}
+      </div>
+    );
+  }
+  componentDidMount() {
+    this.startInterval();
+  }
+  componentDidUpdate(prevProps) {
+    if (this.props.isPrecise === prevProps.isPrecise) {
+      return;
+    }
+    clearInterval(this.intervalID);
+    this.startInterval();
+  }
+  componentWillUnmount() {
+    clearInterval(this.intervalID);
+  }
+}
   
