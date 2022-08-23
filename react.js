@@ -1201,3 +1201,26 @@ const ChildComponent = () => {
     </div>
   )
 }
+
+
+// EVENTS
+const EventComponents = () => (
+    <>
+      <button onCLick={}>btn</button>
+      <button onContextMenu={}>btn</button>
+      <button onDoubleClick={}>btn</button>
+      <button onMouseOver={}>btn</button>
+      <button onMouseOut={}>btn</button>
+      <button onChange={}>btn</button>
+      <button onSubmit={}>btn</button>
+      <button onFocus={}>btn</button>
+      <button onBlur={}>btn</button>
+      <button onKeyDown={}>btn</button>
+      <button onKeyPress={}>btn</button>
+      <button onKeyUp={}>btn</button>
+      <button onCopy={}>btn</button>
+      <button onCut={}>btn</button>
+      <button onPaste={}>btn</button>
+    {/* and many more -> https://reactjs.org/docs/events.html */}
+    </>
+  )
