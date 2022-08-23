@@ -1077,3 +1077,37 @@ const FunctionalComponent = () => {
    </div>
  );
 };
+
+
+
+// EFFECT
+import { useEffect } from 'react';
+const FunctionalComponent = () => {
+  // On Mounting
+  useEffect( () => console.log("mount"), [] );
+  // update specific data
+  useEffect( () => console.log("will update data"), [ data ] );
+  // update all
+  useEffect( () => console.log("will update any") );
+  // update specific data or unmount
+  useEffect( () => () => console.log("will update data or unmount"), [ data ] );
+  // On Unmounting
+  useEffect( () => () => console.log("unmount"), [] );
+  // updated data returned
+  return <h1>{data}</h1>;
+};
+
+// skip first render with useEffect
+import { useEffect, useRef } from 'react';
+const FunctionalComponent = () => {
+  // useref to avoid wasted renders
+  const notInitialRender = useRef(false)
+  useEffect(() => {
+    if (notInitialRender.current) {
+      // do your magic here
+    } else {
+      notInitialRender.current = true
+    }
+  }, [data])
+  return <h1>{data}</h1>;
+}
