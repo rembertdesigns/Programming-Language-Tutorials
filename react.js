@@ -676,4 +676,153 @@ class OMG extends React.Component {
     }
   }
   ReactDOM.render(<ProfilePage />, document.getElementById('app'));
+
+
+
+  // THIS.PROPS
+
+// access component properties
+class PropsDisplayer extends React.Component {
+    render() {
+      <p>{JSON.stringify(this.props)}</p>
+    }
+  }
+  ReactDOM.render(<PropsDisplayer name="Rem" age={26} alive={true} />, document.getElementById('app'));
+  
+  // show a specific property
+  class Greeting extends React.Component {
+    render() {
+      return <h1>Hi there, {this.props.firstName}!</h1>;
+    }
+  }
+  ReactDOM.render(<Greeting firstName='Rem' />, document.getElementById('app'));
+  
+  
+  // imported component with props
+  import React from 'react';
+  export class Greeting extends React.Component {
+    render() {
+      return <h1>Hi there, {this.props.name}!</h1>;
+    }
+  }
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  import { Greeting } from './Greeting';
+  class App extends React.Component {
+    render() {
+      return (
+        <div>
+          <h1>Hello and Welcome to The Newzz!</h1>
+          <Greeting name="Rem" />
+        </div>
+      );
+    }
+  }
+  ReactDOM.render(<App />, document.getElementById('app'));
+  
+  
+  // conditionals with props
+  import React from 'react';
+  export class Welcome extends React.Component {
+    render() {
+      if (this.props.name == 'Wolfgang Amadeus Mozart') {
+        return (
+          <h2>hello sir it is truly great to meet you here on the web</h2>
+        );
+      } else {
+        return (
+          <h2>WELCOME "2" MY WEB SITE BABYYY!!!!!</h2>
+        );
+      }
+    }
+  }
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  import { Welcome } from './Welcome';
+  class Home extends React.Component {
+    render() {
+      return <Welcome name='Ludwig van Beethoven' />;
+    }
+  }
+  ReactDOM.render(<Home />, document.getElementById('app'));
+  
+  
+  // imported event handler
+  import React from 'react';
+  export class Button extends React.Component {
+    render() {
+      return (
+        <button onClick={this.props.onClick}>Click me!</button>
+      );
+    }
+  }
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  import { Button } from './Button';
+  class Talker extends React.Component {
+    handleClick() {
+      let speech = '';
+      for (let i = 0; i < 10000; i++) {
+        speech += 'blah ';
+      }
+      alert(speech);
+    }
+    render() {
+      return <Button onClick={this.handleClick} />;
+    }
+  }
+  ReactDOM.render(<Talker />, document.getElementById('app'));
+  
+  
+  // props children
+  import React from 'react';
+  export class List extends React.Component {
+    render() {
+      let titleText = `Favorite ${this.props.type}`;
+      if (this.props.children instanceof Array) {
+        titleText += 's';
+      }
+      return (
+        <div>
+          <h1>{titleText}</h1>
+          <ul>{this.props.children}</ul>
+        </div>
+      );
+    }
+  }
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  import { List } from './List';
+  class App extends React.Component {
+    render() {
+      return (
+        <div>
+          <List type='Living Musician'>
+            <li>Sachiko M</li>
+            <li>Harvey Sid Fisher</li>
+          </List>
+          <List type='Living Cat Musician'>
+            <li>Nora the Piano Cat</li>
+          </List>
+        </div>
+      );
+    }
+  }
+  ReactDOM.render(<App />, document.getElementById('app'));
+  
+  
+  // default props; if props doesn't exist, it will take the default value
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  class Button extends React.Component {
+    render() {
+      return (
+        <button>
+          {this.props.text}
+        </button>
+      );
+    }
+  }
+  Button.defaultProps = {text: 'I am a button'};
+  ReactDOM.render(<Button text="heya" />, document.getElementById('app'));
   
