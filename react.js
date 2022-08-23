@@ -1883,3 +1883,29 @@ debugger;
       expect(notImportantMessage.props.children.type).not.toBe('strong');
     });
   });
+
+
+
+  // TESTING WITH REACT TEST UTILS
+  import ReactTestUtils from 'react-dom/test-utils';
+  import { Component } from './Component';
+  describe('Component', () => {
+    describe('rendering', () => {
+      let container, title;
+      beforeEach(() => {
+        container = document.createElement('div');
+        document.body.appendChild(container);
+        ReactTestUtils.act(()=>{
+          ReactDOM.render(<Component />, container);
+        });
+        title = container.querySelector('title');
+      });
+      afterEach(() => {
+        document.body.removeChild(container);
+        container = null;
+      });
+      it("should render a title element", () => {
+          expect(title).toBeDefined();
+      });
+    });
+  });
