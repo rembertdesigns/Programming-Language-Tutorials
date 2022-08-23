@@ -1573,3 +1573,24 @@ const { data: products, loading, error, } = useFetch('products?category=shoes');
     </section>
   )
 }
+
+
+
+// STYLE
+import React from 'react';
+const StyleComponent = () => {
+  return (
+      <h1 style={{color: 'red', fontSize: '72px'}}>Styled Title</h1>
+  );
+};
+export default StyleComponent;
+
+
+// STYLE with a CONST
+import React from 'react';
+const styles = {color: 'red', fontSize: '72px'}
+const StyleComponent = () => {
+  return (
+      <h1 style={styles}>Styled Title</h1>
+  );
+};
