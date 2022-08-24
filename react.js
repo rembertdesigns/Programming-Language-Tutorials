@@ -1909,3 +1909,121 @@ debugger;
       });
     });
   });
+
+
+
+  // TESTING VISUAL WITH STORYBOOK
+// npx -p @storybook/cli sb init 
+// npm run storybook
+// work with file.stories.js
+
+
+
+
+// TYPESCRIPT IN REACT
+
+// install easy with create-react-app
+// create-react-app project-name --template typescript
+
+// or later on with npm
+// npm install typescript @types/react @types/react-dom @types/node
+
+// some library need to have a special tsx install
+// react-router-dom needs npm install @types/react-router-dom
+
+// work in .tsx files; you can change files one at a time
+// test Typescript live -> https://www.typescriptlang.org/play 
+// nice source -> https://react-typescript-cheatsheet.netlify.app/docs/basic/setup
+
+const id: number = 1;
+const title: string = 'Hello';
+const hidden: boolean = false;
+const arr: string[] = ['one', 'two', 'three'];
+const arr: Array<string> = ['one', 'two', 'three'];
+let code: (string | number); code = 123; code = "ABC"; // both work
+const hidden: any = false;
+const arr: any[] = ['one', 2, 'three'];
+function sayHi(): void { console.log('Hi!') } // void is only for function not returning any value
+
+
+// class comp into typescript; respect this order <Props, State>
+class TypescriptComponent extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  state = { hasError: false };
+  render() {
+    if (this.state.hasError) return <p>Something went wrong</p>
+    return this.props.children
+  }
+}
+
+
+// function comp into typescript
+function TypescriptComponent(props: {
+  title: string;
+  id: number;
+  hidden: boolean;
+}) {
+  return <p key={props.id} hidden={props.hidden}>{props.title}</p>
+}
+
+// array of object prop into typescript
+function TypescriptComponent(props: {
+  data: {
+    title: string;
+    intro: string;
+  }[];
+}) {
+  return <p onClick={props.someFunc(props[0].title)}>{props[0].title}</p>
+}
+
+// function prop into typescript
+function TypescriptComponent(props: {
+  title: string;
+  someFunc: (title: string) => void;
+}) {
+  return <p onClick={props.someFunc(props.title)}>{props.title}</p>
+}
+
+// children prop into typescript
+function TypescriptComponent({ children }: {children: React.ReactNode}) {
+  return <p>{children}</p>
+}
+
+// logic can also be extracted with interface {}
+interface Props { children: React.ReactNode }
+function TypescriptComponent({ children }: Props) {
+  return <p>{children}</p>
+}
+
+// interface is useful with complex typescript object
+interface ComplexProp {
+  title: string;
+  data: {
+    id: number;
+    name: string;
+  }[];
+  optionalData?: [];
+}
+function TypescriptComponent(props: ComplexProp) {
+  return (
+    <>
+      <h1>{props.title}</h1>
+      {props.data.map(x => <p key={x.data}>{x.name}</p>)}
+    </>
+  )
+}
+
+
+const val: boolean = true; // TS will check if the type is correct
+
+
+// use hooks in typescript
+function TypescriptComponent() {
+  const [value, setValue] = useState<number>(0);
+  return <p onClick={() => setValue(value + 1)}>{value}</p>
+}
+
+// complex hook in typescript
+function TypescriptComponent() {
+  const [text, setText] = useState<string | null>(null);
+  return <p onClick={() => setText('Hello')}>{text}</p>
+}
