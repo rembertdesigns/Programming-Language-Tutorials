@@ -2027,3 +2027,114 @@ function TypescriptComponent() {
   const [text, setText] = useState<string | null>(null);
   return <p onClick={() => setText('Hello')}>{text}</p>
 }
+
+
+// REDUX
+// handy alternative to useReducer or Flux
+// single store, immutable, action
+// use Redux devtool !
+
+// Redux initial setup
+// 0. create action types (/redux/actionTypes.js)
+export const ADD = "ADD";
+
+// 1. Create action (/redux/actions/messageActions.js)
+import { ADD } from "../actionTypes";
+export function addMessage(message) {
+  return { type: ADD, message: message };
+}
+
+// 2. Create reducer (/redux/reducers/messageReducer.js)
+import { ADD } from "../actionTypes";
+const initialState = [];
+export default function messageReducer(state = initialState, action) {
+  switch (action.type) {
+    case ADD:
+      return [...state, action.message];
+    default:
+      return state;
+  }
+}
+
+// 3. Create root reducer (/redux/reducers/index.js)
+import { combineReducers } from "redux";
+import messages from "./messagesReducer";
+export default combineReducers({
+  messages: messages
+});
+
+// 4. Configure store (/redux/store.js)
+import { createStore, applyMiddleware, compose } from 'redux';
+import rootReducer from './reducers';
+import reduxImmutableStateInvariant from 'redux-immutable-state-invariant';
+export default function configureStore(initialState) {
+  const composeEnhancers =
+    window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+  return createStore(
+    rootReducer,
+    initialState,
+    composeEnhancers(applyMiddleware(reduxImmutableStateInvariant()))
+  );
+}
+
+// 5. Instantiate store (index.js)
+import React from 'react';
+import { render } from 'react-dom';
+import { Provider as ReduxProvider } from 'react-redux';
+import App from './components/App';
+import configureStore from './redux/configureStore';
+render(
+  <ReduxProvider store={configureStore()}>
+    <App />
+  </ReduxProvider>,
+  document.getElementById('app')
+);
+
+// 6. Connect component && Pass props via connect && Dispatch action (/AnyComponent.js)
+import React, { useState } from "react";
+import { connect } from "react-redux";
+import { addMessage } from "./redux/actions/messageActions"; // path to adapt
+function App(props) {
+  const [input, setInput] = useState("");
+  function handleChange(e) {
+    setInput(e.target.value);
+  };
+  function submitMessage(e) {
+    e.preventDefault();
+    if (input.length > 0) {
+      props.submitNewMessage(input);
+      setInput("");
+    }
+  };
+  return (
+    <div>
+      <h2>Type in a new Message:</h2>
+      <form onSubmit={submitMessage}>
+        <input
+          type="text"
+          value={input}
+          onChange={handleChange}
+          placeholder="New message..."
+        />
+        <button type="submit">Submit</button>
+      </form>
+      <ul>
+        {props.messages.length > 0 &&
+          props.messages.map((message) => {
+            return <li key={message}>{message}</li>;
+          })}
+      </ul>
+    </div>
+  );
+}
+function mapStateToProps(state) {
+  return { messages: state.messages };
+};
+function mapDispatchToProps(dispatch) {
+  return {
+    submitNewMessage: (message) => {
+      dispatch(addMessage(message));
+    }
+  };
+};
+export default connect(mapStateToProps, mapDispatchToProps)(App);
