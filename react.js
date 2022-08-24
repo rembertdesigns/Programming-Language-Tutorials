@@ -2229,3 +2229,141 @@ class AppWrapper extends React.Component {
     );
   }
 };
+
+
+
+// ASYNC IN REDUX
+
+// 0. create action types (/redux/actionTypes.js)
+export const GET_TODOS_SUCCESS = "GET_TODOS_SUCCESS";
+export const GET_TODOS_LOADING = "GET_TODOS_LOADING";
+export const GET_TODOS_ERROR = "GET_TODOS_ERROR";
+
+// 1. create action (/redux/actions/todosActions.js)
+import {
+  GET_TODOS_SUCCESS,
+  GET_TODOS_LOADING,
+  GET_TODOS_ERROR
+} from '../actionTypes';
+export function getTodos(todos) {
+  return { type: GET_TODOS_SUCCESS, payload: todos };
+}
+export function loadingTodos() {
+  return { type: GET_TODOS_LOADING };
+}
+export function errorTodos(error) {
+  return { type: GET_TODOS_ERROR, payload: error };
+}
+export function fetchTodos() {
+  return function (dispatch) {
+    dispatch(loadingTodos());
+    fetch('https://jsonplaceholder.typicode.com/todos')
+      .then((response) => response.json())
+      // .then((x) => new Promise((resolve) => setTimeout(() => resolve(x), 1000)))
+      .then((todos) => {
+        dispatch(getTodos(todos));
+      })
+      .catch((error) => {
+        dispatch(errorTodos(error.message));
+      });
+  };
+}
+
+// 2. create reducer (/redux/reducers/todosReducer.js)
+import {
+  GET_TODOS_SUCCESS,
+  GET_TODOS_LOADING,
+  GET_TODOS_ERROR
+} from '../actionTypes';
+const initialState = { loading: false, todos: [], error: '' };
+export default function todoReducer(state = initialState, action) {
+  switch (action.type) {
+    case GET_TODOS_LOADING:
+      return { ...state, loading: true };
+    case GET_TODOS_SUCCESS:
+      return {
+        ...state,
+        loading: false,
+        todos: action.payload,
+        error: ''
+      };
+    case GET_TODOS_ERROR:
+      return { ...state, loading: false, error: action.payload };
+    default:
+      return state;
+  }
+}
+
+// 3. Create root reducer (/redux/reducers/index.js)
+import { combineReducers } from "redux";
+import messages from "./todosReducer";
+export default combineReducers({
+  messages: messages
+});
+
+// 4. configure store (/redux/store.js)
+import { createStore, applyMiddleware, compose } from 'redux';
+import reduxImmutableStateInvariant from 'redux-immutable-state-invariant';
+import thunk from 'redux-thunk';
+import rootReducer from './reducers';
+export default function configureStore(initialState) {
+  const composeEnhancers =
+    window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+  return createStore(
+    rootReducer,
+    initialState,
+    composeEnhancers(applyMiddleware(thunk, reduxImmutableStateInvariant()))
+  );
+}
+
+// 5. Instantiate store (index.js)
+import React from 'react';
+import { render } from 'react-dom';
+import { Provider as ReduxProvider } from 'react-redux';
+import App from './components/App';
+import configureStore from './redux/configureStore';
+render(
+  <ReduxProvider store={configureStore()}>
+    <App />
+  </ReduxProvider>,
+  document.getElementById('app')
+);
+
+// 6. Connect component && Pass props via connect && Dispatch action (/AnyComponent.js)
+import React, { useEffect } from 'react';
+import { connect } from 'react-redux';
+import { fetchTodos } from './redux/actions/todosActions'; // path to adapt
+function App(props) {
+  const { todos, error, loading } = props.todosData;
+  useEffect(() => {
+    props.fetchTodos();
+  }, []);
+  return (
+    <div>
+      <h2>Todos from API</h2>
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <>
+          <ul>
+            {todos.length > 0 &&
+              todos.map((todo) => {
+                return <li key={todo.id}>{todo.title}</li>;
+              })}
+          </ul>
+          {error && <p>{error}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+function mapStateToProps(state) {
+  return { todosData: state.todos };
+}
+function mapDispatchToProps(dispatch) {
+  return {
+    fetchTodos: () => dispatch(fetchTodos())
+  };
+}
+export default connect(mapStateToProps, mapDispatchToProps)(App);
+
