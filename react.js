@@ -2569,3 +2569,33 @@ export function getBackUrl() {
   }
   return backUrl;
 }
+
+
+
+// SAFE DYNAMIC CONTENT RENDERING
+
+// dangerouslySetInnerHTML warns us to be careful with the data it takes
+// avoid taking input data, especially from rich text editors
+// a useful tool is DOMPurify, it removes malicious code but keeps safe code
+// npm install dompurify
+import DOMPurify from 'dompurify';
+export function SafeComponent(props) {
+  // let's say this data is coming from a RTE
+  const inputData = props.inputData;
+  return (
+    <p dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(inputData)}}></p>
+  )
+}
+
+// DOM access with Refs or findDOMNode
+// get rid of Refs if possible
+// otherwise, add testing yourself
+
+
+// SSR vulnerabilities -> stored XSS and reflected XSS
+
+
+// JSON vulnerabilities
+// replace potentially dangerous characters such as '<' and '>'
+JSON.stringify(theString).replace(/</g, '\\u003c');
+// or use a library such as serialize-javascript
