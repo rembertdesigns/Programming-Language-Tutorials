@@ -2512,3 +2512,16 @@ function App() {
     </Suspense>
   )
 }
+
+
+
+// HANDLE LARGE DATA SETS
+
+// with pagination (annoying nav buttons)
+// -> x elements per page rendered and navigation to previous and next pages
+
+// or with infinite scroll (better ui but user can feel lost and cannot share a certain 'page')
+// -> x elements added to the rendered list once scrolled to bottom 
+
+// or with windowing (height and positionning constraints and bad HTML semantics)
+// -> x elements are rendered from the whole list once scrolled; the rest is unrendered
