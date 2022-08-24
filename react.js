@@ -2413,3 +2413,102 @@ async function patchSomeFetch(id, quantity) {
 async function patchSomeAxios(id, quantity) {
   await axios.patch(url, { id: id, quantity: quantity }, {/*params*/})
 }
+
+
+
+// OPTIMIZE PERFORMANCE
+
+// use react profiler from react dev tools to find and optimize perf
+
+// Preventing wasted renders
+import React from 'react';
+// React.Component becomes React.PureComponent
+export class PureComponent extends React.PureComponent {
+  render() {
+    const { onClick } = this.props;
+    return (
+      <button onClick={onClick}>Add</button>
+    )
+  }
+}
+import React, { useState, useCallback } from 'react';
+function App() {
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  // function must be memoized with useCallback
+  const showDialog = useCallback(() => setIsAddOpen(true), []);
+  return (
+    <PureComponent onClick={showDialog} />
+  )
+}
+// OR with functional component
+export const PureComponent = React.memo(({ onClick }) => {
+  return (
+    <button onClick={onClick}>Add</button>
+  )
+});
+// OR naming the func comp (and avoid anonymous function)
+export const PureComponent = React.memo(function AddButton({ onClick }) {
+  return (
+    <button onClick={onClick}>Add</button>
+  )
+});
+
+// Preventing wasted renders in complex components
+// make sure to work with immutable data
+export class Summary extends React.Component {
+  shouldComponentUpdate(nextProps) {
+    const oldKeys = Object.keys(this.props.cards);
+    const newKeys = Object.keys(nextProps.cards);
+    return oldKeys.length !== newKeys.length;
+  }
+  render() {
+    const cards = Object.values(this.props.cards);
+    return (
+      <div>You have {Object.keys(this.props.cards).length} cards!</div>
+    );
+  }
+}
+// OR with functional component
+// React.memo takes a function as second argument, if false -> should re-render
+export const Summary = React.memo(
+  function Summary(props) {
+    const cards = Object.values(props.cards);
+    return (
+      <div>You have {Object.keys(props.cards).length} cards!</div>
+    );
+  },
+  (p1, p2) => Object.keys(p1.cards).length === Object.keys(p2.cards).length
+);
+
+
+// Caching (memoize) expensive operation results
+import React, { useMemo } from 'react';
+export const Summary = React.memo(
+  function Summary(props) {
+    const cards = Object.values(props.cards);
+    const memoExpensiveFunc = useMemo(() => {
+      /* very long/expensive function process */ 
+    }, [Object.keys(cards).length]);
+    return (
+      <div>You have {Object.keys(props.cards).length} cards!</div>
+    );
+  },
+  (p1, p2) => Object.keys(p1.cards).length === Object.keys(p2.cards).length
+);
+
+
+// Reducing bundle size
+// make sure to build for production before pushing your repo on production environment
+
+
+// Lazy loading components
+import React, { lazy, Suspense } from 'react';
+function App() {
+  const LazyComponent = lazy(() => import('./LazyComponent'));
+  const ComponentLoader = () => <div>Loading</div>;
+  return (
+    <Suspense fallback={<ComponentLoader />}>
+      <LazyComponent />
+    </Suspense>
+  )
+}
