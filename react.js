@@ -2367,3 +2367,49 @@ function mapDispatchToProps(dispatch) {
 }
 export default connect(mapStateToProps, mapDispatchToProps)(App);
 
+
+
+// AXIOS
+// get rid of JSON methods as it is handled by axios
+// npm install axios
+
+const url = 'http://localhost:3333/some';
+// GET
+// Fetch way
+async function getSomeFetch() {
+  await fetch(url, {method: 'GET', /*params*/})
+}
+// Axios way
+async function getSomeAxios() {
+  await axios.get(url, {/*params*/})
+}
+
+// POST
+// Fetch way
+async function postSomeFetch(id) {
+  await fetch(url, {method: 'POST', body: JSON.stringify({id: id}), /*params*/})
+}
+// Axios way
+async function postSomeAxios(id) {
+  await axios.post(url, { id: id }, {/*params*/})
+}
+
+// DELETE
+// Fetch way
+async function deleteSomeFetch(id) {
+  await fetch(url, {method: 'DELETE', body: JSON.stringify({id: id}), /*params*/})
+}
+// Axios way
+async function deleteSomeAxios(id) {
+  await axios.delete(url, {data: { id: id }, /*params*/})
+}
+
+// PATCH
+// Fetch way
+async function patchSomeFetch(id, quantity) {
+  await fetch(url, {method: 'PATCH', body: JSON.stringify({id: id, quantity: quantity}), /*params*/})
+}
+// Axios way
+async function patchSomeAxios(id, quantity) {
+  await axios.patch(url, { id: id, quantity: quantity }, {/*params*/})
+}
