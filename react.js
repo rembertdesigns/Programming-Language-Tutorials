@@ -2525,3 +2525,47 @@ function App() {
 
 // or with windowing (height and positionning constraints and bad HTML semantics)
 // -> x elements are rendered from the whole list once scrolled; the rest is unrendered
+
+
+
+// SECURITY
+
+// PREVENTING CROSS SITE SCRIPTING ATTACKS (XSS)
+
+// Avoid getting URL data (such as query string) to write code directly in your page
+// Every data coming from the URL is subject to attack !
+// Make sure those URL data are treated as text only
+// Or modified first -> replace all '<' and '>'
+// JSX handles that for us making sure they are strings. see below
+function Print() {
+  const qs = new URLSearchParams(window.location.search);
+  const bug = {
+    title: decodeURIComponent(qs.get('t')),
+    severity: decodeURIComponent(qs.get('s')),
+    description: decodeURIComponent(qs.get('d')),
+  };
+  return (
+    <div>
+      <h1>{bug.title}</h1>
+      <h3>{bug.severity}</h3>
+      <p>{bug.description}</p>
+    </div>
+  );
+}
+
+// Links can take malicius javascript too inside href
+// pay attention not to take anything from url parameters
+// or add tests such as below
+export function getBackUrl() {
+  const qs = new URLSearchParams(window.location.search);
+  const backUrl = qs.get('backUrl');
+  try {
+    const url = new URL(backurl);
+    if (url.protocol.toLowerCase() !== 'http:') {
+      backUrl = null;
+    }
+  } catch {
+    backUrl = null;
+  }
+  return backUrl;
+}
