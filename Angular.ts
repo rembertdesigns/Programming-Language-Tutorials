@@ -159,3 +159,33 @@ export class AppModule {}
 
   // .html
   `<any-element #htmlElement></any-element>`
+
+
+  // HTML
+
+  // inline js 
+  `<p>{{ namesSvc.arr[0].id }}</p>`
+  `<p>{{ namesSvc.arr[0].date | date:'dd/MM/yyyy' }}</p>`
+  `<p>{{ "lowercase" | uppercase }}</p>`
+
+  // events
+  `<div (click)="toggleShow()"></div>`
+  `<p [hidden]="!show"></p>`
+  `<p *ngIf="show"></p>`
+
+  // loops
+  `<p *ngFor="let name of namesSvc.arr; index as i">{{ name.weight }}</p>`
+
+  // child component
+  `<div>
+    <child-component></child-component>
+  </div>`
+
+  // attributes
+  [ngClass]="{'my-class': true}"
+  [ngClass]="{'class-1': true, 'class-2': true}"
+  [ngClass]="true ? 'class-1' : 'class-2'"
+  [ngClass]="[true ? 'class-1' : 'class-2', true ? 'class-3 : class-4']"
+  [src]=""
+  [alt]=""
+  [anything]=""
