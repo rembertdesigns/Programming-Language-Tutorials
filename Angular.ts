@@ -189,3 +189,19 @@ export class AppModule {}
   [src]=""
   [alt]=""
   [anything]=""
+
+
+  // CSS
+
+  // access the host element of a component
+  :host {
+    display: block; // needed to see this element
+  }
+
+  // access the host element (with a certain class) of a component
+  :host(.example) {
+    display: block; // needed to see this element
+  }
+
+  // access child element from parent element
+  .parent ::ng-deep .child {}
