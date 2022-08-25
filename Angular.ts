@@ -205,3 +205,21 @@ export class AppModule {}
 
   // access child element from parent element
   .parent ::ng-deep .child {}
+
+
+  // TRANSLATE
+
+  // in en.json
+  {
+    "anything": "Anything",
+    "withVariable": "With a variable of {{var}}",
+    "item": "Item",
+    "item_plural": "Items"
+  }
+
+
+  // in .html
+  `<p>{{ 'anything' | translate }}</p>` // Anything
+  `<p>{{ 'withVariable' | translate:{var:'anything'} }}</p>` // With a variable of anything
+  `<p>{{ 'item' | translate:{count:1} }}</p>` // Item
+  `<p>{{ 'item' | translate:{count:2} }}</p>` // Items
