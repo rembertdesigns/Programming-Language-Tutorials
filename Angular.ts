@@ -223,3 +223,19 @@ export class AppModule {}
   `<p>{{ 'withVariable' | translate:{var:'anything'} }}</p>` // With a variable of anything
   `<p>{{ 'item' | translate:{count:1} }}</p>` // Item
   `<p>{{ 'item' | translate:{count:2} }}</p>` // Items
+
+
+  // ROUTER
+
+  // router module
+  import { RouterModule } from '@angular/router'
+  imports: [RouterModule.forRoot([
+    {path: '', redirectTo: '/home', pathMatch: 'full'},
+    {path: 'home', component: HomeComponent},
+    {path: 'entries/:id', component: EntryDetailsComponent}
+  ])]
+
+  // calling router
+  `<router-outlet></router-outlet/>`
+  `<a [routerLink]="['/home']">Link</a>`
+  this.router.navigate(['/home']);
