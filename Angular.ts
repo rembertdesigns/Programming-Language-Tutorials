@@ -23,3 +23,34 @@
 
 
 // Angular cheat sheet -> https://angular.io/guide/cheatsheet
+
+
+// COMPONENTS
+
+import { Component, ViewEncapsulation } from '@angular/core';
+import { Router } from '@angular/router';
+
+@Component({
+  selector: 'name-component', // <name-component> in HTML
+  encapsulation: ViewEncapsulation.None, // disables encapsulation (shadow dom) -> css is applied everywhere
+  templateUrl: './name.component.html',
+  styleUrls: ['./name.component.css']
+})
+
+export class NameComponent {
+  public pretrad: string;
+  public show: boolean;
+
+  constructor (
+    private router: Router
+  ) {
+    this.pretrad = 'MODULES.NAME.';
+    this.show = true;
+  }
+
+  public ngOnInit(): void {}
+
+  public toggleShow(): void {
+    this.show = !this.show;
+  }
+}
