@@ -265,3 +265,34 @@ export class AppModule {}
     <input type="text" name="name" id="name" [(ngModel)]="model.name" required>
     <button [disabled]="entryForm.form.invalid" (click)="createSmth(); resetForm();">Save</button>
   </form>`
+
+
+  // HTTP
+
+  // RXJS
+  map() // to format data
+  tap() // to look at values
+  subscribe() // to be the end client
+
+  // import HTTP
+  import { HttpClientModule } from '@angular/common/http';
+  @NgModule({imports:[HTTPClientModule]})
+
+  // GET
+  import { HttpClient } from '@angular/common/http';
+  constructor(private http: HttpClient) {}
+  public getEntries() {
+    return this.http.get('/api/entries').pipe(
+      map(entries => {
+        return entries.map(e => {
+          e.date = new Date(e.date);
+          return e;
+        })
+      })
+    )
+  }
+
+  // POST
+  addEntry(entry: Entry) {
+    return this.http.post('/api/entries', entry)
+  }
