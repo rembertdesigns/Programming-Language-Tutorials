@@ -319,3 +319,89 @@ internal interface IThing
 {
   // ... no access modifiers allowed (because not needed)
 }
+
+
+// abstract class
+ abstract class Thing
+{
+  // ... abstract for abstract elements
+  // ... normal for others but public or protected !
+}
+
+
+// static classes; they can be accessed without instance
+public static class static
+{
+  private static Random random = new Random();
+  public static int GetRandom(int max) 
+  {
+    return random.Next(1, max + 1);
+  }
+}
+
+
+// classes
+class Something 
+{
+  public Something() 
+  {
+    // init
+  }
+  public virtual void DoSomething() // use virtual only for inherited classes which need override
+  {
+    // ...
+  }
+  // rest of code
+}
+Something smth = new Something(); // creation of an object
+
+
+// inherited class
+class Else : Something // class inherits content and have its own content
+{
+  public override void DoSomething()
+  {
+    // override an inherited method (needs visual on mothers method)
+    base.DoSomething(); // gather body instructions from inherited method
+  }
+  public virtual void DoSomethingElse()
+  {
+    // ...
+  }
+}
+Else smth = new Else();
+Else e = smth as Else; // checks if e is an instance of Else; returns null if not; check with "e != null"
+smth is Else; // same as above; returns true or false
+
+
+// Partial classes
+partial class Some 
+{ 
+  // body part 1 
+}
+partial class Some
+{
+  // body part 2
+}
+
+
+// Property; kind of class's caracteristics
+public string Name 
+{
+  get // computation or retrieve value and return it; youcan remove it to forbid people to get property
+  {
+    return _name = value;
+  }
+  set // gives value; you can remove it to forbid people to set property
+  {
+    // validations to protect your object
+    if(!String.IsNullOrEmpty(value))
+    {
+      _name = value;
+    }
+  }
+}
+private string _name; // field
+book.Name = "Rem's"; // Rem's
+book.Name = null; // Rem's; or nothing if nothing is passed before
+book.Name; // return Rem's
