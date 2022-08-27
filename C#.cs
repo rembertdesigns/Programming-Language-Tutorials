@@ -217,3 +217,105 @@ namespace Sleep
 }
 // ternary operator
 string test = 18 > 20 ? "passed" : "failed";
+
+
+// switch
+string result;
+switch(letterGrade)
+{
+  case "A":
+    result = "Excellent";
+    break;
+  case "B":
+    result = "Good";
+    break;
+  case "C":
+    result = "Average";
+    break;
+  case "D":
+    result = "Below Average";
+    break;
+  default:
+    result = "Failing";
+    break;
+}
+return result;
+
+
+// foreach loop
+foreach (int day in days)
+{
+  Console.WriteLine(day);
+}
+
+
+// for loop
+for (int i = 0; i<grades.Count; i++) 
+{
+  Console.WriteLine(grade);
+}
+
+
+// while loop
+while (age > 0)
+{
+  age -= 1;
+  Console.WriteLine(age);
+}
+
+
+// do while loop 
+do 
+{
+  age++;
+  Console.WriteLine(age);
+} while (age < 50);
+
+
+// break
+for (int i = 0; i<5; i++) 
+{
+  if (i == 3)
+  {
+    break;
+  }
+  Console.WriteLine(i);
+} // 0, 1, 2
+
+
+// continue
+for (int i = 0; i<5; i++) 
+{
+  if (i == 3)
+  {
+    continue;
+  }
+  Console.WriteLine(i);
+} // 0, 1, 2, 4
+
+
+// object
+static void writeResult(string description, int result) 
+{
+  Console.WriteLine(description + ": " + result);
+  // OR
+  Console.WriteLine("{0}: {1}", description, result); // c# string formatting; can add other strings and characters
+  // OR
+  Console.WriteLine($"{description}: {result}");
+}
+writeResult("My age", 24); // My age: 24
+
+
+// constructor; instiancates an instance of that class, creates an object
+GradeBook book = new GradeBook(); // default constructor
+public GradeBook() // custom constructor
+{
+  // initialization code
+}
+
+
+// Interface
+internal interface IThing
+{
+  // ... no access modifiers allowed (because not needed)
+}
