@@ -405,3 +405,26 @@ private string _name; // field
 book.Name = "Rem's"; // Rem's
 book.Name = null; // Rem's; or nothing if nothing is passed before
 book.Name; // return Rem's
+
+
+// Shorter property
+public string Name { get; set; }
+
+
+// delegate (events)
+public class NameChangedEventArgs : Event Args // object; convention is to use objects in events; colon is used to inherit from class Event Args
+{
+  public string ExistingName { get; set; }
+  public string NewName { get; set; }
+}
+public delegate void NameChangedDelegate(object sender, NameChangedEventArgs);
+public event NameChangedDelegate NameChanged; // event (field)
+NameChangedEventArgs args = new NameChangedEventArgs();
+args.ExistingName = _name;
+args.NewName = value;
+NameChanged(this, args);
+static void onNameChanged(object sender, NameChangedEventArgs args) 
+{
+  Console.WriteLine($"Name changing from {args.ExistingName} to {args.NewName}");
+}
+book.NameChanged += onNameChanged; // use
