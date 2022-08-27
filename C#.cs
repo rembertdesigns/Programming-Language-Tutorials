@@ -428,3 +428,11 @@ static void onNameChanged(object sender, NameChangedEventArgs args)
   Console.WriteLine($"Name changing from {args.ExistingName} to {args.NewName}");
 }
 book.NameChanged += onNameChanged; // use
+
+
+// access modifiers
+private -> access in that class only
+protected -> access in that class and derived class
+public -> access everywhere
+internal -> access in the same assembly
+protected internal -> access in the same assembly or derived class
