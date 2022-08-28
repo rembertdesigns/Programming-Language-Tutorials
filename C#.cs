@@ -436,3 +436,34 @@ protected -> access in that class and derived class
 public -> access everywhere
 internal -> access in the same assembly
 protected internal -> access in the same assembly or derived class
+
+
+// Math
+Math.Max(10, 11); // 11
+Math.Min(10, 11); // 10
+Math.Sqrt(4); // 2
+Math.Pow(2, 2); // 4
+
+
+// Throwing
+if (string.IsNullOrEmpty(value)) 
+{
+  throw new ApplicationException("Name cannot be null or empty");
+}
+
+
+// try catch (handling)
+try 
+{
+  Console.WriteLine("Enter a name");
+  book.Name = Console.ReadLine();
+}
+catch (ArgumentException ex)
+{
+  Console.WriteLine(ex.Message);
+}
+// multiple catch possible; but more specific must come above less specific
+finally
+{
+  // code that will execute anyway
+}
