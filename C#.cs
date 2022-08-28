@@ -467,3 +467,36 @@ finally
 {
   // code that will execute anyway
 }
+
+
+// file
+using (StreamWriter outputFiles = File.CreateText("grades.txt"))
+{
+  book.WriteGrades(outputFiles);
+  // outputFiles.Close(); not needed with inside using
+}
+
+
+
+
+// TESTING
+
+// new project > test unit > for testing apps
+// to test, the class should be public and the assembly should be added as reference
+
+
+namespace Grades.Tests
+{
+  [TestClass] // attributes should be specified
+  public class UnitTest1
+  {
+    [testMethod]
+    public void TestMethod1()
+    {
+      Assert.AreEqual(3, 4): // test failed !
+      Assert.AreNotEqual(3, 4); // test passed !
+      Assert.AreEqual((83+10)/2, 46.5); // test failed !
+      Assert.AreEqual((83+10)/2f, 46.5); // test passed !      
+    }
+  }
+}
