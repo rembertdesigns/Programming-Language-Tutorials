@@ -500,3 +500,24 @@ namespace Grades.Tests
     }
   }
 }
+
+
+
+// SHORTCUTS in VS 
+
+// Snippets: double tab to use those
+cw -> Console.WriteLine();
+ctor -> creates constructor;
+testm -> creates testMethod;
+prop -> creates property;
+for -> for loop;
+
+// format
+F5 -> start Debugging
+F9 -> breakpoint on current line
+F10 -> step over 
+F11 -> step into
+ctrl+F5 -> start without Debugging
+ctrl+k, ctrl+c -> comment
+ctrl+K, ctrl+u -> uncomment
+ctrl+k, ctrl+d -> reformat the code
