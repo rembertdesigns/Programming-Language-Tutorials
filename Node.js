@@ -50,3 +50,33 @@ readFile('./text.txt', 'uft8', (err, txt) => {console.log(txt)}; // non-blocking
 // OR
 const { readFile } require('fs').promises;
 async function hello() {const file = await readFile('./text.txt', 'utf8')};
+
+// BODY PARSER
+// handle data from a form (<form action="/name" method="post")
+let bodyParser = require('body-parser');
+app.use('/name', bodyParser.urlencoder({extended: false}));
+app.post('/name', function(req, res) {
+  const name = req.body;
+  res.json({'name': name.first + ' ' + name.last});
+})
+
+
+
+
+// ------------------------ EXPRESS ------------------------ //
+
+let express = require('express');
+// import express from 'express';
+let app = express();
+
+const PORT = 8000;
+app.listen(PORT, () => console.log('Server is running on port ' + PORT));
+
+// METHODS
+app.get('/route', function() {});
+app.post('/route', function() {});
+app.delete('/route', function() {});
+app.put('/route', function() {});
+
+// chain methods with this syntax
+app.route('/route').get(function() {}).post(function() {});
