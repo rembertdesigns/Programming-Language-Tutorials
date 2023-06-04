@@ -28,3 +28,25 @@ const currentOS = {
   freeMem: os.freemem() // freeMem: 2077073408
 }
 console.log(currentOS);
+
+// PATH
+const path = require('path');
+console.log(path.sep); // /
+const filePath = path.join('create', '//any', 'path.txt');
+console.log(filePath); // create/any/path.txt
+console.log(path.basename(filePath)); // path.txt
+console.log(path.resolve(__dirname, filePath)); // /full/path/to/create/any/path.txt
+
+// ENV VAR
+// in .env file: NAME_OF_VARIABLE=thevalue
+require('dotenv').config();
+const secret = process.env['NAME_OF_VARIABLE'];
+
+// FILE SYSTEM
+const {readFile, readFileSync} require('fs');
+const txt = readFileSync('./text.txt', 'utf8'); // default way
+readFile('./text.txt', 'uft8', (err, txt) => {console.log(txt)}; // non-blocking way
+         
+// OR
+const { readFile } require('fs').promises;
+async function hello() {const file = await readFile('./text.txt', 'utf8')};
