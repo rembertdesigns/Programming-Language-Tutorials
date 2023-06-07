@@ -120,3 +120,51 @@ app.get('/user', function(req, res) { // /user?userId=543
 // connect (deployment > database) => mongodb+srv://<username>:<password>@<cluster-name>.prx1c.mongodb.net/<db-name>?retryWrites=true&w=majority
 const mongoose = require('mongoose');
 mongoose.connect('mongodb+srv://<username>:<password>@<cluster-name>.fnwaqdz.mongodb.net/?retryWrites=true&w=majority', { useNewUrlParser: true, useUnifiedTopology: true })
+
+
+// create schema
+const personSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  age: Number,
+  favoriteFoods: [String]
+});
+const Person = mongoose.model('Person', personSchema);
+
+// create record and save
+const createAndSavePerson = (done) => {
+  var johnDoe = new Person({name: "John Doe", age: 34, favoriteFoods: ['egg', 'meat']});
+  johnDoe.save((err, data) => {
+    if (err) return console.error(err);
+    done(null , data);
+  })
+};
+
+// create many records
+const arrayOfPeople = [
+  {name: "Jane", age: 38, favoriteFoods: ['salad']},
+  {name: "Jude", age: 31, favoriteFoods: ['fruits']}
+];
+const createManyPeople = (arrayOfPeople, done) => {  
+  Person.create(arrayOfPeople, (err, data) => {
+    if (err) return console.error(err);
+    done(null , data);
+  })
+};
+
+// find records
+const personName = "Jane";
+const findPeopleByName = (personName, done) => {
+  Person.find({name: personName}, (err, data) => {
+    if (err) return console.error(err);    
+    done(null , data);
+  });
+};
+
+// find one record
+const food = ['salad'];
+const findOneByFood = (food, done) => {
+  Person.findOne({favoriteFoods: food}, (err, data) => {
+    if (err) return console.error(err);    
+    done(null , data);
+  });
+};
