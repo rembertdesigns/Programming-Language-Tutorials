@@ -33,3 +33,27 @@ Name: John
 Age: 25
 Height: 1.75
 Is student? True
+
+
+# Non-Primitive (Composite) Data Types:
+# Non-primitive data types are structures that can hold multiple values and are composed of other data types, including both primitive and other composite types. Unlike primitive data types, non-primitive types allow for more complex and structured representations of data.
+
+# Non-primitive data types include:
+List (list): Represents an ordered and mutable collection of values. Example: fruits = ["apple", "banana", "cherry"]
+Tuple (tuple): Represents an ordered and immutable collection of values. Example: coordinates = (3, 7)
+Dictionary (dict): Represents an unordered collection of key-value pairs. Example: person = {"name": "Alice", "age": 25, "is_student": True}
+
+# List Example
+fruits = ["apple", "banana", "cherry"]
+print("List Example:", fruits)
+# Tuple Example
+coordinates = (3, 7)
+print("Tuple Example:", coordinates)
+# Dictionary Example
+person = {"name": "Alice", "age": 25, "is_student": True}
+print("Dictionary Example:", person)
+
+# Output
+List Example: ['apple', 'banana', 'cherry']
+Tuple Example: (3, 7) 
+Dictionary Example: {'name': 'Alice', 'age': 25, 'is_student': True}
