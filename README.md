@@ -21,6 +21,7 @@ This repository is a comprehensive collection of web development tutorials cover
 - **Terminal.txt**: Terminal Commands
 - **TypeScript.ts**: TypeScript Basics
 - **react.js**: Safe Dynamic Content Rendering
+- **main.py**: Composite Data Types
 
 ## How to Use
 
