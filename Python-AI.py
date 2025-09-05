@@ -735,3 +735,237 @@ def fine_tune_classifier(train_texts, train_labels, model_name="bert-base-uncase
     
     trainer.train()
     return model, tokenizer
+
+
+# LLM INTEGRATION - OPENAI AND ANTHROPIC APIs
+
+# OpenAI API integration
+import openai
+import os
+
+# Set up OpenAI API key
+# openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def chat_with_gpt(messages, model="gpt-3.5-turbo", temperature=0.7):
+    """
+    Chat with OpenAI's GPT models
+    """
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=1000
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error calling OpenAI API: {e}")
+        return None
+
+# Example usage
+# messages = [
+#     {"role": "system", "content": "You are a helpful assistant."},
+#     {"role": "user", "content": "Explain machine learning in simple terms."}
+# ]
+# response = chat_with_gpt(messages)
+# print(response)
+
+# Anthropic Claude API integration
+import anthropic
+
+# Set up Anthropic API key
+# anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+def chat_with_claude(message, model="claude-3-sonnet-20240229", max_tokens=1000):
+    """
+    Chat with Anthropic's Claude models
+    """
+    try:
+        response = anthropic_client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": message}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        print(f"Error calling Anthropic API: {e}")
+        return None
+
+# Example usage
+# response = chat_with_claude("Explain the difference between supervised and unsupervised learning.")
+# print(response)
+
+# Function calling with OpenAI
+def get_weather(location):
+    """Mock function to get weather data"""
+    return f"The weather in {location} is sunny with 75°F"
+
+def function_calling_example():
+    """
+    Example of using OpenAI function calling
+    """
+    functions = [
+        {
+            "name": "get_weather",
+            "description": "Get the current weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    ]
+    
+    messages = [
+        {"role": "user", "content": "What's the weather like in New York?"}
+    ]
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            functions=functions,
+            function_call="auto"
+        )
+        
+        if response.choices[0].message.get("function_call"):
+            function_name = response.choices[0].message["function_call"]["name"]
+            function_args = eval(response.choices[0].message["function_call"]["arguments"])
+            
+            if function_name == "get_weather":
+                result = get_weather(function_args["location"])
+                return result
+                
+    except Exception as e:
+        print(f"Error with function calling: {e}")
+        return None
+
+
+# LANGCHAIN - LLM APPLICATION FRAMEWORK
+
+from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import PromptTemplate, ChatPromptTemplate
+from langchain.chains import LLMChain, SimpleSequentialChain
+from langchain.memory import ConversationBufferMemory
+from langchain.agents import initialize_agent, Tool
+from langchain.document_loaders import TextLoader, PDFLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
+
+# Basic LLM setup
+# llm = OpenAI(temperature=0.7, openai_api_key=os.getenv("OPENAI_API_KEY"))
+# chat_model = ChatOpenAI(temperature=0.7, openai_api_key=os.getenv("OPENAI_API_KEY"))
+
+# Prompt templates
+prompt_template = PromptTemplate(
+    input_variables=["topic"],
+    template="Write a brief explanation about {topic} for beginners."
+)
+
+# LLM Chain
+# chain = LLMChain(llm=llm, prompt=prompt_template)
+# result = chain.run("machine learning")
+
+# Chat prompt template
+chat_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful AI assistant specializing in {domain}."),
+    ("human", "{question}")
+])
+
+# Memory for conversations
+memory = ConversationBufferMemory()
+
+# Sequential chains
+def create_sequential_chain():
+    """
+    Create a sequential chain for complex tasks
+    """
+    # First chain: Generate a topic outline
+    outline_prompt = PromptTemplate(
+        input_variables=["topic"],
+        template="Create an outline for a tutorial about {topic}."
+    )
+    # outline_chain = LLMChain(llm=llm, prompt=outline_prompt)
+    
+    # Second chain: Write content based on outline
+    content_prompt = PromptTemplate(
+        input_variables=["outline"],
+        template="Write detailed content based on this outline:\n{outline}"
+    )
+    # content_chain = LLMChain(llm=llm, prompt=content_prompt)
+    
+    # Combine chains
+    # sequential_chain = SimpleSequentialChain(chains=[outline_chain, content_chain])
+    # return sequential_chain
+
+# Document processing and Q&A
+def create_document_qa_system(file_path):
+    """
+    Create a question-answering system for documents
+    """
+    # Load documents
+    loader = TextLoader(file_path)
+    documents = loader.load()
+    
+    # Split documents
+    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+    texts = text_splitter.split_documents(documents)
+    
+    # Create embeddings and vector store
+    embeddings = OpenAIEmbeddings()
+    vectorstore = FAISS.from_documents(texts, embeddings)
+    
+    # Create Q&A chain
+    from langchain.chains import RetrievalQA
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=vectorstore.as_retriever()
+    )
+    
+    return qa
+
+# Custom tools for agents
+def calculator_tool(expression):
+    """Simple calculator tool"""
+    try:
+        return str(eval(expression))
+    except:
+        return "Invalid expression"
+
+def search_tool(query):
+    """Mock search tool"""
+    return f"Search results for: {query}"
+
+# Create agent with tools
+def create_agent():
+    """
+    Create an agent with custom tools
+    """
+    tools = [
+        Tool(
+            name="Calculator",
+            func=calculator_tool,
+            description="Useful for mathematical calculations"
+        ),
+        Tool(
+            name="Search",
+            func=search_tool,
+            description="Useful for searching information"
+        )
+    ]
+    
+    # agent = initialize_agent(
+    #     tools,
+    #     llm,
+    #     agent="zero-shot-react-description",
+    #     verbose=True
+    # )
+    # return agent
