@@ -1074,3 +1074,123 @@ def detect_objects(image_path, net, classes):
                 class_ids.append(class_id)
     
     return boxes, confidences, class_ids
+
+
+# NATURAL LANGUAGE PROCESSING
+
+import nltk
+import spacy
+from textblob import TextBlob
+from wordcloud import WordCloud
+
+# Download required NLTK data
+# nltk.download('punkt')
+# nltk.download('stopwords')
+# nltk.download('vader_lexicon')
+
+# Load spaCy model
+# nlp = spacy.load("en_core_web_sm")
+
+# Basic text preprocessing
+def preprocess_text(text):
+    """
+    Basic text preprocessing pipeline
+    """
+    # Convert to lowercase
+    text = text.lower()
+    
+    # Remove punctuation and special characters
+    import re
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    
+    # Tokenization
+    tokens = nltk.word_tokenize(text)
+    
+    # Remove stopwords
+    from nltk.corpus import stopwords
+    stop_words = set(stopwords.words('english'))
+    tokens = [token for token in tokens if token not in stop_words]
+    
+    # Stemming
+    from nltk.stem import PorterStemmer
+    stemmer = PorterStemmer()
+    tokens = [stemmer.stem(token) for token in tokens]
+    
+    return tokens
+
+# Sentiment analysis
+def analyze_sentiment(text):
+    """
+    Analyze sentiment using TextBlob and NLTK
+    """
+    # TextBlob sentiment
+    blob = TextBlob(text)
+    polarity = blob.sentiment.polarity
+    subjectivity = blob.sentiment.subjectivity
+    
+    # NLTK VADER sentiment
+    from nltk.sentiment import SentimentIntensityAnalyzer
+    sia = SentimentIntensityAnalyzer()
+    vader_scores = sia.polarity_scores(text)
+    
+    return {
+        'textblob_polarity': polarity,
+        'textblob_subjectivity': subjectivity,
+        'vader_scores': vader_scores
+    }
+
+# Named Entity Recognition with spaCy
+def extract_entities(text):
+    """
+    Extract named entities using spaCy
+    """
+    doc = nlp(text)
+    entities = [(ent.text, ent.label_, ent.start_char, ent.end_char) for ent in doc.ents]
+    return entities
+
+# Topic modeling with LDA
+def topic_modeling(documents, num_topics=5):
+    """
+    Perform topic modeling using LDA
+    """
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.decomposition import LatentDirichletAllocation
+    
+    # Vectorize documents
+    vectorizer = CountVectorizer(max_features=1000, stop_words='english')
+    doc_term_matrix = vectorizer.fit_transform(documents)
+    
+    # Fit LDA model
+    lda = LatentDirichletAllocation(n_components=num_topics, random_state=42)
+    lda.fit(doc_term_matrix)
+    
+    # Get feature names
+    feature_names = vectorizer.get_feature_names_out()
+    
+    # Display topics
+    topics = []
+    for topic_idx, topic in enumerate(lda.components_):
+        top_words = [feature_names[i] for i in topic.argsort()[-10:]]
+        topics.append(top_words)
+    
+    return topics, lda, vectorizer
+
+# Word cloud generation
+def create_wordcloud(text, width=800, height=400):
+    """
+    Create a word cloud from text
+    """
+    wordcloud = WordCloud(
+        width=width,
+        height=height,
+        background_color='white',
+        max_words=100,
+        colormap='viridis'
+    ).generate(text)
+    
+    plt.figure(figsize=(10, 5))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis('off')
+    plt.show()
+    
+    return wordcloud
