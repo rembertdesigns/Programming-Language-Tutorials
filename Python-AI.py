@@ -260,3 +260,55 @@ plt.title('Trigonometric Functions')
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.show()
+
+
+# SEABORN - STATISTICAL VISUALIZATION
+
+import seaborn as sns
+
+# Set style
+sns.set_style("whitegrid")
+sns.set_palette("husl")
+
+# Create sample dataset
+np.random.seed(42)
+data = pd.DataFrame({
+    'x': np.random.randn(100),
+    'y': np.random.randn(100),
+    'category': np.random.choice(['A', 'B', 'C'], 100),
+    'value': np.random.randint(1, 100, 100)
+})
+
+# Correlation heatmap
+correlation_matrix = df.select_dtypes(include=[np.number]).corr()
+plt.figure(figsize=(8, 6))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0)
+plt.title('Correlation Heatmap')
+plt.show()
+
+# Distribution plots
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+# Histogram with KDE
+sns.histplot(data['x'], kde=True, ax=axes[0, 0])
+axes[0, 0].set_title('Distribution with KDE')
+
+# Box plot
+sns.boxplot(x='category', y='value', data=data, ax=axes[0, 1])
+axes[0, 1].set_title('Box Plot by Category')
+
+# Violin plot
+sns.violinplot(x='category', y='value', data=data, ax=axes[1, 0])
+axes[1, 0].set_title('Violin Plot by Category')
+
+# Scatter plot with regression
+sns.scatterplot(x='x', y='y', hue='category', data=data, ax=axes[1, 1])
+sns.regplot(x='x', y='y', data=data, scatter=False, ax=axes[1, 1])
+axes[1, 1].set_title('Scatter Plot with Regression')
+
+plt.tight_layout()
+plt.show()
+
+# Pair plot for exploring relationships
+# sns.pairplot(df, hue='City')
+# plt.show()
