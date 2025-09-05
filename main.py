@@ -1159,3 +1159,60 @@ if html_content:
             full_url = urljoin("https://example.com", href)
             print(f"{text}: {full_url}")
 """
+
+
+# DATABASE OPERATIONS (SQLite)
+
+import sqlite3
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_connection(db_path):
+    """Context manager for database connections."""
+    conn = sqlite3.connect(db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+# Create and populate database
+def setup_database():
+    with get_db_connection("example.db") as conn:
+        cursor = conn.cursor()
+        
+        # Create table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE,
+                age INTEGER
+            )
+        """)
+        
+        # Insert data
+        users = [
+            ("Alice", "alice@example.com", 25),
+            ("Bob", "bob@example.com", 30),
+            ("Charlie", "charlie@example.com", 35)
+        ]
+        
+        cursor.executemany(
+            "INSERT OR IGNORE INTO users (name, email, age) VALUES (?, ?, ?)",
+            users
+        )
+        
+        conn.commit()
+
+# Query database
+def get_users_by_age(min_age):
+    with get_db_connection("example.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name, email, age FROM users WHERE age >= ?",
+            (min_age,)
+        )
+        return cursor.fetchall()
+
+# setup_database()
+# adult_users = get_users_by_age(18)
