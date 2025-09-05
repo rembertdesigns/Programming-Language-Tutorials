@@ -117,3 +117,59 @@ $bool_value = (bool)$string_number;    // Cast to boolean
 $array_value = (array)$string_number;  // Cast to array
 
 
+// STRINGS
+
+// String creation
+$single_quotes = 'Single quotes - literal string';
+$double_quotes = "Double quotes - variables parsed: $name";
+$heredoc = <<<EOD
+Heredoc syntax
+Variables are parsed: $name
+Multiple lines supported
+EOD;
+
+$nowdoc = <<<'EOD'
+Nowdoc syntax (like single quotes)
+Variables NOT parsed: $name
+Multiple lines supported
+EOD;
+
+// String concatenation
+$first_name = "John";
+$last_name = "Doe";
+$full_name = $first_name . " " . $last_name;  // Concatenation
+$greeting = "Hello, " . $full_name . "!";
+
+// String interpolation
+$message = "Welcome, $first_name!";
+$complex = "User {$first_name} has {$age} years";
+
+// String functions
+$text = "  Hello World  ";
+echo strlen($text);              // String length
+echo trim($text);                // Remove whitespace
+echo ltrim($text);               // Remove left whitespace
+echo rtrim($text);               // Remove right whitespace
+echo strtoupper($text);          // Convert to uppercase
+echo strtolower($text);          // Convert to lowercase
+echo ucfirst($text);             // Capitalize first letter
+echo ucwords($text);             // Capitalize each word
+
+// String searching and replacement
+$haystack = "The quick brown fox";
+echo strpos($haystack, "quick");     // Find position of substring
+echo str_replace("quick", "slow", $haystack);  // Replace substring
+echo substr($haystack, 4, 5);       // Extract substring
+echo substr_count($haystack, "o");   // Count occurrences
+
+// String splitting and joining
+$csv = "apple,banana,orange";
+$fruits = explode(",", $csv);        // Split string to array
+$rejoined = implode(" | ", $fruits); // Join array to string
+
+// Regular expressions
+$pattern = "/\d+/";  // Match digits
+$text = "I have 5 apples and 3 oranges";
+preg_match($pattern, $text, $matches);     // Find first match
+preg_match_all($pattern, $text, $matches); // Find all matches
+preg_replace($pattern, "X", $text);        // Replace with pattern
