@@ -377,3 +377,157 @@ enum Direction {
   }
   
   let swapped = swap("hello", 42);          // [number, string]
+
+
+  // CLASSES
+
+// Basic class
+class Animal {
+    name: string;
+    
+    constructor(name: string) {
+      this.name = name;
+    }
+    
+    speak(): void {
+      console.log(`${this.name} makes a sound`);
+    }
+  }
+  
+  let dog = new Animal("Rex");
+  
+  // Class inheritance
+  class Dog extends Animal {
+    breed: string;
+    
+    constructor(name: string, breed: string) {
+      super(name);
+      this.breed = breed;
+    }
+    
+    speak(): void {
+      console.log(`${this.name} barks`);
+    }
+    
+    wagTail(): void {
+      console.log(`${this.name} wags tail`);
+    }
+  }
+  
+  // Access modifiers
+  class BankAccount {
+    public accountNumber: string;           // accessible everywhere
+    private balance: number;                // only within this class
+    protected owner: string;                // within this class and subclasses
+    
+    constructor(accountNumber: string, owner: string) {
+      this.accountNumber = accountNumber;
+      this.owner = owner;
+      this.balance = 0;
+    }
+    
+    public deposit(amount: number): void {
+      this.balance += amount;
+    }
+    
+    public getBalance(): number {
+      return this.balance;
+    }
+  }
+  
+  // Readonly modifier
+  class Circle {
+    readonly radius: number;
+    
+    constructor(radius: number) {
+      this.radius = radius;
+    }
+    
+    // this.radius = 10;                    // Error: readonly property
+  }
+  
+  // Parameter properties (shorthand)
+  class User {
+    constructor(
+      public name: string,
+      private age: number,
+      readonly id: number
+    ) {}
+    
+    getAge(): number {
+      return this.age;
+    }
+  }
+  
+  // Abstract classes
+  abstract class Shape {
+    abstract area(): number;
+    
+    displayArea(): void {
+      console.log(`Area: ${this.area()}`);
+    }
+  }
+  
+  class Rectangle extends Shape {
+    constructor(private width: number, private height: number) {
+      super();
+    }
+    
+    area(): number {
+      return this.width * this.height;
+    }
+  }
+  
+  // Static members
+  class MathUtils {
+    static PI = 3.14159;
+    
+    static calculateCircleArea(radius: number): number {
+      return this.PI * radius * radius;
+    }
+  }
+  
+  let area = MathUtils.calculateCircleArea(5);
+  
+  // Getters and setters
+  class Temperature {
+    private _celsius: number = 0;
+    
+    get celsius(): number {
+      return this._celsius;
+    }
+    
+    set celsius(value: number) {
+      if (value < -273.15) {
+        throw new Error("Temperature below absolute zero");
+      }
+      this._celsius = value;
+    }
+    
+    get fahrenheit(): number {
+      return (this._celsius * 9/5) + 32;
+    }
+  }
+  
+  // Generic classes
+  class GenericContainer<T> {
+    private items: T[] = [];
+    
+    add(item: T): void {
+      this.items.push(item);
+    }
+    
+    get(index: number): T | undefined {
+      return this.items[index];
+    }
+    
+    getAll(): T[] {
+      return [...this.items];
+    }
+  }
+  
+  let stringContainer = new GenericContainer<string>();
+  stringContainer.add("hello");
+  
+  let numberContainer = new GenericContainer<number>();
+  numberContainer.add(42);
