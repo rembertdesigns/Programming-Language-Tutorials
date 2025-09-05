@@ -740,3 +740,133 @@ namespace Utilities {
 
 Utilities.log("Hello");
 Utilities.StringUtils.reverse("TypeScript");
+
+
+// DECORATORS (Experimental)
+
+// Enable in tsconfig.json: "experimentalDecorators": true
+
+// Class decorator
+function sealed(constructor: Function) {
+    Object.seal(constructor);
+    Object.seal(constructor.prototype);
+  }
+  
+  @sealed
+  class BugReport {
+    type = "report";
+    title: string;
+    
+    constructor(title: string) {
+      this.title = title;
+    }
+  }
+  
+  // Method decorator
+  function enumerable(value: boolean) {
+    return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+      descriptor.enumerable = value;
+    };
+  }
+  
+  class Greeter {
+    greeting: string;
+    
+    constructor(message: string) {
+      this.greeting = message;
+    }
+    
+    @enumerable(false)
+    greet() {
+      return "Hello, " + this.greeting;
+    }
+  }
+  
+  // Property decorator
+  function format(formatString: string) {
+    return function (target: any, propertyKey: string): void {
+      let value = target[propertyKey];
+      
+      const getter = () => `${formatString} ${value}`;
+      const setter = (newVal: string) => {
+        value = newVal;
+      };
+      
+      Object.defineProperty(target, propertyKey, {
+        get: getter,
+        set: setter,
+        enumerable: true,
+        configurable: true,
+      });
+    };
+  }
+  
+  class Person {
+    @format("Hello")
+    name: string;
+    
+    constructor(name: string) {
+      this.name = name;
+    }
+  }
+  
+  
+  // UTILITY TYPES
+  
+  // Built-in utility types
+  interface User {
+    id: number;
+    name: string;
+    email: string;
+    password: string;
+  }
+  
+  // Partial - makes all properties optional
+  type PartialUser = Partial<User>;
+  
+  // Required - makes all properties required
+  type RequiredUser = Required<PartialUser>;
+  
+  // Readonly - makes all properties readonly
+  type ReadonlyUser = Readonly<User>;
+  
+  // Pick - pick specific properties
+  type UserSummary = Pick<User, "id" | "name">;
+  
+  // Omit - exclude specific properties
+  type CreateUser = Omit<User, "id">;
+  
+  // Record - create object type with specific key and value types
+  type UserRoles = Record<string, "admin" | "user" | "guest">;
+  
+  // Extract - extract types from union
+  type StringNumber = string | number | boolean;
+  type StringOrNumber = Extract<StringNumber, string | number>;
+  
+  // Exclude - exclude types from union
+  type NonBoolean = Exclude<StringNumber, boolean>;
+  
+  // NonNullable - exclude null and undefined
+  type NonNullString = NonNullable<string | null | undefined>;
+  
+  // ReturnType - extract return type of function
+  function createUser(): User {
+    return { id: 1, name: "Alice", email: "alice@example.com", password: "secret" };
+  }
+  
+  type CreateUserReturn = ReturnType<typeof createUser>; // User
+  
+  // Parameters - extract parameter types of function
+  function updateUser(id: number, updates: Partial<User>): void {}
+  
+  type UpdateUserParams = Parameters<typeof updateUser>; // [number, Partial<User>]
+  
+  // ConstructorParameters - extract constructor parameter types
+  class Rectangle {
+    constructor(public width: number, public height: number) {}
+  }
+  
+  type RectangleParams = ConstructorParameters<typeof Rectangle>; // [number, number]
+  
+  // InstanceType - extract instance type of constructor
+  type RectangleInstance = InstanceType<typeof Rectangle>; // Rectangle
