@@ -1066,3 +1066,56 @@ from collections import Counter
 words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
 count = Counter(words)
 print(count.most_common(2))  # [('apple', 3), ('banana', 2)]
+
+
+# DATA SCIENCE BASICS
+
+# Working with CSV data
+import csv
+from collections import namedtuple
+
+# Read CSV with named tuples
+Person = namedtuple("Person", ["name", "age", "city"])
+people = []
+
+with open("people.csv", "r") as file:
+    reader = csv.DictReader(file)
+    for row in reader:
+        person = Person(row["name"], int(row["age"]), row["city"])
+        people.append(person)
+
+# Basic statistics
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+mean = sum(numbers) / len(numbers)
+median = sorted(numbers)[len(numbers) // 2]
+
+def calculate_variance(data):
+    mean = sum(data) / len(data)
+    return sum((x - mean) ** 2 for x in data) / len(data)
+
+variance = calculate_variance(numbers)
+std_dev = variance ** 0.5
+
+# Working with large datasets (using itertools)
+import itertools
+
+# Generate combinations
+from itertools import combinations, permutations, product
+
+colors = ["red", "green", "blue"]
+combinations_2 = list(combinations(colors, 2))  # [('red', 'green'), ('red', 'blue'), ('green', 'blue')]
+permutations_2 = list(permutations(colors, 2))  # [('red', 'green'), ('red', 'blue'), ...]
+
+# Infinite iterators
+from itertools import count, cycle, repeat
+
+# count(start, step) - infinite arithmetic progression
+for i in count(10, 2):  # 10, 12, 14, 16, ...
+    if i > 20:
+        break
+    print(i)
+
+# cycle(iterable) - infinite repetition
+colors_cycle = cycle(["red", "green", "blue"])
+for _ in range(7):
+    print(next(colors_cycle))  # red, green, blue, red, green, blue, red
