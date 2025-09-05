@@ -123,3 +123,780 @@ docker rm container_name          # Remove stopped container
 docker rm -f container_name       # Force remove running container
 docker rm $(docker ps -aq)       # Remove all containers
 docker container prune           # Remove all stopped containers
+
+
+# DOCKERFILE BASICS
+
+# Create a Dockerfile (no extension)
+cat << 'EOF' > Dockerfile
+# Use official node image as base
+FROM node:16-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+USER nextjs
+
+# Define startup command
+CMD ["npm", "start"]
+EOF
+
+# Build image from Dockerfile
+docker build -t my-app .          # Build and tag as my-app
+docker build -t my-app:v1.0 .     # Build with specific tag
+docker build -f Dockerfile.prod -t my-app . # Use different Dockerfile
+
+# Build with build arguments
+docker build --build-arg NODE_ENV=production -t my-app .
+
+# Multi-stage build example
+cat << 'EOF' > Dockerfile.multi
+# Build stage
+FROM node:16-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Production stage
+FROM node:16-alpine AS production
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY --from=builder /app/dist ./dist
+EXPOSE 3000
+CMD ["npm", "start"]
+EOF
+
+
+# DOCKERFILE INSTRUCTIONS
+
+# FROM - Base image
+FROM ubuntu:20.04                 # Official Ubuntu image
+FROM node:16-alpine               # Official Node.js on Alpine Linux
+FROM scratch                      # Empty base image
+
+# WORKDIR - Set working directory
+WORKDIR /app                      # Create and set working directory
+
+# COPY - Copy files from host to image
+COPY . .                          # Copy all files
+COPY src/ ./src/                  # Copy directory
+COPY package*.json ./             # Copy multiple files with pattern
+
+# ADD - Copy files (with additional features)
+ADD https://example.com/file.tar.gz /tmp/  # Download and extract
+ADD file.tar.gz /tmp/             # Automatically extract archives
+
+# RUN - Execute commands during build
+RUN apt-get update && apt-get install -y curl  # Install packages
+RUN npm install                   # Install dependencies
+RUN useradd -m appuser           # Create user
+
+# ENV - Set environment variables
+ENV NODE_ENV=production           # Set environment variable
+ENV PATH="/app/bin:${PATH}"       # Modify PATH
+
+# ARG - Build-time variables
+ARG NODE_VERSION=16               # Define build argument
+ARG BUILD_DATE                    # Use in build command
+
+# EXPOSE - Document port usage
+EXPOSE 3000                       # Document that app uses port 3000
+EXPOSE 80/tcp 443/tcp            # Multiple ports
+
+# VOLUME - Create mount points
+VOLUME ["/app/data"]             # Create volume mount point
+
+# USER - Set user for subsequent instructions
+USER appuser                      # Switch to non-root user
+USER 1001:1001                   # Use UID:GID
+
+# CMD - Default command (can be overridden)
+CMD ["npm", "start"]              # Exec form (preferred)
+CMD npm start                     # Shell form
+
+# ENTRYPOINT - Command that always runs
+ENTRYPOINT ["docker-entrypoint.sh"]  # Script that always executes
+ENTRYPOINT ["npm"]                    # Command prefix
+CMD ["start"]                         # Default arguments for ENTRYPOINT
+
+# LABEL - Add metadata
+LABEL version="1.0"
+LABEL description="My application"
+LABEL maintainer="developer@example.com"
+
+# HEALTHCHECK - Container health monitoring
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+
+# DOCKER COMPOSE
+
+# Create docker-compose.yml
+cat << 'EOF' > docker-compose.yml
+version: '3.8'
+
+services:
+  # Web application
+  web:
+    build: .                      # Build from current directory
+    ports:
+      - "3000:3000"              # Port mapping
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://user:pass@db:5432/myapp
+    volumes:
+      - .:/app                   # Bind mount for development
+      - /app/node_modules        # Anonymous volume for node_modules
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+
+  # Database
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - app-network
+
+  # Redis cache
+  redis:
+    image: redis:6-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - web
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
+EOF
+
+# Docker Compose commands
+docker-compose up                 # Start all services
+docker-compose up -d             # Start in detached mode
+docker-compose up --build        # Build images before starting
+docker-compose up web db         # Start specific services
+
+docker-compose down              # Stop and remove containers
+docker-compose down -v           # Also remove volumes
+docker-compose down --rmi all    # Also remove images
+
+docker-compose ps                # List running services
+docker-compose logs             # View logs from all services
+docker-compose logs -f web      # Follow logs from web service
+
+docker-compose exec web bash    # Execute command in running service
+docker-compose run web npm test # Run one-time command
+
+docker-compose build            # Build all services
+docker-compose build web        # Build specific service
+docker-compose pull            # Pull latest images
+
+docker-compose restart         # Restart all services
+docker-compose restart web     # Restart specific service
+
+docker-compose scale web=3     # Scale web service to 3 instances
+
+
+# DOCKER VOLUMES
+
+# Create and manage volumes
+docker volume create my-volume   # Create named volume
+docker volume ls                 # List volumes
+docker volume inspect my-volume # Inspect volume details
+docker volume rm my-volume      # Remove volume
+docker volume prune             # Remove unused volumes
+
+# Volume types
+# Named volumes (managed by Docker)
+docker run -v my-volume:/app/data nginx
+
+# Bind mounts (host directory)
+docker run -v /host/path:/container/path nginx
+docker run -v $(pwd):/app nginx  # Current directory
+
+# tmpfs mounts (in-memory, Linux only)
+docker run --tmpfs /tmp nginx
+
+# Volume backup and restore
+docker run --rm -v my-volume:/data -v $(pwd):/backup ubuntu tar czf /backup/backup.tar.gz -C /data .
+docker run --rm -v my-volume:/data -v $(pwd):/backup ubuntu tar xzf /backup/backup.tar.gz -C /data
+
+
+# DOCKER NETWORKS
+
+# Network management
+docker network create my-network          # Create network
+docker network ls                         # List networks
+docker network inspect my-network         # Inspect network
+docker network rm my-network             # Remove network
+docker network prune                     # Remove unused networks
+
+# Network types
+# bridge (default) - isolated network on single host
+docker network create --driver bridge my-bridge
+
+# host - use host's networking directly
+docker run --network host nginx
+
+# none - no networking
+docker run --network none alpine
+
+# Connect containers to networks
+docker network connect my-network container_name
+docker network disconnect my-network container_name
+
+# Run container with custom network
+docker run --network my-network --name web nginx
+
+# Container communication
+# Containers on same network can communicate by name
+docker run --network my-network --name db postgres
+docker run --network my-network --name web \
+  -e DATABASE_HOST=db nginx  # 'db' resolves to database container
+
+
+# DOCKER REGISTRY AND DISTRIBUTION
+
+# Docker Hub (default registry)
+docker login                     # Login to Docker Hub
+docker logout                   # Logout
+
+# Tag and push to registry
+docker tag my-app username/my-app:latest
+docker push username/my-app:latest
+docker push username/my-app:v1.0
+
+# Pull from different registry
+docker pull gcr.io/project/image:tag      # Google Container Registry
+docker pull registry.gitlab.com/user/repo:tag  # GitLab Registry
+
+# Run private registry
+docker run -d -p 5000:5000 --name registry registry:2
+docker tag my-app localhost:5000/my-app
+docker push localhost:5000/my-app
+
+# Search and explore
+docker search --limit 10 --filter stars=3 nginx
+
+
+# DOCKER SECURITY
+
+# Run as non-root user
+FROM node:16-alpine
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 -G nodejs
+USER nextjs
+
+# Scan images for vulnerabilities
+docker scan my-app              # Docker's built-in scanner
+# Use third-party tools: Snyk, Clair, Trivy
+
+# Security best practices
+# 1. Use official base images
+# 2. Keep images updated
+# 3. Use multi-stage builds
+# 4. Run as non-root user
+# 5. Use secrets management
+# 6. Limit container capabilities
+# 7. Use read-only root filesystem
+
+# Secrets management
+docker secret create my-secret secret.txt
+docker service create --secret my-secret nginx
+
+# Run with limited capabilities
+docker run --cap-drop ALL --cap-add NET_BIND_SERVICE nginx
+
+# Read-only root filesystem
+docker run --read-only nginx
+
+# Security scanning
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  aquasec/trivy image my-app
+
+
+# DOCKER MONITORING AND DEBUGGING
+
+# Container resource usage
+docker stats                    # Live resource usage
+docker stats container_name     # Specific container stats
+
+# Container processes
+docker top container_name       # Running processes in container
+
+# Container filesystem changes
+docker diff container_name      # Show filesystem changes
+
+# System information
+docker system df               # Disk usage
+docker system events          # Real-time events
+docker system info            # System-wide information
+
+# Cleanup commands
+docker system prune           # Remove unused data
+docker system prune -a        # Remove all unused data
+docker system prune -f        # Force removal without prompt
+
+# Container inspection
+docker inspect container_name  # Detailed container info
+docker inspect --format='{{.NetworkSettings.IPAddress}}' container_name
+
+# Health checks
+docker run --health-cmd='curl -f http://localhost:3000 || exit 1' \
+  --health-interval=30s --health-timeout=3s --health-retries=3 my-app
+
+# Debugging techniques
+# 1. Check logs first
+docker logs -f container_name
+
+# 2. Execute shell in container
+docker exec -it container_name sh
+
+# 3. Run debug container with same image
+docker run -it --rm my-app sh
+
+# 4. Check container processes
+docker top container_name
+
+# 5. Inspect container configuration
+docker inspect container_name
+
+
+# DEVELOPMENT WORKFLOWS
+
+# Development with hot reload
+docker run -v $(pwd):/app -v /app/node_modules -p 3000:3000 my-app npm run dev
+
+# Multi-environment setup
+# docker-compose.override.yml (automatically loaded)
+cat << 'EOF' > docker-compose.override.yml
+version: '3.8'
+services:
+  web:
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+EOF
+
+# Production deployment
+cat << 'EOF' > docker-compose.prod.yml
+version: '3.8'
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+EOF
+
+# Use production compose file
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Testing in containers
+docker run --rm -v $(pwd):/app my-app npm test
+docker-compose run --rm web npm test
+
+# Database migrations
+docker-compose run --rm web npm run migrate
+
+# Backup and restore
+# Database backup
+docker-compose exec db pg_dump -U user myapp > backup.sql
+
+# Database restore
+docker-compose exec -T db psql -U user myapp < backup.sql
+
+
+# DOCKERFILE OPTIMIZATION
+
+# Multi-stage build for smaller images
+FROM node:16-alpine AS dependencies
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+FROM node:16-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:16-alpine AS runtime
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package*.json ./
+EXPOSE 3000
+CMD ["npm", "start"]
+
+# Layer optimization
+# Bad - creates multiple layers
+RUN apt-get update
+RUN apt-get install -y curl
+RUN apt-get install -y git
+RUN apt-get clean
+
+# Good - single layer
+RUN apt-get update && \
+    apt-get install -y curl git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Use .dockerignore
+cat << 'EOF' > .dockerignore
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.nyc_output
+coverage
+.nyc_output
+.coverage
+.DS_Store
+*.log
+EOF
+
+# Optimize image size
+# Use alpine images when possible
+FROM node:16-alpine
+
+# Remove package manager cache
+RUN apk add --no-cache python3 make g++ && \
+    npm install && \
+    apk del python3 make g++
+
+# Use specific versions
+FROM node:16.14.2-alpine3.15
+
+
+# DOCKER SWARM (ORCHESTRATION)
+
+# Initialize swarm
+docker swarm init
+docker swarm init --advertise-addr <IP>
+
+# Join swarm
+docker swarm join --token <token> <IP>:2377
+
+# Manage nodes
+docker node ls                  # List nodes
+docker node inspect node_name  # Inspect node
+docker node update --availability drain node_name
+
+# Services
+docker service create --name web --replicas 3 nginx
+docker service ls              # List services
+docker service ps web          # List service tasks
+docker service inspect web     # Inspect service
+docker service update --replicas 5 web
+docker service rm web          # Remove service
+
+# Stacks (multi-service deployments)
+docker stack deploy -c docker-compose.yml my-stack
+docker stack ls               # List stacks
+docker stack ps my-stack      # List stack tasks
+docker stack rm my-stack      # Remove stack
+
+# Secrets in swarm
+echo "my-secret" | docker secret create db-password -
+docker service create --secret db-password nginx
+
+# Rolling updates
+docker service update --image nginx:1.21 web
+
+
+# PRODUCTION DEPLOYMENT
+
+# Docker in production checklist
+# 1. Use multi-stage builds
+# 2. Run as non-root user
+# 3. Use health checks
+# 4. Implement logging strategy
+# 5. Monitor resource usage
+# 6. Use restart policies
+# 7. Secure secrets management
+# 8. Regular security updates
+
+# Restart policies
+docker run --restart no my-app              # Never restart
+docker run --restart on-failure my-app      # Restart on failure
+docker run --restart unless-stopped my-app  # Always restart unless stopped
+docker run --restart always my-app          # Always restart
+
+# Resource limits
+docker run -m 512m my-app                   # Memory limit
+docker run --cpus=".5" my-app              # CPU limit
+docker run --memory=512m --cpus=".5" my-app # Both limits
+
+# Production compose example
+cat << 'EOF' > docker-compose.prod.yml
+version: '3.8'
+services:
+  web:
+    image: my-app:latest
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+EOF
+
+# CI/CD with Docker
+# .github/workflows/docker.yml
+cat << 'EOF' > .github/workflows/docker.yml
+name: Docker Build and Push
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: |
+          username/my-app:latest
+          username/my-app:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+EOF
+
+
+# TROUBLESHOOTING
+
+# Common issues and solutions
+
+# 1. Container exits immediately
+docker logs container_name       # Check logs for errors
+docker run -it my-app sh        # Run interactively to debug
+
+# 2. Port already in use
+docker ps -a                    # Check for conflicting containers
+netstat -tulpn | grep :8080     # Check what's using the port
+
+# 3. Permission denied
+# Fix file permissions
+chmod +x script.sh
+# Or run as root
+docker exec -u root container_name command
+
+# 4. Out of disk space
+docker system df                # Check disk usage
+docker system prune -a          # Clean up unused data
+docker volume prune             # Remove unused volumes
+
+# 5. Can't connect to Docker daemon
+sudo systemctl start docker     # Start Docker service
+sudo usermod -aG docker $USER   # Add user to docker group
+
+# 6. Image build fails
+docker build --no-cache .       # Build without cache
+docker build --progress=plain . # Show detailed build output
+
+# 7. Container networking issues
+docker network ls               # Check available networks
+docker inspect container_name   # Check container network settings
+docker exec container_name ping other_container
+
+# 8. Performance issues
+docker stats                    # Monitor resource usage
+docker exec container_name top  # Check processes inside container
+
+# 9. Memory leaks
+docker run -m 512m my-app       # Set memory limits
+docker exec container_name free -h  # Check memory usage
+
+# 10. DNS resolution problems
+docker run --dns 8.8.8.8 my-app    # Use custom DNS
+docker exec container_name nslookup google.com
+
+
+# USEFUL DOCKER ALIASES
+
+# Add to ~/.bashrc or ~/.zshrc
+alias d='docker'
+alias dc='docker-compose'
+alias dps='docker ps'
+alias di='docker images'
+alias dex='docker exec -it'
+alias dlog='docker logs -f'
+alias dstop='docker stop $(docker ps -q)'
+alias drm='docker rm $(docker ps -aq)'
+alias drmi='docker rmi $(docker images -q)'
+alias dprune='docker system prune -f'
+
+# Advanced aliases
+alias dip='docker inspect --format="{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"'
+alias dsize='docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"'
+
+
+# DOCKER BEST PRACTICES
+
+# 1. Image Creation
+# - Use official base images
+# - Use specific image versions (not latest)
+# - Minimize layers by combining RUN commands
+# - Use multi-stage builds for smaller production images
+# - Don't install unnecessary packages
+# - Use .dockerignore to exclude files
+
+# 2. Security
+# - Run containers as non-root user
+# - Use secrets for sensitive data
+# - Scan images for vulnerabilities
+# - Keep base images updated
+# - Use read-only root filesystem when possible
+# - Drop unnecessary Linux capabilities
+
+# 3. Performance
+# - Use appropriate base images (alpine for smaller size)
+# - Optimize layer caching
+# - Use multi-stage builds
+# - Set resource limits
+# - Use health checks for better orchestration
+
+# 4. Maintenance
+# - Tag images with meaningful versions
+# - Document your Dockerfiles
+# - Use docker-compose for multi-container apps
+# - Implement proper logging
+# - Monitor container metrics
+# - Regular cleanup of unused resources
+
+# 5. Development
+# - Use volume mounts for code during development
+# - Separate development and production configurations
+# - Use environment variables for configuration
+# - Implement proper error handling
+# - Test builds in CI/CD pipelines
+
+
+# DOCKER ECOSYSTEM TOOLS
+
+# Container Orchestration
+# - Docker Swarm (built-in)
+# - Kubernetes
+# - Amazon ECS
+# - Google Cloud Run
+
+# Development Tools
+# - Docker Desktop
+# - VS Code Docker extension
+# - Portainer (Docker GUI)
+# - Lazydocker (terminal UI)
+
+# Registry Solutions
+# - Docker Hub
+# - Amazon ECR
+# - Google Container Registry
+# - Harbor
+# - GitLab Container Registry
+
+# Monitoring and Logging
+# - Prometheus + Grafana
+# - ELK Stack (Elasticsearch, Logstash, Kibana)
+# - Datadog
+# - New Relic
+
+# Security Tools
+# - Docker Bench Security
+# - Clair
+# - Twistlock
+# - Aqua Security
+
+
+echo "Docker Reference Complete!"
+echo "Docker enables consistent deployment across environments"
+echo "Practice with simple containers before moving to complex orchestration"
+echo "Remember: containers are ephemeral - design for stateless applications"
