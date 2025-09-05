@@ -264,3 +264,116 @@ type Greeting = `hello ${string}`;
 let greeting1: Greeting = "hello world";    // OK
 let greeting2: Greeting = "hello there";    // OK
 // let greeting3: Greeting = "hi there";    // Error
+
+
+// ENUMS
+
+// Numeric enums
+enum Direction {
+    Up,        // 0
+    Down,      // 1
+    Left,      // 2
+    Right      // 3
+  }
+  
+  let playerDirection: Direction = Direction.Up;
+  
+  // Numeric enums with custom values
+  enum Status {
+    Pending = 1,
+    Approved = 2,
+    Rejected = 3
+  }
+  
+  // String enums
+  enum Color {
+    Red = "red",
+    Green = "green",
+    Blue = "blue"
+  }
+  
+  let favoriteColor: Color = Color.Red;
+  
+  // Const enums (inlined at compile time)
+  const enum Planet {
+    Mercury = "mercury",
+    Venus = "venus",
+    Earth = "earth"
+  }
+  
+  let homePlanet = Planet.Earth;          // Compiles to: let homePlanet = "earth";
+  
+  // Reverse mapping (numeric enums only)
+  console.log(Direction[0]);              // "Up"
+  console.log(Direction["Up"]);           // 0
+  
+  
+  // FUNCTIONS
+  
+  // Function type annotations
+  function add(a: number, b: number): number {
+    return a + b;
+  }
+  
+  // Arrow functions
+  const multiply = (a: number, b: number): number => a * b;
+  
+  // Optional parameters
+  function greet(name: string, greeting?: string): string {
+    return greeting ? `${greeting}, ${name}!` : `Hello, ${name}!`;
+  }
+  
+  // Default parameters
+  function createUser(name: string, age: number = 18): Person {
+    return { id: Date.now(), name, age };
+  }
+  
+  // Rest parameters
+  function sum(...numbers: number[]): number {
+    return numbers.reduce((total, num) => total + num, 0);
+  }
+  
+  // Function overloads
+  function combine(a: string, b: string): string;
+  function combine(a: number, b: number): number;
+  function combine(a: any, b: any): any {
+    return a + b;
+  }
+  
+  let result1 = combine("Hello", " World");    // string
+  let result2 = combine(5, 10);               // number
+  
+  // Function types
+  type MathOperation = (a: number, b: number) => number;
+  
+  let operation: MathOperation = (x, y) => x * y;
+  
+  // Generic functions
+  function identity<T>(arg: T): T {
+    return arg;
+  }
+  
+  let stringIdentity = identity<string>("hello");
+  let numberIdentity = identity<number>(42);
+  let inferredIdentity = identity("inferred");    // T inferred as string
+  
+  // Generic constraints
+  interface Lengthwise {
+    length: number;
+  }
+  
+  function logLength<T extends Lengthwise>(arg: T): T {
+    console.log(arg.length);
+    return arg;
+  }
+  
+  logLength("hello");                       // OK
+  logLength([1, 2, 3]);                     // OK
+  // logLength(42);                         // Error: number doesn't have length
+  
+  // Multiple generic parameters
+  function swap<T, U>(a: T, b: U): [U, T] {
+    return [b, a];
+  }
+  
+  let swapped = swap("hello", 42);          // [number, string]
