@@ -437,3 +437,135 @@ if X_train_scaled.shape[1] >= 2:
     plt.legend()
     plt.colorbar(scatter)
     plt.show()
+
+
+# DEEP LEARNING WITH TENSORFLOW/KERAS
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.datasets import mnist, cifar10
+from tensorflow.keras.utils import to_categorical
+
+# Check TensorFlow version and GPU availability
+print(f"TensorFlow version: {tf.__version__}")
+print(f"GPU available: {tf.config.list_physical_devices('GPU')}")
+
+# Neural Network for MNIST digit classification
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+# Preprocessing
+x_train = x_train.astype('float32') / 255.0
+x_test = x_test.astype('float32') / 255.0
+y_train = to_categorical(y_train, 10)
+y_test = to_categorical(y_test, 10)
+
+# Build model
+model = keras.Sequential([
+    layers.Flatten(input_shape=(28, 28)),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.2),
+    layers.Dense(64, activation='relu'),
+    layers.Dropout(0.2),
+    layers.Dense(10, activation='softmax')
+])
+
+# Compile model
+model.compile(optimizer='adam',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Model summary
+model.summary()
+
+# Train model
+history = model.fit(x_train, y_train,
+                   batch_size=128,
+                   epochs=10,
+                   validation_split=0.1,
+                   verbose=1)
+
+# Evaluate model
+test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=0)
+print(f"Test accuracy: {test_accuracy:.4f}")
+
+# Convolutional Neural Network for image classification
+def create_cnn_model(input_shape, num_classes):
+    model = keras.Sequential([
+        layers.Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.Flatten(),
+        layers.Dense(64, activation='relu'),
+        layers.Dropout(0.5),
+        layers.Dense(num_classes, activation='softmax')
+    ])
+    return model
+
+# For CIFAR-10 dataset
+# (x_train_cifar, y_train_cifar), (x_test_cifar, y_test_cifar) = cifar10.load_data()
+# cnn_model = create_cnn_model((32, 32, 3), 10)
+
+# Transfer Learning Example
+base_model = keras.applications.VGG16(
+    weights='imagenet',
+    include_top=False,
+    input_shape=(224, 224, 3)
+)
+
+# Freeze base model
+base_model.trainable = False
+
+# Add custom top layers
+transfer_model = keras.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.2),
+    layers.Dense(10, activation='softmax')  # Adjust for your number of classes
+])
+
+transfer_model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+# Custom training loop example
+@tf.function
+def train_step(x, y, model, optimizer, loss_fn):
+    with tf.GradientTape() as tape:
+        predictions = model(x, training=True)
+        loss = loss_fn(y, predictions)
+    
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    
+    return loss
+
+# Plot training history
+def plot_training_history(history):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    
+    # Plot training & validation accuracy
+    ax1.plot(history.history['accuracy'], label='Training Accuracy')
+    ax1.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    ax1.set_title('Model Accuracy')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Accuracy')
+    ax1.legend()
+    
+    # Plot training & validation loss
+    ax2.plot(history.history['loss'], label='Training Loss')
+    ax2.plot(history.history['val_loss'], label='Validation Loss')
+    ax2.set_title('Model Loss')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Loss')
+    ax2.legend()
+    
+    plt.tight_layout()
+    plt.show()
+
+# plot_training_history(history)
