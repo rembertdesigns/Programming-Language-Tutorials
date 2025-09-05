@@ -312,3 +312,128 @@ plt.show()
 # Pair plot for exploring relationships
 # sns.pairplot(df, hue='City')
 # plt.show()
+
+
+# SCIKIT-LEARN - MACHINE LEARNING
+
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.svm import SVC
+from sklearn.cluster import KMeans
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import mean_squared_error, r2_score, classification_report, confusion_matrix
+from sklearn.datasets import make_classification, make_regression, load_iris, load_boston
+
+# Data preprocessing
+# Load sample dataset
+iris = load_iris()
+X, y = iris.data, iris.target
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Feature scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Classification Example
+# Train multiple models
+models = {
+    'Logistic Regression': LogisticRegression(random_state=42),
+    'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+    'SVM': SVC(random_state=42)
+}
+
+results = {}
+for name, model in models.items():
+    # Train model
+    model.fit(X_train_scaled, y_train)
+    
+    # Make predictions
+    y_pred = model.predict(X_test_scaled)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, average='weighted')
+    recall = recall_score(y_test, y_pred, average='weighted')
+    f1 = f1_score(y_test, y_pred, average='weighted')
+    
+    results[name] = {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1
+    }
+    
+    print(f"\n{name} Results:")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1 Score: {f1:.4f}")
+
+# Cross-validation
+for name, model in models.items():
+    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
+    print(f"\n{name} CV Score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+
+# Hyperparameter tuning with GridSearchCV
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10]
+}
+
+rf = RandomForestClassifier(random_state=42)
+grid_search = GridSearchCV(rf, param_grid, cv=5, scoring='accuracy')
+grid_search.fit(X_train_scaled, y_train)
+
+print(f"\nBest parameters: {grid_search.best_params_}")
+print(f"Best CV score: {grid_search.best_score_:.4f}")
+
+# Regression Example
+# Generate regression dataset
+X_reg, y_reg = make_regression(n_samples=1000, n_features=10, noise=0.1, random_state=42)
+X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
+
+# Scale features
+scaler_reg = StandardScaler()
+X_train_reg_scaled = scaler_reg.fit_transform(X_train_reg)
+X_test_reg_scaled = scaler_reg.transform(X_test_reg)
+
+# Train regression models
+reg_models = {
+    'Linear Regression': LinearRegression(),
+    'Random Forest': RandomForestRegressor(n_estimators=100, random_state=42)
+}
+
+for name, model in reg_models.items():
+    model.fit(X_train_reg_scaled, y_train_reg)
+    y_pred_reg = model.predict(X_test_reg_scaled)
+    
+    mse = mean_squared_error(y_test_reg, y_pred_reg)
+    r2 = r2_score(y_test_reg, y_pred_reg)
+    
+    print(f"\n{name} Regression Results:")
+    print(f"MSE: {mse:.4f}")
+    print(f"R²: {r2:.4f}")
+
+# Clustering Example
+# K-Means clustering
+kmeans = KMeans(n_clusters=3, random_state=42)
+cluster_labels = kmeans.fit_predict(X_train_scaled)
+
+# Visualize clusters (if 2D)
+if X_train_scaled.shape[1] >= 2:
+    plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(X_train_scaled[:, 0], X_train_scaled[:, 1], c=cluster_labels, cmap='viridis')
+    plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], 
+                c='red', marker='x', s=200, linewidths=3, label='Centroids')
+    plt.xlabel('Feature 1')
+    plt.ylabel('Feature 2')
+    plt.title('K-Means Clustering')
+    plt.legend()
+    plt.colorbar(scatter)
+    plt.show()
