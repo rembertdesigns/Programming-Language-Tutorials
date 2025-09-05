@@ -1194,3 +1194,146 @@ def create_wordcloud(text, width=800, height=400):
     plt.show()
     
     return wordcloud
+
+
+# WEB APPLICATIONS WITH STREAMLIT
+
+import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Basic Streamlit app structure
+def create_ml_app():
+    """
+    Create a machine learning web app with Streamlit
+    """
+    st.title("Machine Learning Dashboard")
+    st.sidebar.title("Navigation")
+    
+    # Sidebar options
+    page = st.sidebar.selectbox("Choose a page", 
+                               ["Data Upload", "EDA", "Model Training", "Predictions"])
+    
+    if page == "Data Upload":
+        st.header("Data Upload")
+        uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+        
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+            st.write("Data Preview:")
+            st.dataframe(df.head())
+            
+            # Store in session state
+            st.session_state['data'] = df
+    
+    elif page == "EDA":
+        st.header("Exploratory Data Analysis")
+        
+        if 'data' in st.session_state:
+            df = st.session_state['data']
+            
+            # Basic statistics
+            st.subheader("Dataset Info")
+            st.write(f"Shape: {df.shape}")
+            st.write("Statistical Summary:")
+            st.dataframe(df.describe())
+            
+            # Visualizations
+            st.subheader("Visualizations")
+            
+            # Select columns for plotting
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if len(numeric_cols) >= 2:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    x_axis = st.selectbox("X-axis", numeric_cols)
+                with col2:
+                    y_axis = st.selectbox("Y-axis", numeric_cols)
+                
+                # Create scatter plot
+                fig = px.scatter(df, x=x_axis, y=y_axis)
+                st.plotly_chart(fig)
+        else:
+            st.warning("Please upload data first!")
+    
+    elif page == "Model Training":
+        st.header("Model Training")
+        
+        if 'data' in st.session_state:
+            df = st.session_state['data']
+            
+            # Select target variable
+            target = st.selectbox("Select target variable", df.columns)
+            
+            # Select features
+            features = st.multiselect("Select features", 
+                                    [col for col in df.columns if col != target])
+            
+            if features and target:
+                # Model selection
+                model_type = st.selectbox("Select model", 
+                                        ["Linear Regression", "Random Forest", "SVM"])
+                
+                if st.button("Train Model"):
+                    X = df[features]
+                    y = df[target]
+                    
+                    # Split data
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=0.2, random_state=42
+                    )
+                    
+                    # Train model based on selection
+                    if model_type == "Linear Regression":
+                        model = LinearRegression()
+                    elif model_type == "Random Forest":
+                        model = RandomForestRegressor()
+                    else:
+                        model = SVC()
+                    
+                    model.fit(X_train, y_train)
+                    predictions = model.predict(X_test)
+                    
+                    # Display results
+                    if model_type != "SVM":  # For regression
+                        mse = mean_squared_error(y_test, predictions)
+                        r2 = r2_score(y_test, predictions)
+                        st.write(f"MSE: {mse:.4f}")
+                        st.write(f"R²: {r2:.4f}")
+                    
+                    # Store model
+                    st.session_state['model'] = model
+                    st.session_state['features'] = features
+                    
+                    st.success("Model trained successfully!")
+        else:
+            st.warning("Please upload data first!")
+    
+    elif page == "Predictions":
+        st.header("Make Predictions")
+        
+        if 'model' in st.session_state:
+            model = st.session_state['model']
+            features = st.session_state['features']
+            
+            st.write("Enter values for prediction:")
+            
+            # Create input fields for each feature
+            input_data = {}
+            for feature in features:
+                input_data[feature] = st.number_input(f"Enter {feature}")
+            
+            if st.button("Predict"):
+                # Make prediction
+                input_df = pd.DataFrame([input_data])
+                prediction = model.predict(input_df)
+                
+                st.write(f"Prediction: {prediction[0]:.4f}")
+        else:
+            st.warning("Please train a model first!")
+
+# Run the Streamlit app
+# if __name__ == "__main__":
+#     create_ml_app()
