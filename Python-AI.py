@@ -969,3 +969,108 @@ def create_agent():
     #     verbose=True
     # )
     # return agent
+
+
+# COMPUTER VISION
+
+import cv2
+from PIL import Image
+import face_recognition
+
+# OpenCV basics
+def process_image_opencv(image_path):
+    """
+    Basic image processing with OpenCV
+    """
+    # Read image
+    img = cv2.imread(image_path)
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Apply Gaussian blur
+    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+    
+    # Edge detection
+    edges = cv2.Canny(blurred, 50, 150)
+    
+    # Find contours
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Draw contours
+    result = img.copy()
+    cv2.drawContours(result, contours, -1, (0, 255, 0), 2)
+    
+    return result, gray, edges
+
+# Face recognition
+def detect_faces(image_path):
+    """
+    Detect and recognize faces in an image
+    """
+    # Load image
+    image = face_recognition.load_image_file(image_path)
+    
+    # Find face locations
+    face_locations = face_recognition.face_locations(image)
+    face_encodings = face_recognition.face_encodings(image, face_locations)
+    
+    print(f"Found {len(face_locations)} face(s) in the image")
+    
+    return face_locations, face_encodings
+
+# Object detection with YOLO (requires additional setup)
+def setup_yolo_detection():
+    """
+    Setup YOLO for object detection
+    Note: Requires downloading YOLO weights and config files
+    """
+    # Load YOLO
+    net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
+    
+    # Load class names
+    with open("coco.names", "r") as f:
+        classes = [line.strip() for line in f.readlines()]
+    
+    return net, classes
+
+def detect_objects(image_path, net, classes):
+    """
+    Detect objects in an image using YOLO
+    """
+    # Load image
+    image = cv2.imread(image_path)
+    height, width, channels = image.shape
+    
+    # Prepare image for YOLO
+    blob = cv2.dnn.blobFromImage(image, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+    net.setInput(blob)
+    outs = net.forward()
+    
+    # Process detections
+    class_ids = []
+    confidences = []
+    boxes = []
+    
+    for out in outs:
+        for detection in out:
+            scores = detection[5:]
+            class_id = np.argmax(scores)
+            confidence = scores[class_id]
+            
+            if confidence > 0.5:
+                # Object detected
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+                
+                # Rectangle coordinates
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+                
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
+    
+    return boxes, confidences, class_ids
