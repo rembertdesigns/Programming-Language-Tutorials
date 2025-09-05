@@ -304,3 +304,119 @@ $result = match($day) {
     'Saturday', 'Sunday' => 'Weekend',
     default => 'Invalid day'
 };
+
+// LOOPS
+
+// For loop
+for ($i = 0; $i < 10; $i++) {
+  echo $i . " ";
+}
+
+// While loop
+$counter = 0;
+while ($counter < 5) {
+  echo $counter . " ";
+  $counter++;
+}
+
+// Do-while loop
+$x = 0;
+do {
+  echo $x . " ";
+  $x++;
+} while ($x < 3);
+
+// Foreach loop
+$colors = ["red", "green", "blue"];
+foreach ($colors as $color) {
+  echo $color . " ";
+}
+
+foreach ($colors as $index => $color) {
+  echo "$index: $color ";
+}
+
+// Loop control
+for ($i = 0; $i < 10; $i++) {
+  if ($i == 5) {
+      continue; // Skip iteration
+  }
+  if ($i == 8) {
+      break; // Exit loop
+  }
+  echo $i . " ";
+}
+
+// FUNCTIONS
+
+// Basic function
+function greet($name) {
+  return "Hello, " . $name . "!";
+}
+
+echo greet("World");
+
+// Function with default parameters
+function createUser($name, $age = 18, $active = true) {
+  return [
+      'name' => $name,
+      'age' => $age,
+      'active' => $active
+  ];
+}
+
+$user1 = createUser("John");
+$user2 = createUser("Jane", 25);
+$user3 = createUser("Bob", 30, false);
+
+// Variable number of arguments
+function sum(...$numbers) {
+  return array_sum($numbers);
+}
+
+echo sum(1, 2, 3, 4, 5); // 15
+
+// Type declarations (PHP 7+)
+function add(int $a, int $b): int {
+  return $a + $b;
+}
+
+function getUser(string $name): array {
+  return ['name' => $name, 'id' => 1];
+}
+
+// Anonymous functions (closures)
+$multiply = function($a, $b) {
+  return $a * $b;
+};
+
+echo $multiply(4, 5); // 20
+
+// Closures with use keyword
+$factor = 10;
+$multiplyByFactor = function($number) use ($factor) {
+  return $number * $factor;
+};
+
+// Arrow functions (PHP 7.4+)
+$double = fn($x) => $x * 2;
+$numbers = [1, 2, 3, 4, 5];
+$doubled = array_map(fn($x) => $x * 2, $numbers);
+
+// Variable functions
+function sayHello() {
+  return "Hello!";
+}
+
+$func_name = "sayHello";
+echo $func_name(); // Calls sayHello()
+
+// Recursive functions
+function factorial($n) {
+  if ($n <= 1) {
+      return 1;
+  }
+  return $n * factorial($n - 1);
+}
+
+echo factorial(5); // 120
