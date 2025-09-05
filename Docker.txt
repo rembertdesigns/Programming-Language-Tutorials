@@ -1,0 +1,35 @@
+# DOCKER - Containerization Platform Reference - by Richard Rembert
+
+# Docker is a platform for developing, shipping, and running applications in containers
+# Containers package applications with all dependencies for consistent deployment
+
+# INSTALLATION AND SETUP
+
+# Install Docker (Ubuntu/Debian)
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER    # Add user to docker group
+newgrp docker                     # Refresh group membership
+
+# Install Docker (macOS)
+# Download Docker Desktop from docker.com
+# brew install --cask docker
+
+# Install Docker (Windows)
+# Download Docker Desktop from docker.com
+# Enable WSL 2 backend for better performance
+
+# Verify installation
+docker --version                  # Check Docker version
+docker info                       # System-wide information
+docker run hello-world           # Test installation
+
+
+# BASIC DOCKER CONCEPTS
+
+# Image: Read-only template for creating containers
+# Container: Running instance of an image
+# Dockerfile: Text file with instructions to build an image
+# Registry: Repository for storing and sharing images (Docker Hub)
+# Volume: Persistent data storage for containers
+# Network: Communication layer between containers
