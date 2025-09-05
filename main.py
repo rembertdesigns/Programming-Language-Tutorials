@@ -589,3 +589,37 @@ class CustomError(Exception):
 
 def risky_function():
     raise CustomError("Something went wrong in my function")
+
+
+# LIST COMPREHENSIONS AND GENERATORS
+
+# List comprehensions
+numbers = [1, 2, 3, 4, 5]
+squares = [x**2 for x in numbers]                    # [1, 4, 9, 16, 25]
+even_squares = [x**2 for x in numbers if x % 2 == 0] # [4, 16]
+
+# Nested list comprehension
+matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+flattened = [num for row in matrix for num in row]   # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Dictionary comprehension
+words = ["hello", "world", "python"]
+word_lengths = {word: len(word) for word in words}   # {'hello': 5, 'world': 5, 'python': 6}
+
+# Set comprehension
+numbers = [1, 2, 2, 3, 3, 4, 5]
+unique_squares = {x**2 for x in numbers}             # {1, 4, 9, 16, 25}
+
+# Generator expressions (memory efficient)
+numbers_gen = (x**2 for x in range(1000000))  # Doesn't create list immediately
+first_five = [next(numbers_gen) for _ in range(5)]
+
+# Generator functions
+def fibonacci():
+    a, b = 0, 1
+    while True:
+        yield a
+        a, b = b, a + b
+
+fib = fibonacci()
+first_ten_fib = [next(fib) for _ in range(10)]
