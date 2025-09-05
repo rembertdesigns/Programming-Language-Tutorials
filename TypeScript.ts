@@ -531,3 +531,212 @@ class Animal {
   
   let numberContainer = new GenericContainer<number>();
   numberContainer.add(42);
+
+
+  / GENERICS
+
+// Generic interfaces
+interface Repository<T> {
+  save(entity: T): void;
+  findById(id: string): T | undefined;
+  findAll(): T[];
+}
+
+// Generic type aliases
+type ApiResponse<T> = {
+  data: T;
+  status: number;
+  message: string;
+};
+
+let userResponse: ApiResponse<User> = {
+  data: new User("Alice", 25, 1),
+  status: 200,
+  message: "Success"
+};
+
+// Generic constraints with keyof
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+let person = { name: "Alice", age: 25, email: "alice@example.com" };
+let name = getProperty(person, "name");        // string
+let age = getProperty(person, "age");          // number
+// let invalid = getProperty(person, "height"); // Error: 'height' doesn't exist
+
+// Conditional types
+type NonNullable<T> = T extends null | undefined ? never : T;
+
+type Example1 = NonNullable<string | null>;   // string
+type Example2 = NonNullable<number | undefined>; // number
+
+// Mapped types
+type Partial<T> = {
+  [P in keyof T]?: T[P];
+};
+
+type Required<T> = {
+  [P in keyof T]-?: T[P];
+};
+
+type Readonly<T> = {
+  readonly [P in keyof T]: T[P];
+};
+
+// Using utility types
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+type PartialUser = Partial<User>;             // All properties optional
+type RequiredUser = Required<User>;           // All properties required
+type ReadonlyUser = Readonly<User>;           // All properties readonly
+
+// Advanced mapped types
+type Getters<T> = {
+  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];
+};
+
+type UserGetters = Getters<User>;
+// Results in:
+// {
+//   getId: () => number;
+//   getName: () => string;
+//   getEmail: () => string;
+// }
+
+
+// TYPE ASSERTIONS AND TYPE GUARDS
+
+// Type assertions (type casting)
+let someValue: unknown = "hello world";
+let strLength1 = (someValue as string).length;
+let strLength2 = (<string>someValue).length;    // JSX syntax conflicts
+
+// Type guards
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function processValue(value: unknown): void {
+  if (isString(value)) {
+    console.log(value.toUpperCase());     // TypeScript knows it's a string
+  }
+}
+
+// instanceof type guard
+class Bird {
+  fly(): void {
+    console.log("Flying...");
+  }
+}
+
+class Fish {
+  swim(): void {
+    console.log("Swimming...");
+  }
+}
+
+function move(animal: Bird | Fish): void {
+  if (animal instanceof Bird) {
+    animal.fly();
+  } else {
+    animal.swim();
+  }
+}
+
+// in operator type guard
+interface Car {
+  drive(): void;
+}
+
+interface Boat {
+  sail(): void;
+}
+
+function operate(vehicle: Car | Boat): void {
+  if ("drive" in vehicle) {
+    vehicle.drive();
+  } else {
+    vehicle.sail();
+  }
+}
+
+// Discriminated unions
+interface Square {
+  kind: "square";
+  size: number;
+}
+
+interface Rectangle {
+  kind: "rectangle";
+  width: number;
+  height: number;
+}
+
+interface Circle {
+  kind: "circle";
+  radius: number;
+}
+
+type Shape = Square | Rectangle | Circle;
+
+function area(shape: Shape): number {
+  switch (shape.kind) {
+    case "square":
+      return shape.size * shape.size;
+    case "rectangle":
+      return shape.width * shape.height;
+    case "circle":
+      return Math.PI * shape.radius ** 2;
+    default:
+      const exhaustiveCheck: never = shape;
+      return exhaustiveCheck;
+  }
+}
+
+
+// MODULES AND NAMESPACES
+
+// ES6 modules (preferred)
+// math.ts
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+export function subtract(a: number, b: number): number {
+  return a - b;
+}
+
+export default function multiply(a: number, b: number): number {
+  return a * b;
+}
+
+export { divide as div } from './calculator';
+
+// main.ts
+import multiply, { add, subtract } from './math';
+import * as math from './math';
+
+// Re-exports
+export { User } from './user';
+export * from './types';
+
+// Namespaces (legacy, use modules instead)
+namespace Utilities {
+  export function log(message: string): void {
+    console.log(`[LOG]: ${message}`);
+  }
+  
+  export namespace StringUtils {
+    export function reverse(str: string): string {
+      return str.split('').reverse().join('');
+    }
+  }
+}
+
+Utilities.log("Hello");
+Utilities.StringUtils.reverse("TypeScript");
