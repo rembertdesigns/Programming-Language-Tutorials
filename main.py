@@ -1119,3 +1119,43 @@ for i in count(10, 2):  # 10, 12, 14, 16, ...
 colors_cycle = cycle(["red", "green", "blue"])
 for _ in range(7):
     print(next(colors_cycle))  # red, green, blue, red, green, blue, red
+
+
+# WEB SCRAPING BASICS
+
+import requests
+from urllib.parse import urljoin, urlparse
+
+# Basic web scraping
+def fetch_webpage(url):
+    """Fetch webpage content safely."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        print(f"Error fetching {url}: {e}")
+        return None
+
+# Parse HTML (requires: pip install beautifulsoup4)
+"""
+from bs4 import BeautifulSoup
+
+html_content = fetch_webpage("https://example.com")
+if html_content:
+    soup = BeautifulSoup(html_content, "html.parser")
+    
+    # Find elements
+    title = soup.find("title").text
+    all_links = soup.find_all("a")
+    
+    for link in all_links:
+        href = link.get("href")
+        text = link.text.strip()
+        if href:
+            full_url = urljoin("https://example.com", href)
+            print(f"{text}: {full_url}")
+"""
