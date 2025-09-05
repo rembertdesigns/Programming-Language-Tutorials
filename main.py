@@ -522,3 +522,70 @@ with open("person.json", "r") as file:
 # JSON string conversion
 json_string = json.dumps(data)  # Convert to JSON string
 parsed_data = json.loads(json_string)  # Parse JSON string
+
+
+# ERROR HANDLING
+
+# Basic try-except
+try:
+    result = 10 / 0
+except ZeroDivisionError:
+    print("Cannot divide by zero!")
+
+# Multiple exceptions
+try:
+    number = int(input("Enter a number: "))
+    result = 10 / number
+except ValueError:
+    print("Invalid input - not a number")
+except ZeroDivisionError:
+    print("Cannot divide by zero!")
+
+# Catch multiple exceptions together
+try:
+    # Some risky code
+    pass
+except (ValueError, TypeError) as e:
+    print(f"Error occurred: {e}")
+
+# Catch all exceptions
+try:
+    # Some risky code
+    pass
+except Exception as e:
+    print(f"Unexpected error: {e}")
+
+# Finally block (always executes)
+try:
+    file = open("somefile.txt", "r")
+    # Process file
+except FileNotFoundError:
+    print("File not found")
+finally:
+    # This always runs
+    print("Cleanup code here")
+
+# Else block (runs if no exception occurred)
+try:
+    result = 10 / 2
+except ZeroDivisionError:
+    print("Division error")
+else:
+    print(f"Result: {result}")  # Only runs if no exception
+
+# Raising exceptions
+def validate_age(age):
+    if age < 0:
+        raise ValueError("Age cannot be negative")
+    if age > 150:
+        raise ValueError("Age seems unrealistic")
+    return True
+
+# Custom exceptions
+class CustomError(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(self.message)
+
+def risky_function():
+    raise CustomError("Something went wrong in my function")
