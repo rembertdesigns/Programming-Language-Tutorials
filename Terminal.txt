@@ -1,1 +1,662 @@
+# TERMINAL - Command Line Interface Reference - by Richard Rembert
 
+# The command line is a powerful tool for developers to interact with their computer
+# This reference covers essential commands for Unix-like systems (macOS, Linux) and Windows
+
+# GETTING STARTED
+
+# Open Terminal/Command Prompt:
+# macOS: Cmd + Space, type "Terminal"
+# Windows: Win + R, type "cmd" or "powershell"
+# Linux: Ctrl + Alt + T (most distributions)
+
+# Basic command structure:
+# command [options] [arguments]
+# Example: ls -la /home/user
+
+
+# NAVIGATION COMMANDS
+
+# Print working directory (current location)
+pwd
+
+# List directory contents
+ls                    # Basic list
+ls -l                 # Long format (detailed)
+ls -la                # Long format including hidden files
+ls -lh                # Human readable file sizes
+ls -R                 # Recursive (show subdirectories)
+ls *.txt              # List only .txt files
+ls -t                 # Sort by modification time
+ls -S                 # Sort by file size
+
+# Windows equivalent
+dir                   # Basic directory listing
+dir /a                # Show all files including hidden
+dir /s                # Recursive listing
+
+# Change directory
+cd /path/to/directory # Absolute path
+cd ../                # Go up one directory
+cd ~                  # Go to home directory
+cd -                  # Go to previous directory
+cd                    # Go to home directory (no arguments)
+
+# Create directory
+mkdir new_folder              # Create single directory
+mkdir -p path/to/new/folder   # Create nested directories
+mkdir folder1 folder2 folder3 # Create multiple directories
+
+# Remove directory
+rmdir empty_folder            # Remove empty directory
+rm -r folder                  # Remove directory and contents (recursive)
+rm -rf folder                 # Force remove without prompts
+
+
+# FILE OPERATIONS
+
+# Create empty file
+touch filename.txt            # Unix/Linux/macOS
+echo. > filename.txt          # Windows
+
+# Copy files
+cp source.txt destination.txt        # Copy file
+cp -r source_folder dest_folder      # Copy directory recursively
+cp *.txt backup/                     # Copy all .txt files to backup folder
+cp file.txt{,.backup}               # Quick backup (creates file.txt.backup)
+
+# Windows copy
+copy source.txt destination.txt      # Copy file
+xcopy source dest /E /I              # Copy directory
+
+# Move/rename files
+mv old_name.txt new_name.txt         # Rename file
+mv file.txt /path/to/destination/    # Move file
+mv *.txt documents/                  # Move all .txt files
+
+# Windows move
+move old_name.txt new_name.txt       # Rename file
+move file.txt C:\destination\        # Move file
+
+# Remove files
+rm filename.txt              # Remove file
+rm *.txt                     # Remove all .txt files
+rm -i filename.txt           # Interactive removal (asks for confirmation)
+rm -f filename.txt           # Force removal without prompts
+
+# Windows delete
+del filename.txt             # Delete file
+del *.txt                    # Delete all .txt files
+
+
+# FILE VIEWING AND EDITING
+
+# View file contents
+cat filename.txt             # Display entire file
+less filename.txt            # View file page by page (q to quit)
+more filename.txt            # Similar to less
+head filename.txt            # Show first 10 lines
+head -n 20 filename.txt      # Show first 20 lines
+tail filename.txt            # Show last 10 lines
+tail -f filename.txt         # Follow file (useful for logs)
+
+# Windows file viewing
+type filename.txt            # Display entire file
+more filename.txt            # View file page by page
+
+# Edit files
+nano filename.txt            # Simple text editor (Ctrl+X to exit)
+vi filename.txt              # Vi editor (press i to insert, :wq to save and quit)
+vim filename.txt             # Vim editor (enhanced vi)
+code filename.txt            # Open in VS Code (if installed)
+
+# Windows edit
+notepad filename.txt         # Open in Notepad
+
+
+# SEARCH AND FIND
+
+# Find files
+find . -name "*.txt"                    # Find all .txt files in current directory
+find /home -name "config*"              # Find files starting with "config"
+find . -type d -name "node_modules"     # Find directories named "node_modules"
+find . -size +100M                      # Find files larger than 100MB
+find . -mtime -7                        # Find files modified in last 7 days
+
+# Locate files (faster, uses database)
+locate filename.txt                     # Find file by name
+updatedb                                # Update locate database (run as sudo)
+
+# Windows find
+dir /s filename.txt                     # Search for file recursively
+where filename.exe                      # Find executable in PATH
+
+# Search inside files
+grep "search_term" filename.txt         # Search for text in file
+grep -r "search_term" .                 # Search recursively in all files
+grep -i "search_term" filename.txt      # Case-insensitive search
+grep -n "search_term" filename.txt      # Show line numbers
+grep -v "search_term" filename.txt      # Show lines that DON'T contain term
+grep -E "pattern1|pattern2" file.txt    # Search for multiple patterns
+
+# Windows search
+findstr "search_term" filename.txt      # Search for text in file
+findstr /s "search_term" *              # Search in all files
+
+
+# FILE PERMISSIONS (Unix/Linux/macOS)
+
+# View permissions
+ls -l filename.txt           # Shows permissions like -rw-r--r--
+
+# Permission format: type|owner|group|others
+# - = file, d = directory
+# r = read (4), w = write (2), x = execute (1)
+
+# Change permissions
+chmod 755 script.sh          # rwxr-xr-x (owner: read/write/execute, others: read/execute)
+chmod +x script.sh           # Add execute permission
+chmod -w filename.txt        # Remove write permission
+chmod u+x,g-w,o-r file.txt   # Complex permission changes
+
+# Change ownership
+chown user:group filename.txt      # Change owner and group
+chown user filename.txt            # Change owner only
+sudo chown root:root filename.txt  # Change to root (requires sudo)
+
+
+# PROCESS MANAGEMENT
+
+# View running processes
+ps                           # Show current user's processes
+ps aux                       # Show all processes (detailed)
+ps -ef                       # Alternative detailed view
+top                          # Interactive process viewer (q to quit)
+htop                         # Enhanced process viewer (if installed)
+
+# Windows processes
+tasklist                     # Show running processes
+taskmgr                      # Open Task Manager
+
+# Kill processes
+kill 1234                    # Kill process with PID 1234
+kill -9 1234                 # Force kill process
+killall process_name         # Kill all processes by name
+pkill process_name           # Kill processes by name pattern
+
+# Windows kill
+taskkill /PID 1234           # Kill process by PID
+taskkill /IM notepad.exe     # Kill process by name
+
+# Background processes
+command &                    # Run command in background
+nohup command &              # Run command immune to hangups
+jobs                         # List background jobs
+fg %1                        # Bring job 1 to foreground
+bg %1                        # Send job 1 to background
+
+
+# NETWORK COMMANDS
+
+# Network information
+ping google.com              # Test connectivity
+ping -c 4 google.com         # Ping 4 times only
+traceroute google.com        # Trace route to destination
+netstat -an                  # Show network connections
+ifconfig                     # Show network interfaces (macOS/Linux)
+ip addr show                 # Show IP addresses (Linux)
+
+# Windows network
+ipconfig                     # Show network configuration
+ipconfig /all                # Detailed network information
+tracert google.com           # Trace route (Windows)
+
+# Download files
+wget https://example.com/file.zip        # Download file (Linux)
+curl -O https://example.com/file.zip     # Download file (macOS/Linux)
+curl -L -o file.zip https://short.url    # Follow redirects and rename
+
+# Test web services
+curl https://api.example.com             # Make HTTP request
+curl -X POST -d "data" https://api.com   # POST request with data
+
+
+# SYSTEM INFORMATION
+
+# System details
+uname -a                     # System information
+whoami                       # Current username
+id                           # User and group IDs
+uptime                       # System uptime and load
+date                         # Current date and time
+cal                          # Calendar
+which command                # Show command location
+
+# Windows system info
+systeminfo                  # Detailed system information
+whoami                       # Current username
+echo %USERNAME%              # Username via environment variable
+
+# Disk usage
+df -h                        # Disk space usage (human readable)
+du -sh *                     # Directory sizes in current folder
+du -sh /path/to/directory    # Size of specific directory
+free -h                      # Memory usage (Linux)
+
+# Windows disk info
+dir                          # Basic directory info with sizes
+
+
+# ENVIRONMENT VARIABLES
+
+# View environment variables
+env                          # Show all environment variables
+echo $PATH                   # Show specific variable (Unix)
+echo $HOME                   # Home directory
+printenv PATH                # Alternative way to show variable
+
+# Windows environment
+set                          # Show all environment variables
+echo %PATH%                  # Show specific variable
+echo %USERPROFILE%           # User profile directory
+
+# Set environment variables
+export VAR_NAME="value"      # Set variable (current session)
+export PATH=$PATH:/new/path  # Add to PATH
+
+# Windows set
+set VAR_NAME=value           # Set variable (current session)
+
+
+# ARCHIVE AND COMPRESSION
+
+# Tar archives
+tar -czf archive.tar.gz folder/         # Create compressed archive
+tar -xzf archive.tar.gz                 # Extract compressed archive
+tar -tzf archive.tar.gz                 # List contents without extracting
+tar -xzf archive.tar.gz -C /destination # Extract to specific directory
+
+# Zip files
+zip -r archive.zip folder/              # Create zip archive
+unzip archive.zip                       # Extract zip archive
+unzip -l archive.zip                    # List zip contents
+
+# Windows compression
+# Use built-in tools or third-party software like 7-Zip
+
+
+# TEXT PROCESSING
+
+# Sort and unique
+sort filename.txt            # Sort lines alphabetically
+sort -n numbers.txt          # Sort numerically
+sort -r filename.txt         # Reverse sort
+uniq filename.txt            # Remove duplicate lines
+sort filename.txt | uniq     # Sort and remove duplicates
+
+# Count
+wc filename.txt              # Count lines, words, characters
+wc -l filename.txt           # Count lines only
+wc -w filename.txt           # Count words only
+
+# Cut and paste
+cut -d',' -f1 data.csv       # Extract first column from CSV
+cut -c1-10 filename.txt      # Extract characters 1-10 from each line
+
+# Text replacement
+sed 's/old/new/g' file.txt   # Replace all occurrences of "old" with "new"
+sed -i 's/old/new/g' file.txt # Replace in file (in-place)
+
+# Advanced text processing
+awk '{print $1}' file.txt    # Print first column
+awk -F',' '{print $2}' data.csv # Print second column of CSV
+
+
+# REDIRECTION AND PIPES
+
+# Output redirection
+command > output.txt         # Redirect output to file (overwrite)
+command >> output.txt        # Redirect output to file (append)
+command 2> errors.txt        # Redirect errors to file
+command > output.txt 2>&1    # Redirect both output and errors
+
+# Input redirection
+command < input.txt          # Use file as input
+
+# Pipes (chain commands)
+ls -l | grep ".txt"          # List files and filter for .txt files
+cat file.txt | grep "error" | wc -l    # Count error lines
+ps aux | grep "python"       # Find Python processes
+history | grep "git"         # Search command history
+
+# Useful pipe combinations
+cat /var/log/apache2/access.log | grep "404" | wc -l    # Count 404 errors
+ls -la | sort -k5 -n         # Sort files by size
+du -sh * | sort -h           # Sort directories by size
+
+
+# SHORTCUTS AND PRODUCTIVITY
+
+# Command history
+history                      # Show command history
+!!                          # Repeat last command
+!123                        # Repeat command number 123
+!git                        # Repeat last command starting with "git"
+Ctrl+R                      # Search command history (interactive)
+
+# Command line editing
+Ctrl+A                      # Move to beginning of line
+Ctrl+E                      # Move to end of line
+Ctrl+U                      # Delete from cursor to beginning
+Ctrl+K                      # Delete from cursor to end
+Ctrl+W                      # Delete previous word
+Alt+F                       # Move forward one word
+Alt+B                       # Move backward one word
+
+# Tab completion
+[Tab]                       # Auto-complete commands and filenames
+[Tab][Tab]                  # Show all possible completions
+
+# Job control
+Ctrl+C                      # Interrupt/kill current command
+Ctrl+Z                      # Suspend current command
+Ctrl+D                      # End input/logout
+Ctrl+L                      # Clear screen (same as clear command)
+
+
+# ALIASES AND FUNCTIONS
+
+# Create aliases
+alias ll='ls -la'           # Create shortcut for long listing
+alias grep='grep --color=auto'  # Always colorize grep output
+alias ..='cd ..'            # Quick parent directory navigation
+
+# View aliases
+alias                       # Show all aliases
+
+# Remove alias
+unalias ll                  # Remove specific alias
+
+# Functions (more powerful than aliases)
+mkcd() {
+    mkdir -p "$1" && cd "$1"
+}
+# Usage: mkcd new/directory/path
+
+# Backup function
+backup() {
+    cp "$1" "$1.backup-$(date +%Y%m%d)"
+}
+# Usage: backup important_file.txt
+
+
+# GIT COMMANDS (Development Essential)
+
+# Repository setup
+git init                    # Initialize new repository
+git clone https://github.com/user/repo.git  # Clone repository
+
+# Basic workflow
+git status                  # Check repository status
+git add filename.txt        # Stage specific file
+git add .                   # Stage all changes
+git add -A                  # Stage all changes including deletions
+git commit -m "message"     # Commit with message
+git push                    # Push to remote repository
+git pull                    # Pull from remote repository
+
+# Branching
+git branch                  # List branches
+git branch new-feature      # Create new branch
+git checkout new-feature    # Switch to branch
+git checkout -b new-feature # Create and switch to branch
+git merge feature-branch    # Merge branch into current branch
+git branch -d feature-branch # Delete branch
+
+# History and information
+git log                     # Show commit history
+git log --oneline           # Compact commit history
+git diff                    # Show unstaged changes
+git diff --staged           # Show staged changes
+git show HEAD               # Show last commit details
+
+
+# PACKAGE MANAGERS
+
+# Node.js (npm/yarn)
+npm install package-name    # Install package locally
+npm install -g package-name # Install package globally
+npm list                    # List installed packages
+npm outdated                # Check for outdated packages
+npm update                  # Update packages
+yarn add package-name       # Yarn equivalent of npm install
+
+# Python (pip)
+pip install package-name    # Install Python package
+pip list                    # List installed packages
+pip freeze > requirements.txt  # Save dependencies
+pip install -r requirements.txt # Install from requirements
+
+# macOS (Homebrew)
+brew install package-name   # Install package
+brew list                   # List installed packages
+brew update                 # Update Homebrew
+brew upgrade                # Upgrade packages
+
+# Linux (apt - Ubuntu/Debian)
+sudo apt update             # Update package index
+sudo apt install package   # Install package
+apt list --installed       # List installed packages
+sudo apt remove package    # Remove package
+
+
+# DEVELOPMENT WORKFLOW COMMANDS
+
+# Project initialization
+mkdir my-project && cd my-project  # Create and enter project directory
+git init                           # Initialize git repository
+npm init -y                        # Initialize package.json
+touch README.md .gitignore         # Create essential files
+
+# Server and development
+python -m http.server 8000         # Simple HTTP server (Python 3)
+python -m SimpleHTTPServer 8000    # Simple HTTP server (Python 2)
+php -S localhost:8000              # PHP development server
+npm start                          # Start Node.js application
+npm run dev                        # Run development script
+
+# File monitoring
+tail -f /var/log/apache2/error.log # Monitor log file
+watch -n 2 'ls -la'               # Repeat command every 2 seconds
+fswatch . | xargs -I{} echo "File changed: {}"  # Watch for file changes
+
+# Database
+mysql -u username -p database_name    # Connect to MySQL
+psql -U username database_name         # Connect to PostgreSQL
+sqlite3 database.db                    # Open SQLite database
+
+
+# SYSTEM MAINTENANCE
+
+# Disk cleanup
+sudo apt autoremove         # Remove unnecessary packages (Ubuntu)
+brew cleanup                # Clean up Homebrew cache
+npm cache clean --force     # Clear npm cache
+docker system prune         # Clean up Docker (if installed)
+
+# Service management (Linux)
+sudo systemctl start service_name     # Start service
+sudo systemctl stop service_name      # Stop service
+sudo systemctl status service_name    # Check service status
+sudo systemctl enable service_name    # Enable service at boot
+
+# Log examination
+sudo tail -f /var/log/syslog          # System log
+sudo journalctl -f                    # Systemd journal
+grep "ERROR" /var/log/application.log # Search for errors
+
+
+# REMOTE ACCESS
+
+# SSH (Secure Shell)
+ssh user@hostname           # Connect to remote server
+ssh -p 2222 user@hostname   # Connect using specific port
+ssh-keygen -t rsa           # Generate SSH key pair
+ssh-copy-id user@hostname   # Copy public key to remote server
+
+# SCP (Secure Copy)
+scp file.txt user@hostname:/path/to/destination  # Copy file to remote
+scp user@hostname:/path/to/file.txt .           # Copy file from remote
+scp -r folder user@hostname:/path/              # Copy directory recursively
+
+# RSYNC (efficient file synchronization)
+rsync -av source/ destination/                  # Sync directories
+rsync -av --delete source/ user@host:/dest/     # Sync with deletion
+
+
+# ADVANCED TIPS AND TRICKS
+
+# Command substitution
+echo "Today is $(date)"                         # Command substitution
+files=$(ls *.txt)                              # Store command output
+
+# Conditional execution
+command1 && command2                           # Run command2 only if command1 succeeds
+command1 || command2                           # Run command2 only if command1 fails
+test -f file.txt && echo "File exists"         # Conditional based on file existence
+
+# Loops in command line
+for file in *.txt; do echo "Processing $file"; done      # Process all .txt files
+while read line; do echo "Line: $line"; done < file.txt  # Read file line by line
+
+# Find and execute
+find . -name "*.log" -exec rm {} \;            # Find and delete all .log files
+find . -name "*.js" -exec grep -l "TODO" {} \; # Find JS files containing "TODO"
+
+# Useful one-liners
+grep -r "function" --include="*.js" .          # Search for "function" in all JS files
+find . -type f -name "*.txt" | wc -l           # Count .txt files
+ls -la | awk '{print $9}' | grep -v "^$"      # List only filenames
+du -sh */ | sort -h                            # Sort directories by size
+
+# Multiple commands
+command1; command2; command3                   # Run sequentially regardless of success
+(cd /tmp && ls -la)                           # Run commands in subshell
+
+# Background and nohup
+nohup long-running-command &                   # Run command immune to logout
+screen -S session_name                         # Start screen session
+tmux new -s session_name                       # Start tmux session
+
+
+# TROUBLESHOOTING
+
+# Common issues and solutions
+which command               # Check if command exists and its location
+echo $PATH                  # Check PATH environment variable
+file filename               # Determine file type
+ldd binary_file            # Show shared library dependencies (Linux)
+
+# Permission issues
+ls -la filename            # Check file permissions
+sudo chown $USER:$USER filename  # Take ownership of file
+chmod +x script.sh          # Make script executable
+
+# Disk space issues
+df -h                       # Check disk space
+du -sh * | sort -h          # Find largest directories
+sudo lsof +D /path          # Find open files in directory
+
+# Process issues
+ps aux | grep process_name  # Find process
+kill -9 PID                # Force kill process
+sudo netstat -tulpn        # Check port usage
+
+# Memory issues
+free -h                     # Check memory usage
+top                         # Monitor system resources
+sudo dmesg | tail           # Check system messages
+
+
+# COMMON FILE LOCATIONS
+
+# Configuration files (Linux/macOS)
+~/.bashrc                   # Bash configuration
+~/.zshrc                    # Zsh configuration
+~/.gitconfig                # Git configuration
+~/.ssh/config               # SSH configuration
+/etc/hosts                  # Host file
+/etc/passwd                 # User accounts
+/var/log/                   # Log files directory
+
+# Application directories
+~/Documents                 # User documents
+~/Downloads                 # Downloaded files
+~/Desktop                   # Desktop files
+/usr/local/bin              # User-installed binaries
+/opt/                       # Optional software packages
+
+
+# PRODUCTIVITY SHORTCUTS BY SHELL
+
+# Bash/Zsh shortcuts
+Ctrl+A, Ctrl+E            # Beginning/end of line
+Ctrl+R                    # Reverse search history
+Ctrl+L                    # Clear screen
+Alt+.                     # Insert last argument from previous command
+
+# Fish shell shortcuts
+Alt+Up/Down               # Browse command history
+Alt+Left/Right            # Move by words
+Tab                       # Intelligent autocompletion
+
+# Oh My Zsh plugins (if installed)
+# git plugin: automatic git aliases
+# z plugin: smart directory jumping
+# autosuggestions: command suggestions based on history
+
+
+# SCRIPTING BASICS
+
+# Shebang lines
+#!/bin/bash                # Bash script
+#!/usr/bin/env python3     # Python script
+#!/usr/bin/env node        # Node.js script
+
+# Basic script structure
+#!/bin/bash
+set -e                     # Exit on any error
+echo "Starting script..."
+# Your commands here
+echo "Script completed!"
+
+# Make script executable
+chmod +x script.sh
+./script.sh               # Run script
+
+
+# WINDOWS-SPECIFIC COMMANDS
+
+# PowerShell equivalents
+Get-ChildItem             # ls equivalent
+Get-Content file.txt      # cat equivalent
+Copy-Item                 # cp equivalent
+Move-Item                 # mv equivalent
+Remove-Item               # rm equivalent
+Get-Process               # ps equivalent
+Stop-Process              # kill equivalent
+
+# Windows Command Prompt
+dir                       # List directory
+cd                        # Change directory
+copy                      # Copy files
+move                      # Move files
+del                       # Delete files
+type                      # Display file contents
+find "text" file.txt      # Search in file
+
+
+echo "Terminal Reference Complete!"
+echo "Practice these commands daily to become proficient"
+echo "Remember: man command_name shows detailed help for any command"
+echo "Use command --help or command -h for quick help"
