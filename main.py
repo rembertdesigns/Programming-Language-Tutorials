@@ -745,3 +745,48 @@ print(sys.path)  # Shows where Python looks for modules
 # Installing packages with pip
 # pip install requests
 # pip install pandas numpy matplotlib
+
+
+# USEFUL BUILT-IN FUNCTIONS
+
+# String methods
+text = "  Hello, World!  "
+print(text.strip())           # Remove whitespace
+print(text.lower())           # Convert to lowercase
+print(text.upper())           # Convert to uppercase
+print(text.replace("World", "Python"))  # Replace substring
+print(text.split(","))        # Split into list
+print("Hello" in text)        # Check if substring exists
+
+# String formatting
+name = "Alice"
+age = 25
+print("Name: %s, Age: %d" % (name, age))        # Old style
+print("Name: {}, Age: {}".format(name, age))    # New style
+print(f"Name: {name}, Age: {age}")              # f-strings (recommended)
+
+# Math operations
+import math
+print(abs(-5))          # Absolute value
+print(round(3.14159, 2)) # Round to 2 decimal places
+print(max([1, 5, 3]))   # Maximum value
+print(min([1, 5, 3]))   # Minimum value
+print(sum([1, 2, 3]))   # Sum of values
+print(math.ceil(3.2))   # Ceiling (4)
+print(math.floor(3.8))  # Floor (3)
+print(math.sqrt(16))    # Square root (4.0)
+
+# Working with iterables
+numbers = [1, 2, 3, 4, 5]
+print(len(numbers))                    # Length
+print(any([True, False, False]))       # True if any element is True
+print(all([True, True, False]))        # True if all elements are True
+print(list(reversed(numbers)))         # Reverse iterable
+print(sorted([3, 1, 4, 1, 5]))        # Sort iterable
+print(list(enumerate(numbers)))        # Add indices: [(0, 1), (1, 2), ...]
+print(list(zip([1, 2, 3], ['a', 'b', 'c'])))  # Combine iterables
+
+# Type checking
+print(isinstance(42, int))      # True
+print(isinstance("hello", str)) # True
+print(hasattr([], 'append'))    # True
