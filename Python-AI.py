@@ -2116,3 +2116,125 @@ def automated_ml_pipeline():
         return best_model, results
     
     return create_preprocessing_pipeline, create_full_pipeline, automated_model_selection
+
+
+# PERFORMANCE OPTIMIZATION
+
+def memory_optimization():
+    """
+    Memory optimization techniques for large datasets
+    """
+    def optimize_dataframe_memory(df):
+        """Optimize DataFrame memory usage"""
+        original_memory = df.memory_usage(deep=True).sum()
+        
+        for col in df.columns:
+            col_type = df[col].dtype
+            
+            if col_type != object:
+                c_min = df[col].min()
+                c_max = df[col].max()
+                
+                if str(col_type)[:3] == 'int':
+                    if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
+                        df[col] = df[col].astype(np.int8)
+                    elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
+                        df[col] = df[col].astype(np.int16)
+                    elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+                        df[col] = df[col].astype(np.int32)
+                    elif c_min > np.iinfo(np.int64).min and c_max < np.iinfo(np.int64).max:
+                        df[col] = df[col].astype(np.int64)
+                else:
+                    if c_min > np.finfo(np.float16).min and c_max < np.finfo(np.float16).max:
+                        df[col] = df[col].astype(np.float32)
+                    elif c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+                        df[col] = df[col].astype(np.float32)
+                    else:
+                        df[col] = df[col].astype(np.float64)
+            else:
+                df[col] = df[col].astype('category')
+        
+        optimized_memory = df.memory_usage(deep=True).sum()
+        memory_reduction = (original_memory - optimized_memory) / original_memory * 100
+        
+        print(f"Memory usage reduced by {memory_reduction:.2f}%")
+        print(f"Original: {original_memory / 1024**2:.2f} MB")
+        print(f"Optimized: {optimized_memory / 1024**2:.2f} MB")
+        
+        return df
+    
+    def chunked_processing(file_path, chunk_size=10000, processing_func=None):
+        """Process large files in chunks"""
+        results = []
+        
+        for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+            if processing_func:
+                processed_chunk = processing_func(chunk)
+                results.append(processed_chunk)
+            else:
+                results.append(chunk)
+        
+        return pd.concat(results, ignore_index=True) if results else None
+    
+    return optimize_dataframe_memory, chunked_processing
+
+def parallel_processing():
+    """
+    Parallel processing techniques for ML workflows
+    """
+    from multiprocessing import Pool, cpu_count
+    from joblib import Parallel, delayed
+    
+    def parallel_cross_validation(model, X, y, cv_folds=5, n_jobs=-1):
+        """Parallel cross-validation"""
+        def train_fold(train_idx, test_idx):
+            X_train_fold, X_test_fold = X.iloc[train_idx], X.iloc[test_idx]
+            y_train_fold, y_test_fold = y.iloc[train_idx], y.iloc[test_idx]
+            
+            model_clone = clone(model)
+            model_clone.fit(X_train_fold, y_train_fold)
+            score = model_clone.score(X_test_fold, y_test_fold)
+            return score
+        
+        from sklearn.model_selection import KFold
+        from sklearn.base import clone
+        
+        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        
+        scores = Parallel(n_jobs=n_jobs)(
+            delayed(train_fold)(train_idx, test_idx) 
+            for train_idx, test_idx in kf.split(X)
+        )
+        
+        return np.array(scores)
+    
+    def parallel_hyperparameter_search(model_class, param_grid, X, y, n_jobs=-1):
+        """Parallel hyperparameter search"""
+        from itertools import product
+        from sklearn.model_selection import train_test_split
+        
+        def evaluate_params(params):
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            model = model_class(**params)
+            model.fit(X_train, y_train)
+            score = model.score(X_val, y_val)
+            
+            return params, score
+        
+        # Generate all parameter combinations
+        param_combinations = [
+            dict(zip(param_grid.keys(), values))
+            for values in product(*param_grid.values())
+        ]
+        
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(evaluate_params)(params) for params in param_combinations
+        )
+        
+        # Find best parameters
+        best_params, best_score = max(results, key=lambda x: x[1])
+        
+        return best_params, best_score, results
+    
+    return parallel_cross_validation, parallel_hyperparameter_search
