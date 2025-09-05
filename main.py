@@ -1486,3 +1486,349 @@ setup(
 # python setup.py sdist bdist_wheel
 # pip install twine
 # twine upload dist/*
+
+
+# DEBUGGING AND DEVELOPMENT TOOLS
+
+import pdb
+import traceback
+
+# Using the debugger
+def problematic_function(data):
+    result = []
+    for item in data:
+        # Set breakpoint
+        pdb.set_trace()  # Execution will pause here
+        processed = item * 2
+        result.append(processed)
+    return result
+
+# Better debugging with breakpoint() - Python 3.7+
+def better_debugging(data):
+    result = []
+    for item in data:
+        breakpoint()  # Modern way to set breakpoint
+        processed = item * 2
+        result.append(processed)
+    return result
+
+# Exception handling with traceback
+def handle_errors_gracefully():
+    try:
+        # Some risky operation
+        result = 10 / 0
+    except Exception as e:
+        # Print detailed traceback
+        traceback.print_exc()
+        # Or get traceback as string
+        error_details = traceback.format_exc()
+        logger.error(f"Error occurred: {error_details}")
+
+# Assert statements for debugging
+def validate_input(value):
+    assert isinstance(value, int), f"Expected int, got {type(value)}"
+    assert value > 0, f"Expected positive value, got {value}"
+    return value * 2
+
+
+# SECURITY CONSIDERATIONS
+
+import hashlib
+import secrets
+import hmac
+
+# Password hashing (use bcrypt or argon2 in production)
+def hash_password(password):
+    """Hash a password with salt."""
+    salt = secrets.token_hex(16)
+    hashed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}:{hashed.hex()}"
+
+def verify_password(password, hashed_password):
+    """Verify a password against its hash."""
+    salt, hash_value = hashed_password.split(':')
+    new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return hmac.compare_digest(hash_value, new_hash.hex())
+
+# Generate secure random values
+secure_token = secrets.token_urlsafe(32)
+secure_password = secrets.token_hex(16)
+
+# Input validation
+def validate_email(email):
+    """Basic email validation."""
+    import re
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+    return re.match(pattern, email) is not None
+
+def sanitize_input(user_input):
+    """Sanitize user input."""
+    # Remove potentially dangerous characters
+    dangerous_chars = ['<', '>', '"', "'", '&']
+    sanitized = user_input
+    for char in dangerous_chars:
+        sanitized = sanitized.replace(char, '')
+    return sanitized.strip()
+
+# SQL injection prevention (always use parameterized queries)
+def safe_database_query(user_id):
+    # GOOD - parameterized query
+    query = "SELECT * FROM users WHERE id = ?"
+    # cursor.execute(query, (user_id,))
+    
+    # BAD - string formatting (vulnerable to SQL injection)
+    # query = f"SELECT * FROM users WHERE id = {user_id}"
+
+
+# WORKING WITH APIS - ADVANCED
+
+import requests
+from typing import Optional, Dict, Any
+import json
+
+class APIClient:
+    """A robust API client with error handling and retries."""
+    
+    def __init__(self, base_url: str, api_key: Optional[str] = None):
+        self.base_url = base_url.rstrip('/')
+        self.session = requests.Session()
+        
+        if api_key:
+            self.session.headers.update({'Authorization': f'Bearer {api_key}'})
+        
+        # Set common headers
+        self.session.headers.update({
+            'Content-Type': 'application/json',
+            'User-Agent': 'Python-API-Client/1.0'
+        })
+    
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[Any, Any]:
+        """Make HTTP request with error handling."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        
+        try:
+            response = self.session.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response.json() if response.content else {}
+            
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 401:
+                raise Exception("Authentication failed")
+            elif response.status_code == 429:
+                raise Exception("Rate limit exceeded")
+            else:
+                raise Exception(f"HTTP error {response.status_code}: {e}")
+                
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Request failed: {e}")
+    
+    def get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[Any, Any]:
+        return self._make_request('GET', endpoint, params=params)
+    
+    def post(self, endpoint: str, data: Optional[Dict] = None) -> Dict[Any, Any]:
+        return self._make_request('POST', endpoint, json=data)
+    
+    def put(self, endpoint: str, data: Optional[Dict] = None) -> Dict[Any, Any]:
+        return self._make_request('PUT', endpoint, json=data)
+    
+    def delete(self, endpoint: str) -> Dict[Any, Any]:
+        return self._make_request('DELETE', endpoint)
+
+# Usage
+# client = APIClient("https://api.example.com", "your-api-key")
+# users = client.get("/users", params={"page": 1, "limit": 10})
+
+
+# COMMAND LINE INTERFACES
+
+import argparse
+import sys
+
+# Basic argument parsing
+def create_cli():
+    parser = argparse.ArgumentParser(description="Process some files")
+    
+    # Positional argument
+    parser.add_argument("filename", help="Input file to process")
+    
+    # Optional arguments
+    parser.add_argument("--output", "-o", help="Output file")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--format", choices=["json", "csv", "xml"], default="json")
+    parser.add_argument("--count", type=int, default=10, help="Number of items to process")
+    
+    return parser
+
+def main():
+    parser = create_cli()
+    args = parser.parse_args()
+    
+    if args.verbose:
+        print(f"Processing {args.filename}")
+        print(f"Output format: {args.format}")
+    
+    # Process file
+    try:
+        with open(args.filename, 'r') as file:
+            # Process file content
+            pass
+    except FileNotFoundError:
+        print(f"Error: File '{args.filename}' not found", file=sys.stderr)
+        sys.exit(1)
+
+# if __name__ == "__main__":
+#     main()
+
+# Using Click for more advanced CLIs (pip install click)
+"""
+import click
+
+@click.command()
+@click.argument('filename')
+@click.option('--output', '-o', help='Output file')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+@click.option('--format', type=click.Choice(['json', 'csv', 'xml']), default='json')
+def process_file(filename, output, verbose, format):
+    '''Process a file and optionally save output.'''
+    if verbose:
+        click.echo(f'Processing {filename}')
+    
+    # Process file
+    click.echo(f'File processed in {format} format')
+
+if __name__ == '__main__':
+    process_file()
+"""
+
+
+# FINAL ADVANCED TOPICS
+
+# Metaclasses (advanced topic)
+class SingletonMeta(type):
+    """Metaclass for creating singleton classes."""
+    _instances = {}
+    
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class DatabaseConnection(metaclass=SingletonMeta):
+    def __init__(self):
+        self.connected = False
+    
+    def connect(self):
+        self.connected = True
+
+# Both will be the same instance
+db1 = DatabaseConnection()
+db2 = DatabaseConnection()
+print(db1 is db2)  # True
+
+# Descriptors
+class ValidatedAttribute:
+    """Descriptor for validated attributes."""
+    
+    def __init__(self, validator):
+        self.validator = validator
+        self.name = None
+    
+    def __set_name__(self, owner, name):
+        self.name = f"_{name}"
+    
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return getattr(obj, self.name, None)
+    
+    def __set__(self, obj, value):
+        if not self.validator(value):
+            raise ValueError(f"Invalid value for {self.name}")
+        setattr(obj, self.name, value)
+
+class Person:
+    age = ValidatedAttribute(lambda x: isinstance(x, int) and 0 <= x <= 150)
+    name = ValidatedAttribute(lambda x: isinstance(x, str) and len(x) > 0)
+    
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+# person = Person("Alice", 25)  # Valid
+# person.age = -5  # Raises ValueError
+
+# Context variables (Python 3.7+)
+import contextvars
+
+# Useful for tracking request IDs, user sessions, etc.
+request_id = contextvars.ContextVar('request_id')
+
+def process_request():
+    # Set context variable
+    request_id.set("req-123")
+    
+    # Call other functions that can access the context
+    do_something()
+
+def do_something():
+    # Get context variable
+    current_request_id = request_id.get("default")
+    print(f"Processing request: {current_request_id}")
+
+
+# COMMON GOTCHAS AND PITFALLS
+
+# 1. Mutable default arguments
+def bad_function(items=[]):  # DON'T DO THIS
+    items.append("new item")
+    return items
+
+def good_function(items=None):  # DO THIS INSTEAD
+    if items is None:
+        items = []
+    items.append("new item")
+    return items
+
+# 2. Late binding closures
+functions = []
+for i in range(3):
+    functions.append(lambda: i)  # All functions will return 2
+
+# Fix with default argument
+functions = []
+for i in range(3):
+    functions.append(lambda x=i: x)  # Each function returns its own value
+
+# 3. Modifying list while iterating
+numbers = [1, 2, 3, 4, 5]
+# DON'T DO THIS
+# for num in numbers:
+#     if num % 2 == 0:
+#         numbers.remove(num)  # Skips elements
+
+# DO THIS INSTEAD
+numbers = [num for num in numbers if num % 2 != 0]
+
+# 4. Comparing singletons with ==
+x = None
+if x is None:  # GOOD
+    pass
+
+if x == None:  # BAD (though it works)
+    pass
+
+# 5. Integer caching behavior
+a = 256
+b = 256
+print(a is b)  # True (small integers are cached)
+
+a = 257
+b = 257
+print(a is b)  # False (larger integers are not cached)
+
+
+print("\n" + "="*50)
+print("Python Reference Complete!")
+print("This covers fundamental to advanced Python concepts")
+print("Practice these examples and build projects to master Python")
+print("="*50)
