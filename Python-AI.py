@@ -1528,3 +1528,142 @@ def model_interpretability():
         return explanation
     
     return explain_with_shap, explain_with_lime
+
+
+# DEPLOYMENT AND PRODUCTION
+
+# Model serialization
+import joblib
+import pickle
+
+def save_load_models():
+    """
+    Save and load machine learning models
+    """
+    # Save with joblib (recommended for scikit-learn)
+    def save_model_joblib(model, filename):
+        joblib.dump(model, filename)
+    
+    def load_model_joblib(filename):
+        return joblib.load(filename)
+    
+    # Save with pickle
+    def save_model_pickle(model, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(model, f)
+    
+    def load_model_pickle(filename):
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    
+    return save_model_joblib, load_model_joblib, save_model_pickle, load_model_pickle
+
+# API creation with FastAPI
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+def create_ml_api():
+    """
+    Create a machine learning API with FastAPI
+    """
+    app = FastAPI(title="ML API", description="Machine Learning API for predictions")
+    
+    # Load model (in production, do this once at startup)
+    # model = joblib.load("model.pkl")
+    
+    class PredictionRequest(BaseModel):
+        features: list
+    
+    class PredictionResponse(BaseModel):
+        prediction: float
+        probability: float = None
+    
+    @app.post("/predict", response_model=PredictionResponse)
+    async def predict(request: PredictionRequest):
+        """Make predictions using the trained model"""
+        try:
+            # features_array = np.array(request.features).reshape(1, -1)
+            # prediction = model.predict(features_array)[0]
+            # probability = model.predict_proba(features_array)[0].max() if hasattr(model, 'predict_proba') else None
+            
+            # Mock response
+            prediction = 0.85
+            probability = 0.92
+            
+            return PredictionResponse(prediction=prediction, probability=probability)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint"""
+        return {"status": "healthy"}
+    
+    return app
+
+# Docker deployment
+def create_dockerfile():
+    """
+    Create Dockerfile for ML application deployment
+    """
+    dockerfile_content = """
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+"""
+    
+    requirements_content = """
+fastapi==0.68.0
+uvicorn==0.15.0
+pandas==1.3.3
+scikit-learn==1.0.2
+numpy==1.21.2
+joblib==1.0.1
+"""
+    
+    return dockerfile_content, requirements_content
+
+# Monitoring and logging
+import logging
+from datetime import datetime
+
+def setup_ml_monitoring():
+    """
+    Setup monitoring and logging for ML applications
+    """
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('ml_app.log'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    
+    def log_prediction(features, prediction, model_version="1.0"):
+        """Log prediction for monitoring"""
+        log_data = {
+            "timestamp": datetime.now().isoformat(),
+            "features": features,
+            "prediction": prediction,
+            "model_version": model_version
+        }
+        logger.info(f"Prediction made: {log_data}")
+    
+    def log_model_performance(metrics):
+        """Log model performance metrics"""
+        logger.info(f"Model performance: {metrics}")
+    
+    return log_prediction, log_model_performance
