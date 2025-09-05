@@ -635,3 +635,103 @@ def train_pytorch_model(model, dataloader, criterion, optimizer, epochs=10):
         print(f'Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.4f}')
 
 # train_pytorch_model(model, dataloader, criterion, optimizer)
+
+
+# HUGGING FACE TRANSFORMERS - PRE-TRAINED MODELS
+
+from transformers import (
+    AutoTokenizer, AutoModel, AutoModelForSequenceClassification,
+    pipeline, GPT2LMHeadModel, GPT2Tokenizer, BertTokenizer, BertModel
+)
+
+# Text classification pipeline
+classifier = pipeline("sentiment-analysis")
+results = classifier(["I love this product!", "This is terrible.", "It's okay."])
+for result in results:
+    print(f"Text: {result}")
+
+# Named Entity Recognition
+ner = pipeline("ner", aggregation_strategy="simple")
+text = "Apple Inc. was founded by Steve Jobs in Cupertino, California."
+entities = ner(text)
+for entity in entities:
+    print(f"Entity: {entity['word']}, Label: {entity['entity_group']}, Score: {entity['score']:.4f}")
+
+# Text Generation
+generator = pipeline("text-generation", model="gpt2")
+prompts = ["The future of artificial intelligence is"]
+generated = generator(prompts, max_length=50, num_return_sequences=2)
+for gen in generated:
+    print(f"Generated: {gen['generated_text']}")
+
+# Question Answering
+qa_pipeline = pipeline("question-answering")
+context = """
+Machine learning is a subset of artificial intelligence that focuses on algorithms 
+that can learn and make decisions from data without being explicitly programmed.
+"""
+question = "What is machine learning?"
+answer = qa_pipeline(question=question, context=context)
+print(f"Answer: {answer['answer']}, Score: {answer['score']:.4f}")
+
+# Working with BERT for embeddings
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertModel.from_pretrained('bert-base-uncased')
+
+def get_bert_embeddings(texts):
+    encoded = tokenizer(texts, padding=True, truncation=True, return_tensors='pt')
+    
+    with torch.no_grad():
+        outputs = model(**encoded)
+        # Use the [CLS] token embedding as sentence representation
+        embeddings = outputs.last_hidden_state[:, 0, :].numpy()
+    
+    return embeddings
+
+texts = ["I love machine learning", "Natural language processing is fascinating"]
+embeddings = get_bert_embeddings(texts)
+print(f"Embedding shape: {embeddings.shape}")
+
+# Fine-tuning example (simplified)
+def fine_tune_classifier(train_texts, train_labels, model_name="bert-base-uncased"):
+    from transformers import Trainer, TrainingArguments
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+    
+    # Tokenize training data
+    train_encodings = tokenizer(train_texts, truncation=True, padding=True)
+    
+    class Dataset(torch.utils.data.Dataset):
+        def __init__(self, encodings, labels):
+            self.encodings = encodings
+            self.labels = labels
+
+        def __getitem__(self, idx):
+            item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+            item['labels'] = torch.tensor(self.labels[idx])
+            return item
+
+        def __len__(self):
+            return len(self.labels)
+    
+    train_dataset = Dataset(train_encodings, train_labels)
+    
+    training_args = TrainingArguments(
+        output_dir='./results',
+        num_train_epochs=3,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=64,
+        warmup_steps=500,
+        weight_decay=0.01,
+        logging_dir='./logs',
+    )
+    
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+    )
+    
+    trainer.train()
+    return model, tokenizer
