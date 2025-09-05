@@ -206,3 +206,61 @@ let user: { name: string; age: number } = {
   }
   
   let upperCase: StringProcessor = (input) => input.toUpperCase();
+
+
+  // UNION AND INTERSECTION TYPES
+
+// Union types (OR)
+let stringOrNumber: string | number;
+stringOrNumber = "hello";               // OK
+stringOrNumber = 42;                    // OK
+// stringOrNumber = true;               // Error
+
+// Union with literal types
+let size: "small" | "medium" | "large" = "medium";
+
+// Type guards for unions
+function processValue(value: string | number): string {
+  if (typeof value === "string") {
+    return value.toUpperCase();         // TypeScript knows it's a string
+  } else {
+    return value.toString();            // TypeScript knows it's a number
+  }
+}
+
+// Intersection types (AND)
+interface Colorful {
+  color: string;
+}
+
+interface Circle {
+  radius: number;
+}
+
+type ColorfulCircle = Colorful & Circle;
+
+let circle: ColorfulCircle = {
+  color: "red",
+  radius: 10
+};
+
+
+// LITERAL TYPES
+
+// String literals
+let direction: "north" | "south" | "east" | "west";
+direction = "north";                    // OK
+// direction = "up";                    // Error
+
+// Numeric literals
+let diceRoll: 1 | 2 | 3 | 4 | 5 | 6;
+
+// Boolean literals
+let truthyOnly: true = true;
+// let falsyValue: true = false;        // Error
+
+// Template literal types (TypeScript 4.1+)
+type Greeting = `hello ${string}`;
+let greeting1: Greeting = "hello world";    // OK
+let greeting2: Greeting = "hello there";    // OK
+// let greeting3: Greeting = "hi there";    // Error
