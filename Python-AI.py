@@ -1667,3 +1667,452 @@ def setup_ml_monitoring():
         logger.info(f"Model performance: {metrics}")
     
     return log_prediction, log_model_performance
+
+
+# BEST PRACTICES AND UTILITIES
+
+def data_validation():
+    """
+    Data validation and quality checks
+    """
+    def check_data_quality(df):
+        """Comprehensive data quality check"""
+        quality_report = {
+            "shape": df.shape,
+            "missing_values": df.isnull().sum().to_dict(),
+            "duplicates": df.duplicated().sum(),
+            "data_types": df.dtypes.to_dict(),
+            "memory_usage": df.memory_usage(deep=True).sum(),
+            "unique_counts": df.nunique().to_dict()
+        }
+        
+        # Check for potential issues
+        issues = []
+        if quality_report["duplicates"] > 0:
+            issues.append(f"Found {quality_report['duplicates']} duplicate rows")
+        
+        if any(count > 0 for count in quality_report["missing_values"].values()):
+            issues.append("Missing values detected")
+        
+        quality_report["issues"] = issues
+        return quality_report
+    
+    def detect_outliers(df, method="iqr"):
+        """Detect outliers in numerical columns"""
+        outliers = {}
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        for col in numeric_cols:
+            if method == "iqr":
+                Q1 = df[col].quantile(0.25)
+                Q3 = df[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                outliers[col] = df[(df[col] < lower_bound) | (df[col] > upper_bound)].index.tolist()
+            
+            elif method == "zscore":
+                from scipy import stats
+                z_scores = np.abs(stats.zscore(df[col]))
+                outliers[col] = df[z_scores > 3].index.tolist()
+        
+        return outliers
+    
+    return check_data_quality, detect_outliers
+
+def model_evaluation_suite():
+    """
+    Comprehensive model evaluation utilities
+    """
+    def evaluate_classification_model(y_true, y_pred, y_prob=None, class_names=None):
+        """Comprehensive classification evaluation"""
+        from sklearn.metrics import (
+            accuracy_score, precision_recall_fscore_support, 
+            confusion_matrix, roc_auc_score, roc_curve,
+            precision_recall_curve, average_precision_score
+        )
+        
+        # Basic metrics
+        accuracy = accuracy_score(y_true, y_pred)
+        precision, recall, f1, support = precision_recall_fscore_support(y_true, y_pred, average='weighted')
+        
+        # Confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        
+        results = {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1,
+            'confusion_matrix': cm,
+            'support': support
+        }
+        
+        # ROC AUC if probabilities provided
+        if y_prob is not None:
+            if len(np.unique(y_true)) == 2:  # Binary classification
+                results['roc_auc'] = roc_auc_score(y_true, y_prob[:, 1])
+                results['average_precision'] = average_precision_score(y_true, y_prob[:, 1])
+            else:  # Multiclass
+                results['roc_auc'] = roc_auc_score(y_true, y_prob, multi_class='ovr')
+        
+        # Visualization
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Confusion Matrix
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[0, 0])
+        axes[0, 0].set_title('Confusion Matrix')
+        axes[0, 0].set_xlabel('Predicted')
+        axes[0, 0].set_ylabel('Actual')
+        
+        # ROC Curve (for binary classification)
+        if y_prob is not None and len(np.unique(y_true)) == 2:
+            fpr, tpr, _ = roc_curve(y_true, y_prob[:, 1])
+            axes[0, 1].plot(fpr, tpr, label=f'ROC Curve (AUC = {results["roc_auc"]:.3f})')
+            axes[0, 1].plot([0, 1], [0, 1], 'k--')
+            axes[0, 1].set_xlabel('False Positive Rate')
+            axes[0, 1].set_ylabel('True Positive Rate')
+            axes[0, 1].set_title('ROC Curve')
+            axes[0, 1].legend()
+        
+        # Precision-Recall Curve (for binary classification)
+        if y_prob is not None and len(np.unique(y_true)) == 2:
+            precision_curve, recall_curve, _ = precision_recall_curve(y_true, y_prob[:, 1])
+            axes[1, 0].plot(recall_curve, precision_curve, 
+                           label=f'PR Curve (AP = {results["average_precision"]:.3f})')
+            axes[1, 0].set_xlabel('Recall')
+            axes[1, 0].set_ylabel('Precision')
+            axes[1, 0].set_title('Precision-Recall Curve')
+            axes[1, 0].legend()
+        
+        # Feature importance (if available)
+        axes[1, 1].text(0.1, 0.5, f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1:.3f}')
+        axes[1, 1].set_title('Model Metrics Summary')
+        axes[1, 1].axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return results
+    
+    def evaluate_regression_model(y_true, y_pred):
+        """Comprehensive regression evaluation"""
+        from sklearn.metrics import (
+            mean_squared_error, mean_absolute_error, 
+            r2_score, explained_variance_score
+        )
+        
+        mse = mean_squared_error(y_true, y_pred)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y_true, y_pred)
+        r2 = r2_score(y_true, y_pred)
+        explained_var = explained_variance_score(y_true, y_pred)
+        
+        # Calculate residuals
+        residuals = y_true - y_pred
+        
+        results = {
+            'mse': mse,
+            'rmse': rmse,
+            'mae': mae,
+            'r2_score': r2,
+            'explained_variance': explained_var,
+            'residuals': residuals
+        }
+        
+        # Visualization
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Actual vs Predicted
+        axes[0, 0].scatter(y_true, y_pred, alpha=0.6)
+        axes[0, 0].plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2)
+        axes[0, 0].set_xlabel('Actual Values')
+        axes[0, 0].set_ylabel('Predicted Values')
+        axes[0, 0].set_title('Actual vs Predicted')
+        
+        # Residuals plot
+        axes[0, 1].scatter(y_pred, residuals, alpha=0.6)
+        axes[0, 1].axhline(y=0, color='r', linestyle='--')
+        axes[0, 1].set_xlabel('Predicted Values')
+        axes[0, 1].set_ylabel('Residuals')
+        axes[0, 1].set_title('Residuals Plot')
+        
+        # Residuals histogram
+        axes[1, 0].hist(residuals, bins=30, alpha=0.7, edgecolor='black')
+        axes[1, 0].set_xlabel('Residuals')
+        axes[1, 0].set_ylabel('Frequency')
+        axes[1, 0].set_title('Residuals Distribution')
+        
+        # Q-Q plot
+        from scipy import stats
+        stats.probplot(residuals, dist="norm", plot=axes[1, 1])
+        axes[1, 1].set_title('Q-Q Plot')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return results
+    
+    return evaluate_classification_model, evaluate_regression_model
+
+def cross_validation_suite():
+    """
+    Advanced cross-validation techniques
+    """
+    from sklearn.model_selection import (
+        StratifiedKFold, TimeSeriesSplit, GroupKFold,
+        cross_validate, learning_curve, validation_curve
+    )
+    
+    def advanced_cross_validation(model, X, y, cv_type='stratified', n_splits=5, groups=None):
+        """Perform advanced cross-validation"""
+        
+        # Choose CV strategy
+        if cv_type == 'stratified':
+            cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        elif cv_type == 'time_series':
+            cv = TimeSeriesSplit(n_splits=n_splits)
+        elif cv_type == 'group':
+            cv = GroupKFold(n_splits=n_splits)
+        else:
+            cv = n_splits
+        
+        # Scoring metrics
+        scoring = ['accuracy', 'precision_weighted', 'recall_weighted', 'f1_weighted']
+        
+        # Perform cross-validation
+        cv_results = cross_validate(
+            model, X, y, cv=cv, scoring=scoring, 
+            return_train_score=True, groups=groups
+        )
+        
+        # Summarize results
+        results_summary = {}
+        for metric in scoring:
+            results_summary[metric] = {
+                'test_mean': cv_results[f'test_{metric}'].mean(),
+                'test_std': cv_results[f'test_{metric}'].std(),
+                'train_mean': cv_results[f'train_{metric}'].mean(),
+                'train_std': cv_results[f'train_{metric}'].std()
+            }
+        
+        return cv_results, results_summary
+    
+    def plot_learning_curve(model, X, y, cv=5, train_sizes=None):
+        """Plot learning curves"""
+        if train_sizes is None:
+            train_sizes = np.linspace(0.1, 1.0, 10)
+        
+        train_sizes, train_scores, val_scores = learning_curve(
+            model, X, y, cv=cv, train_sizes=train_sizes, 
+            scoring='accuracy', n_jobs=-1
+        )
+        
+        train_mean = np.mean(train_scores, axis=1)
+        train_std = np.std(train_scores, axis=1)
+        val_mean = np.mean(val_scores, axis=1)
+        val_std = np.std(val_scores, axis=1)
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(train_sizes, train_mean, 'o-', color='blue', label='Training Score')
+        plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.1, color='blue')
+        
+        plt.plot(train_sizes, val_mean, 'o-', color='red', label='Validation Score')
+        plt.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.1, color='red')
+        
+        plt.xlabel('Training Set Size')
+        plt.ylabel('Accuracy Score')
+        plt.title('Learning Curves')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        
+        return train_sizes, train_scores, val_scores
+    
+    def plot_validation_curve(model, X, y, param_name, param_range, cv=5):
+        """Plot validation curves for hyperparameter tuning"""
+        train_scores, val_scores = validation_curve(
+            model, X, y, param_name=param_name, param_range=param_range,
+            cv=cv, scoring='accuracy', n_jobs=-1
+        )
+        
+        train_mean = np.mean(train_scores, axis=1)
+        train_std = np.std(train_scores, axis=1)
+        val_mean = np.mean(val_scores, axis=1)
+        val_std = np.std(val_scores, axis=1)
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(param_range, train_mean, 'o-', color='blue', label='Training Score')
+        plt.fill_between(param_range, train_mean - train_std, train_mean + train_std, alpha=0.1, color='blue')
+        
+        plt.plot(param_range, val_mean, 'o-', color='red', label='Validation Score')
+        plt.fill_between(param_range, val_mean - val_std, val_mean + val_std, alpha=0.1, color='red')
+        
+        plt.xlabel(param_name)
+        plt.ylabel('Accuracy Score')
+        plt.title(f'Validation Curve for {param_name}')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        
+        return train_scores, val_scores
+    
+    return advanced_cross_validation, plot_learning_curve, plot_validation_curve
+
+def ensemble_methods():
+    """
+    Advanced ensemble learning techniques
+    """
+    from sklearn.ensemble import VotingClassifier, BaggingClassifier, AdaBoostClassifier
+    from sklearn.ensemble import GradientBoostingClassifier, ExtraTreesClassifier
+    
+    def create_voting_ensemble(base_models, X_train, y_train, voting='hard'):
+        """Create a voting ensemble"""
+        voting_clf = VotingClassifier(
+            estimators=base_models,
+            voting=voting
+        )
+        voting_clf.fit(X_train, y_train)
+        return voting_clf
+    
+    def create_stacking_ensemble(base_models, meta_model, X_train, y_train, cv=5):
+        """Create a stacking ensemble"""
+        from sklearn.ensemble import StackingClassifier
+        
+        stacking_clf = StackingClassifier(
+            estimators=base_models,
+            final_estimator=meta_model,
+            cv=cv
+        )
+        stacking_clf.fit(X_train, y_train)
+        return stacking_clf
+    
+    def create_boosting_ensemble(base_estimator, n_estimators=50, learning_rate=1.0):
+        """Create an AdaBoost ensemble"""
+        ada_boost = AdaBoostClassifier(
+            base_estimator=base_estimator,
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            random_state=42
+        )
+        return ada_boost
+    
+    def compare_ensemble_methods(X_train, X_test, y_train, y_test):
+        """Compare different ensemble methods"""
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.svm import SVC
+        
+        # Base models
+        base_models = [
+            ('lr', LogisticRegression(random_state=42)),
+            ('dt', DecisionTreeClassifier(random_state=42)),
+            ('svm', SVC(probability=True, random_state=42))
+        ]
+        
+        # Ensemble methods
+        ensembles = {
+            'Voting (Hard)': VotingClassifier(estimators=base_models, voting='hard'),
+            'Voting (Soft)': VotingClassifier(estimators=base_models, voting='soft'),
+            'Bagging': BaggingClassifier(random_state=42),
+            'AdaBoost': AdaBoostClassifier(random_state=42),
+            'Gradient Boosting': GradientBoostingClassifier(random_state=42),
+            'Extra Trees': ExtraTreesClassifier(random_state=42)
+        }
+        
+        results = {}
+        for name, ensemble in ensembles.items():
+            ensemble.fit(X_train, y_train)
+            accuracy = ensemble.score(X_test, y_test)
+            results[name] = accuracy
+            print(f"{name}: {accuracy:.4f}")
+        
+        return results
+    
+    return create_voting_ensemble, create_stacking_ensemble, create_boosting_ensemble, compare_ensemble_methods
+
+def automated_ml_pipeline():
+    """
+    Automated ML pipeline creation
+    """
+    from sklearn.pipeline import Pipeline
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+    from sklearn.impute import SimpleImputer
+    
+    def create_preprocessing_pipeline(numeric_features, categorical_features):
+        """Create preprocessing pipeline"""
+        
+        # Numeric pipeline
+        numeric_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='median')),
+            ('scaler', StandardScaler())
+        ])
+        
+        # Categorical pipeline
+        categorical_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ])
+        
+        # Combine preprocessing steps
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', numeric_transformer, numeric_features),
+                ('cat', categorical_transformer, categorical_features)
+            ]
+        )
+        
+        return preprocessor
+    
+    def create_full_pipeline(preprocessor, model):
+        """Create full ML pipeline"""
+        pipeline = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', model)
+        ])
+        return pipeline
+    
+    def automated_model_selection(X, y, test_size=0.2):
+        """Automated model selection and evaluation"""
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+        
+        # Identify feature types
+        numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        categorical_features = X.select_dtypes(include=['object']).columns.tolist()
+        
+        # Create preprocessor
+        preprocessor = create_preprocessing_pipeline(numeric_features, categorical_features)
+        
+        # Models to test
+        models = {
+            'Logistic Regression': LogisticRegression(random_state=42),
+            'Random Forest': RandomForestClassifier(random_state=42),
+            'Gradient Boosting': GradientBoostingClassifier(random_state=42),
+            'SVM': SVC(random_state=42)
+        }
+        
+        results = {}
+        best_model = None
+        best_score = 0
+        
+        for name, model in models.items():
+            # Create pipeline
+            pipeline = create_full_pipeline(preprocessor, model)
+            
+            # Train and evaluate
+            pipeline.fit(X_train, y_train)
+            score = pipeline.score(X_test, y_test)
+            
+            results[name] = score
+            
+            if score > best_score:
+                best_score = score
+                best_model = pipeline
+            
+            print(f"{name}: {score:.4f}")
+        
+        return best_model, results
+    
+    return create_preprocessing_pipeline, create_full_pipeline, automated_model_selection
