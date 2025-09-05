@@ -1337,3 +1337,194 @@ def create_ml_app():
 # Run the Streamlit app
 # if __name__ == "__main__":
 #     create_ml_app()
+
+
+# GRADIO - INTERACTIVE ML INTERFACES
+
+import gradio as gr
+
+def create_gradio_interface():
+    """
+    Create interactive ML interfaces with Gradio
+    """
+    
+    def predict_sentiment(text):
+        """Simple sentiment prediction function"""
+        blob = TextBlob(text)
+        polarity = blob.sentiment.polarity
+        
+        if polarity > 0.1:
+            return "Positive", polarity
+        elif polarity < -0.1:
+            return "Negative", polarity
+        else:
+            return "Neutral", polarity
+    
+    def classify_image(image):
+        """Mock image classification function"""
+        # In reality, you would use a trained model here
+        return {"cat": 0.7, "dog": 0.3}
+    
+    # Text interface
+    text_interface = gr.Interface(
+        fn=predict_sentiment,
+        inputs=gr.Textbox(placeholder="Enter text for sentiment analysis..."),
+        outputs=[gr.Textbox(label="Sentiment"), gr.Number(label="Polarity Score")],
+        title="Sentiment Analysis",
+        description="Analyze the sentiment of your text"
+    )
+    
+    # Image interface
+    image_interface = gr.Interface(
+        fn=classify_image,
+        inputs=gr.Image(),
+        outputs=gr.Label(num_top_classes=3),
+        title="Image Classification",
+        description="Upload an image to classify"
+    )
+    
+    # Combine interfaces in tabs
+    demo = gr.TabbedInterface(
+        [text_interface, image_interface],
+        ["Sentiment Analysis", "Image Classification"]
+    )
+    
+    return demo
+
+# Launch Gradio interface
+# demo = create_gradio_interface()
+# demo.launch()
+
+
+# ADVANCED TOPICS
+
+# Time Series Analysis
+def time_series_analysis():
+    """
+    Time series analysis and forecasting
+    """
+    from statsmodels.tsa.arima.model import ARIMA
+    from statsmodels.tsa.seasonal import seasonal_decompose
+    
+    # Generate sample time series data
+    dates = pd.date_range('2020-01-01', periods=365, freq='D')
+    ts_data = pd.Series(
+        np.random.randn(365).cumsum() + np.sin(np.arange(365) * 2 * np.pi / 365) * 10,
+        index=dates
+    )
+    
+    # Decompose time series
+    decomposition = seasonal_decompose(ts_data, model='additive', period=30)
+    
+    # Fit ARIMA model
+    model = ARIMA(ts_data, order=(1, 1, 1))
+    fitted_model = model.fit()
+    
+    # Make predictions
+    forecast = fitted_model.forecast(steps=30)
+    
+    return ts_data, decomposition, forecast
+
+# Reinforcement Learning (basic Q-learning)
+def q_learning_example():
+    """
+    Simple Q-learning implementation
+    """
+    import random
+    
+    class QLearningAgent:
+        def __init__(self, states, actions, learning_rate=0.1, discount_factor=0.9):
+            self.states = states
+            self.actions = actions
+            self.learning_rate = learning_rate
+            self.discount_factor = discount_factor
+            self.q_table = {}
+            
+            # Initialize Q-table
+            for state in states:
+                self.q_table[state] = {}
+                for action in actions:
+                    self.q_table[state][action] = 0.0
+        
+        def choose_action(self, state, epsilon=0.1):
+            """Choose action using epsilon-greedy policy"""
+            if random.random() < epsilon:
+                return random.choice(self.actions)
+            else:
+                return max(self.q_table[state], key=self.q_table[state].get)
+        
+        def update_q_table(self, state, action, reward, next_state):
+            """Update Q-table using Q-learning formula"""
+            best_next_action = max(self.q_table[next_state], key=self.q_table[next_state].get)
+            td_target = reward + self.discount_factor * self.q_table[next_state][best_next_action]
+            td_error = td_target - self.q_table[state][action]
+            self.q_table[state][action] += self.learning_rate * td_error
+    
+    # Example usage
+    states = ['start', 'middle', 'end']
+    actions = ['left', 'right']
+    agent = QLearningAgent(states, actions)
+    
+    return agent
+
+# Feature Engineering utilities
+def advanced_feature_engineering(df):
+    """
+    Advanced feature engineering techniques
+    """
+    # Polynomial features
+    from sklearn.preprocessing import PolynomialFeatures
+    poly = PolynomialFeatures(degree=2, include_bias=False)
+    
+    # Feature selection
+    from sklearn.feature_selection import SelectKBest, f_classif, RFE
+    from sklearn.ensemble import RandomForestClassifier
+    
+    # Select best features
+    selector = SelectKBest(score_func=f_classif, k=10)
+    
+    # Recursive feature elimination
+    estimator = RandomForestClassifier()
+    rfe = RFE(estimator, n_features_to_select=5)
+    
+    # Feature importance
+    rf = RandomForestClassifier()
+    # rf.fit(X, y)  # Assuming X, y are defined
+    # importances = rf.feature_importances_
+    
+    return poly, selector, rfe
+
+# Model interpretability
+def model_interpretability():
+    """
+    Model interpretability techniques
+    """
+    import shap
+    from lime import lime_tabular
+    
+    # SHAP (SHapley Additive exPlanations)
+    def explain_with_shap(model, X_train, X_test):
+        explainer = shap.Explainer(model, X_train)
+        shap_values = explainer(X_test)
+        
+        # Plot SHAP values
+        shap.summary_plot(shap_values, X_test)
+        return shap_values
+    
+    # LIME (Local Interpretable Model-agnostic Explanations)
+    def explain_with_lime(model, X_train, X_test, instance_idx=0):
+        explainer = lime_tabular.LimeTabularExplainer(
+            X_train.values,
+            feature_names=X_train.columns,
+            class_names=['Class 0', 'Class 1'],
+            mode='classification'
+        )
+        
+        explanation = explainer.explain_instance(
+            X_test.iloc[instance_idx].values,
+            model.predict_proba
+        )
+        
+        return explanation
+    
+    return explain_with_shap, explain_with_lime
