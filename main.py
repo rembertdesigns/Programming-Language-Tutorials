@@ -1306,3 +1306,60 @@ def setup_logger(name, log_file, level=logging.INFO):
     return logger
 
 # app_logger = setup_logger("my_app", "application.log")
+
+
+# CONFIGURATION MANAGEMENT
+
+import configparser
+import os
+from pathlib import Path
+
+# Using environment variables
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///default.db")
+DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
+API_KEY = os.getenv("API_KEY")
+
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+
+# Using config files
+def load_config(config_file="config.ini"):
+    """Load configuration from INI file."""
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    
+    return {
+        "database": {
+            "host": config.get("database", "host", fallback="localhost"),
+            "port": config.getint("database", "port", fallback=5432),
+            "name": config.get("database", "name", fallback="myapp")
+        },
+        "api": {
+            "base_url": config.get("api", "base_url"),
+            "timeout": config.getint("api", "timeout", fallback=30)
+        }
+    }
+
+# Example config.ini file:
+"""
+[database]
+host = localhost
+port = 5432
+name = myapp
+
+[api]
+base_url = https://api.example.com
+timeout = 30
+"""
+
+# Using pathlib for file operations
+def process_files_in_directory(directory_path):
+    """Process all Python files in a directory."""
+    path = Path(directory_path)
+    
+    for py_file in path.glob("*.py"):
+        print(f"Processing: {py_file.name}")
+        # Process file
+        with py_file.open("r") as f:
+            lines = f.readlines()
+            print(f"  Lines: {len(lines)}")
