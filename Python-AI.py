@@ -113,3 +113,89 @@ matmul = A @ B                  # Alternative syntax (Python 3.5+)
 determinant = np.linalg.det(A)  # Determinant
 inverse = np.linalg.inv(A)      # Inverse
 eigenvals, eigenvecs = np.linalg.eig(A)  # Eigenvalues and eigenvectors
+
+
+# PANDAS - DATA MANIPULATION AND ANALYSIS
+
+import pandas as pd
+
+# Series creation
+series = pd.Series([1, 2, 3, 4, 5])
+named_series = pd.Series([1, 2, 3], index=['a', 'b', 'c'])
+
+# DataFrame creation
+df = pd.DataFrame({
+    'Name': ['Alice', 'Bob', 'Charlie', 'Diana'],
+    'Age': [25, 30, 35, 28],
+    'City': ['New York', 'London', 'Tokyo', 'Paris'],
+    'Salary': [50000, 60000, 70000, 55000]
+})
+
+# Reading data from files
+# df = pd.read_csv('data.csv')
+# df = pd.read_excel('data.xlsx')
+# df = pd.read_json('data.json')
+# df = pd.read_sql('SELECT * FROM table', connection)
+
+# DataFrame information
+print(df.info())                # Data types and null counts
+print(df.describe())            # Statistical summary
+print(df.head())                # First 5 rows
+print(df.tail())                # Last 5 rows
+print(df.shape)                 # (rows, columns)
+print(df.columns)               # Column names
+print(df.dtypes)                # Data types
+
+# Data selection and indexing
+names = df['Name']              # Select column
+subset = df[['Name', 'Age']]    # Select multiple columns
+first_row = df.iloc[0]          # Select by position
+alice_data = df.loc[df['Name'] == 'Alice']  # Select by condition
+
+# Filtering data
+high_earners = df[df['Salary'] > 55000]
+young_people = df[df['Age'] < 30]
+complex_filter = df[(df['Age'] > 25) & (df['Salary'] > 50000)]
+
+# Data manipulation
+df['Salary_K'] = df['Salary'] / 1000  # Create new column
+df['Age_Group'] = df['Age'].apply(lambda x: 'Young' if x < 30 else 'Adult')
+
+# Sorting
+sorted_by_age = df.sort_values('Age')
+sorted_multi = df.sort_values(['City', 'Age'], ascending=[True, False])
+
+# Grouping and aggregation
+age_stats = df.groupby('City')['Age'].mean()
+salary_stats = df.groupby('City').agg({
+    'Salary': ['mean', 'min', 'max'],
+    'Age': 'mean'
+})
+
+# Handling missing data
+# df.isnull()                   # Check for null values
+# df.dropna()                   # Remove rows with null values
+# df.fillna(0)                  # Fill null values with 0
+# df.fillna(df.mean())          # Fill with mean values
+
+# Data transformation
+# One-hot encoding
+city_encoded = pd.get_dummies(df['City'])
+
+# Date handling
+dates = pd.date_range('2024-01-01', periods=10, freq='D')
+date_df = pd.DataFrame({
+    'date': dates,
+    'value': np.random.randn(10)
+})
+date_df['year'] = date_df['date'].dt.year
+date_df['month'] = date_df['date'].dt.month
+date_df['weekday'] = date_df['date'].dt.day_name()
+
+# Merging and joining DataFrames
+df1 = pd.DataFrame({'key': ['A', 'B', 'C'], 'value1': [1, 2, 3]})
+df2 = pd.DataFrame({'key': ['A', 'B', 'D'], 'value2': [4, 5, 6]})
+
+inner_join = pd.merge(df1, df2, on='key', how='inner')  # Inner join
+left_join = pd.merge(df1, df2, on='key', how='left')    # Left join
+outer_join = pd.merge(df1, df2, on='key', how='outer')  # Outer join
