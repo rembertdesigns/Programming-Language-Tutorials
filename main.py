@@ -847,3 +847,86 @@ last_month = today - timedelta(days=30)
 # Working with timezones
 from datetime import timezone
 utc_now = datetime.now(timezone.utc)
+
+
+# WORKING WITH APIs AND HTTP
+
+import requests  # pip install requests
+
+# GET request
+response = requests.get("https://api.github.com/users/octocat")
+if response.status_code == 200:
+    user_data = response.json()
+    print(user_data["name"])
+
+# POST request
+data = {"name": "John", "email": "john@example.com"}
+response = requests.post("https://api.example.com/users", json=data)
+
+# Request with headers
+headers = {"Authorization": "Bearer your-token-here"}
+response = requests.get("https://api.example.com/data", headers=headers)
+
+# Error handling with requests
+try:
+    response = requests.get("https://api.example.com/data", timeout=5)
+    response.raise_for_status()  # Raises exception for bad status codes
+    data = response.json()
+except requests.exceptions.RequestException as e:
+    print(f"Request failed: {e}")
+
+
+# TESTING
+
+import unittest
+
+# Basic unit test
+class TestCalculator(unittest.TestCase):
+    def test_addition(self):
+        self.assertEqual(2 + 2, 4)
+    
+    def test_division(self):
+        self.assertEqual(10 / 2, 5)
+        with self.assertRaises(ZeroDivisionError):
+            10 / 0
+    
+    def test_list_operations(self):
+        test_list = [1, 2, 3]
+        self.assertIn(2, test_list)
+        self.assertEqual(len(test_list), 3)
+
+# Run tests
+if __name__ == "__main__":
+    unittest.main()
+
+# Using pytest (pip install pytest)
+# pytest is more popular and easier to use
+def test_simple_addition():
+    assert 2 + 2 == 4
+
+def test_string_operations():
+    text = "hello world"
+    assert "world" in text
+    assert text.upper() == "HELLO WORLD"
+
+
+# VIRTUAL ENVIRONMENTS
+
+# Create virtual environment
+# python -m venv myenv
+
+# Activate virtual environment
+# On Windows: myenv\Scripts\activate
+# On macOS/Linux: source myenv/bin/activate
+
+# Deactivate virtual environment
+# deactivate
+
+# Install packages in virtual environment
+# pip install package_name
+
+# Freeze dependencies
+# pip freeze > requirements.txt
+
+# Install from requirements
+# pip install -r requirements.txt
