@@ -704,3 +704,44 @@ v1 = Vector(2, 3)
 v2 = Vector(1, 4)
 v3 = v1 + v2  # Uses __add__
 print(v3)     # Uses __str__
+
+
+# MODULES AND PACKAGES
+
+# Importing modules
+import math
+import os
+import sys
+from datetime import datetime, timedelta
+from collections import defaultdict, Counter
+import json as js  # Alias
+
+# Using imported modules
+print(math.pi)
+print(os.getcwd())  # Current working directory
+now = datetime.now()
+
+# Creating your own module (save as mymodule.py)
+"""
+# mymodule.py
+def greet(name):
+    return f"Hello, {name}!"
+
+PI = 3.14159
+
+class Calculator:
+    @staticmethod
+    def add(a, b):
+        return a + b
+"""
+
+# Using your module
+# from mymodule import greet, PI, Calculator
+
+# Module search path
+import sys
+print(sys.path)  # Shows where Python looks for modules
+
+# Installing packages with pip
+# pip install requests
+# pip install pandas numpy matplotlib
