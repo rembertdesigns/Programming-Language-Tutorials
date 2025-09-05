@@ -790,3 +790,60 @@ print(list(zip([1, 2, 3], ['a', 'b', 'c'])))  # Combine iterables
 print(isinstance(42, int))      # True
 print(isinstance("hello", str)) # True
 print(hasattr([], 'append'))    # True
+
+
+# REGULAR EXPRESSIONS
+
+import re
+
+# Basic pattern matching
+text = "The phone number is 123-456-7890"
+pattern = r"\d{3}-\d{3}-\d{4}"
+match = re.search(pattern, text)
+if match:
+    print(f"Found phone number: {match.group()}")
+
+# Common regex patterns
+email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+url_pattern = r"https?://[^\s]+"
+word_pattern = r"\b\w+\b"
+
+# Regex functions
+text = "Contact us at info@example.com or support@test.org"
+emails = re.findall(email_pattern, text)  # Find all matches
+text_replaced = re.sub(email_pattern, "[EMAIL]", text)  # Replace matches
+
+# Compile regex for better performance
+compiled_pattern = re.compile(email_pattern)
+matches = compiled_pattern.findall(text)
+
+
+# DATE AND TIME
+
+from datetime import datetime, date, time, timedelta
+
+# Current date and time
+now = datetime.now()
+today = date.today()
+current_time = datetime.now().time()
+
+# Creating specific dates
+birthday = date(1990, 5, 15)
+meeting = datetime(2024, 12, 25, 14, 30)  # Dec 25, 2024 at 2:30 PM
+
+# Formatting dates
+formatted = now.strftime("%Y-%m-%d %H:%M:%S")  # 2024-01-15 14:30:45
+print(formatted)
+
+# Parsing date strings
+date_string = "2024-01-15"
+parsed_date = datetime.strptime(date_string, "%Y-%m-%d")
+
+# Date arithmetic
+tomorrow = today + timedelta(days=1)
+next_week = today + timedelta(weeks=1)
+last_month = today - timedelta(days=30)
+
+# Working with timezones
+from datetime import timezone
+utc_now = datetime.now(timezone.utc)
