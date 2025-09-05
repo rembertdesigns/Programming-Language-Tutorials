@@ -173,3 +173,86 @@ $text = "I have 5 apples and 3 oranges";
 preg_match($pattern, $text, $matches);     // Find first match
 preg_match_all($pattern, $text, $matches); // Find all matches
 preg_replace($pattern, "X", $text);        // Replace with pattern
+
+
+// ARRAYS
+
+// Array creation
+$indexed_array = [1, 2, 3, 4, 5];
+$associative_array = [
+    "name" => "John",
+    "age" => 30,
+    "city" => "New York"
+];
+
+// Alternative syntax
+$old_syntax = array(1, 2, 3);
+$old_assoc = array("key" => "value");
+
+// Multidimensional arrays
+$matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+
+$users = [
+    ["name" => "John", "age" => 30],
+    ["name" => "Jane", "age" => 25],
+    ["name" => "Bob", "age" => 35]
+];
+
+// Array access
+echo $indexed_array[0];           // Access by index
+echo $associative_array["name"];  // Access by key
+echo $matrix[1][2];               // Access multidimensional
+
+// Array modification
+$fruits = ["apple", "banana"];
+$fruits[] = "orange";             // Add to end
+array_push($fruits, "grape");     // Add to end (alternative)
+array_unshift($fruits, "mango");  // Add to beginning
+$removed = array_pop($fruits);    // Remove from end
+$removed = array_shift($fruits);  // Remove from beginning
+
+// Array functions
+$numbers = [3, 1, 4, 1, 5, 9, 2, 6];
+echo count($numbers);             // Array length
+echo array_sum($numbers);         // Sum of elements
+echo max($numbers);               // Maximum value
+echo min($numbers);               // Minimum value
+sort($numbers);                   // Sort array
+rsort($numbers);                  // Reverse sort
+array_reverse($numbers);          // Reverse array
+
+// Array searching
+$fruits = ["apple", "banana", "orange"];
+echo in_array("banana", $fruits); // Check if value exists
+echo array_search("orange", $fruits); // Find key of value
+$keys = array_keys($associative_array); // Get all keys
+$values = array_values($associative_array); // Get all values
+
+// Array iteration
+foreach ($fruits as $fruit) {
+    echo $fruit . "\n";
+}
+
+foreach ($associative_array as $key => $value) {
+    echo "$key: $value\n";
+}
+
+// Array filtering and mapping
+$numbers = [1, 2, 3, 4, 5, 6];
+$even = array_filter($numbers, function($n) {
+    return $n % 2 == 0;
+});
+
+$squared = array_map(function($n) {
+    return $n * $n;
+}, $numbers);
+
+// Array merging and slicing
+$array1 = [1, 2, 3];
+$array2 = [4, 5, 6];
+$merged = array_merge($array1, $array2);
+$slice = array_slice($numbers, 2, 3); // Extract portion
