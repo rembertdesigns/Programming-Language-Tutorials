@@ -569,3 +569,69 @@ def plot_training_history(history):
     plt.show()
 
 # plot_training_history(history)
+
+
+# PYTORCH - ALTERNATIVE DEEP LEARNING FRAMEWORK
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+
+# Check PyTorch setup
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+
+# Define a simple neural network
+class SimpleNN(nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(SimpleNN, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        self.fc2 = nn.Linear(hidden_size, num_classes)
+        
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+
+# Create model instance
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = SimpleNN(input_size=784, hidden_size=128, num_classes=10).to(device)
+
+# Loss and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Convert data to PyTorch tensors
+X_tensor = torch.FloatTensor(x_train.reshape(-1, 784))
+y_tensor = torch.LongTensor(np.argmax(y_train, axis=1))
+
+# Create data loader
+dataset = TensorDataset(X_tensor, y_tensor)
+dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+# Training loop
+def train_pytorch_model(model, dataloader, criterion, optimizer, epochs=10):
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0
+        for batch_idx, (data, target) in enumerate(dataloader):
+            data, target = data.to(device), target.to(device)
+            
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            
+        avg_loss = total_loss / len(dataloader)
+        print(f'Epoch {epoch+1}/{epochs}, Average Loss: {avg_loss:.4f}')
+
+# train_pytorch_model(model, dataloader, criterion, optimizer)
