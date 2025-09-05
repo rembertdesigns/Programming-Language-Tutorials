@@ -930,3 +930,73 @@ def test_string_operations():
 
 # Install from requirements
 # pip install -r requirements.txt
+
+
+# BEST PRACTICES
+
+# 1. Use meaningful variable names
+user_age = 25  # Good
+a = 25         # Bad
+
+# 2. Follow PEP 8 style guide
+def calculate_area(length, width):  # Good: snake_case for functions
+    return length * width
+
+# 3. Use docstrings for documentation
+def calculate_compound_interest(principal, rate, time):
+    """
+    Calculate compound interest.
+    
+    Args:
+        principal (float): Initial amount
+        rate (float): Interest rate (as decimal)
+        time (int): Time period in years
+    
+    Returns:
+        float: Final amount after compound interest
+    """
+    return principal * (1 + rate) ** time
+
+# 4. Handle errors appropriately
+def safe_divide(a, b):
+    """Safely divide two numbers."""
+    try:
+        return a / b
+    except ZeroDivisionError:
+        return None
+    except TypeError:
+        raise TypeError("Both arguments must be numbers")
+
+# 5. Use list comprehensions for simple operations
+# Good
+squares = [x**2 for x in range(10)]
+
+# Less efficient
+squares = []
+for x in range(10):
+    squares.append(x**2)
+
+# 6. Use constants for magic numbers
+PI = 3.14159
+DAYS_IN_WEEK = 7
+MAX_ATTEMPTS = 3
+
+# 7. Keep functions small and focused
+def get_user_input():
+    """Get and validate user input."""
+    while True:
+        try:
+            return int(input("Enter a number: "))
+        except ValueError:
+            print("Please enter a valid number")
+
+# 8. Use type hints (Python 3.5+)
+def greet_user(name: str, age: int) -> str:
+    """Greet a user with their name and age."""
+    return f"Hello {name}, you are {age} years old"
+
+from typing import List, Dict, Optional
+
+def process_names(names: List[str]) -> Dict[str, int]:
+    """Process a list of names and return their lengths."""
+    return {name: len(name) for name in names}
