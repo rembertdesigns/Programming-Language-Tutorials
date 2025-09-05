@@ -138,3 +138,47 @@ colors.remove("green")            # Remove element (error if not found)
 is_member = "blue" in colors      # Check membership
 union = colors | {"purple", "orange"}     # Union
 intersection = colors & {"blue", "yellow"}  # Intersection
+
+# OPERATORS
+
+# Arithmetic operators
+result = 10 + 3   # Addition (13)
+result = 10 - 3   # Subtraction (7)
+result = 10 * 3   # Multiplication (30)
+result = 10 / 3   # Division (3.333...)
+result = 10 // 3  # Floor division (3)
+result = 10 % 3   # Modulo/remainder (1)
+result = 10 ** 3  # Exponentiation (1000)
+
+# Comparison operators
+is_equal = 10 == 10        # Equal to (True)
+not_equal = 10 != 5        # Not equal to (True)
+greater = 10 > 5           # Greater than (True)
+less = 10 < 5              # Less than (False)
+greater_equal = 10 >= 10   # Greater than or equal (True)
+less_equal = 10 <= 5       # Less than or equal (False)
+
+# Logical operators
+result = True and False    # Logical AND (False)
+result = True or False     # Logical OR (True)
+result = not True          # Logical NOT (False)
+
+# Assignment operators
+x = 10
+x += 5    # Same as x = x + 5
+x -= 3    # Same as x = x - 3
+x *= 2    # Same as x = x * 2
+x /= 4    # Same as x = x / 4
+
+# Identity operators
+a = [1, 2, 3]
+b = a
+c = [1, 2, 3]
+print(a is b)      # True (same object)
+print(a is c)      # False (different objects)
+print(a == c)      # True (same content)
+
+# Membership operators
+fruits = ["apple", "banana", "cherry"]
+print("apple" in fruits)      # True
+print("grape" not in fruits)  # True
