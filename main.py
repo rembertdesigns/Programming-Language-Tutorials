@@ -1000,3 +1000,69 @@ from typing import List, Dict, Optional
 def process_names(names: List[str]) -> Dict[str, int]:
     """Process a list of names and return their lengths."""
     return {name: len(name) for name in names}
+
+
+# COMMON PATTERNS AND IDIOMS
+
+# Swap variables
+a, b = b, a
+
+# Check if list is empty
+if not my_list:
+    print("List is empty")
+
+# Check if list has items
+if my_list:
+    print("List has items")
+
+# Get item with default value
+my_dict = {"name": "Alice"}
+age = my_dict.get("age", 0)  # Returns 0 if "age" key doesn't exist
+
+# Chain comparisons
+x = 5
+if 0 < x < 10:
+    print("x is between 0 and 10")
+
+# Multiple assignment
+name, age, city = ("Alice", 25, "New York")
+
+# Unpacking with asterisk
+first, *middle, last = [1, 2, 3, 4, 5]  # first=1, middle=[2,3,4], last=5
+
+# Dictionary merging (Python 3.9+)
+dict1 = {"a": 1, "b": 2}
+dict2 = {"c": 3, "d": 4}
+merged = dict1 | dict2  # {"a": 1, "b": 2, "c": 3, "d": 4}
+
+# Enumerate with start value
+for i, item in enumerate(["a", "b", "c"], start=1):
+    print(f"{i}: {item}")  # 1: a, 2: b, 3: c
+
+# Zip for parallel iteration
+names = ["Alice", "Bob", "Charlie"]
+ages = [25, 30, 35]
+for name, age in zip(names, ages):
+    print(f"{name} is {age} years old")
+
+# defaultdict for automatic default values
+from collections import defaultdict
+
+# Regular dict
+word_count = {}
+for word in ["apple", "banana", "apple"]:
+    if word in word_count:
+        word_count[word] += 1
+    else:
+        word_count[word] = 1
+
+# defaultdict approach
+word_count = defaultdict(int)
+for word in ["apple", "banana", "apple"]:
+    word_count[word] += 1
+
+# Counter for counting
+from collections import Counter
+words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+count = Counter(words)
+print(count.most_common(2))  # [('apple', 3), ('banana', 2)]
