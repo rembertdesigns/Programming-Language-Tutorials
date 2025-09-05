@@ -1,61 +1,945 @@
-//- Pug - HTML preprocessor - by Richard Rembert
+//- PUG - HTML PREPROCESSOR - Comprehensive Reference - by Richard Rembert
 
-//- Basic HTML
+//- Pug is a clean, whitespace-sensitive syntax for writing HTML
+//- Formerly known as Jade, it compiles to HTML and makes templates more readable
 
+//- INSTALLATION AND SETUP
+
+//- Install Pug globally
+//- npm install -g pug-cli
+
+//- Install Pug for a project
+//- npm install --save-dev pug
+
+//- Compile Pug files
+//- pug template.pug                    // Compiles to template.html
+//- pug --pretty template.pug           // Pretty formatted output
+//- pug --watch template.pug            // Watch for changes
+//- pug --out dist src/*.pug            // Compile to different directory
+
+//- BASIC SYNTAX
+
+//- DOCTYPE declaration
+doctype html
+doctype 5
+doctype 1.1
+doctype strict
+doctype frameset
+doctype mobile
+doctype basic
+doctype transitional
+
+//- Basic HTML structure
+html(lang="en")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1")
+    title Document Title
+    link(rel="stylesheet" href="styles.css")
+  body
+    header
+      h1 Welcome to Pug
+    main
+      p This is a paragraph in Pug syntax
+    footer
+      p © 2024 My Website
+    script(src="script.js")
+
+//- TAGS AND ELEMENTS
+
+//- Basic tags (no closing tags needed)
+h1 Main Heading
+h2 Subheading
+p Paragraph text
+div Container
+span Inline text
+a Link text
+img
+br
+hr
+
+//- Self-closing tags
+input
+meta
+link
+area
+base
+col
+embed
+source
+track
+wbr
+
+//- Nested elements (indentation-based)
+ul
+  li First item
+  li Second item
+  li Third item
+
+nav
+  ul
+    li
+      a(href="/") Home
+    li
+      a(href="/about") About
+    li
+      a(href="/contact") Contact
+
+//- Multiple elements on same line
+p: strong Bold text
+div: span: em Emphasized text
+
+//- ATTRIBUTES
+
+//- Basic attributes
+a(href="https://example.com") Link
+img(src="image.jpg" alt="Description")
+input(type="text" name="username" placeholder="Enter username")
+
+//- Multiple attributes
+button(
+  type="submit"
+  class="btn btn-primary"
+  id="submit-btn"
+  disabled
+) Submit
+
+//- Boolean attributes
+input(type="checkbox" checked)
+script(defer)
+video(autoplay muted loop)
+
+//- Quoted and unquoted values
+div(class=className)
+div(class="static-class")
+div(data-value=42)
+
+//- Attribute interpolation
+a(href=`/users/${user.id}`) User Profile
+img(src=`/images/${image.filename}` alt=image.description)
+
+//- Conditional attributes
+input(type="text" required=isRequired)
+div(class=user.isAdmin ? 'admin' : 'user')
+
+//- Attributes from objects
+- var attributes = {href: '/about', title: 'About Page'}
+a&attributes(attributes) About
+
+//- Class and ID shortcuts
+div#header
+div.container
+div#main.content.wrapper
+button.btn.btn-primary
+span.icon.icon-home
+
+//- Class arrays and objects
+- var classes = ['btn', 'btn-primary', 'active']
+button(class=classes) Button
+
+- var classObj = {active: true, disabled: false}
+div(class=classObj)
+
+//- VARIABLES AND INTERPOLATION
+
+//- Variable declaration
+- var title = "My Website"
+- var user = {name: "John", age: 30}
+- var items = ["apple", "banana", "orange"]
+- var isLoggedIn = true
+
+//- String interpolation in text
+h1 Welcome to #{title}
+p Hello, #{user.name}! You are #{user.age} years old.
+
+//- String interpolation in attributes
+a(href=`/user/${user.id}`) #{user.name}'s Profile
+img(src=`/images/${user.avatar}` alt=`${user.name}'s avatar`)
+
+//- Escaped and unescaped interpolation
+p User input: #{userInput}          //- Escaped (safe)
+p Raw HTML: !{htmlContent}          //- Unescaped (dangerous)
+
+//- Tag interpolation
+p This is a #[strong important] message
+p Visit our #[a(href="/store") online store]
+p Email us at #[a(href=`mailto:${email}`) #{email}]
+
+//- Variable assignment in templates
+- var currentYear = new Date().getFullYear()
+- var greeting = `Hello, ${user.name}!`
+- var navItems = [{text: 'Home', url: '/'}, {text: 'About', url: '/about'}]
+
+//- CONDITIONALS
+
+//- If statements
+- var user = {name: "John", isAdmin: true}
+if user
+  p Welcome, #{user.name}!
+
+if user.isAdmin
+  p You have admin privileges
+else
+  p You are a regular user
+
+//- Complex conditionals
+if user && user.isLoggedIn
+  nav
+    ul
+      li
+        a(href="/dashboard") Dashboard
+      li
+        a(href="/profile") Profile
+      li
+        a(href="/logout") Logout
+else
+  nav
+    ul
+      li
+        a(href="/login") Login
+      li
+        a(href="/register") Register
+
+//- Unless (opposite of if)
+unless user.isGuest
+  p Welcome back!
+
+//- Ternary operators in attributes
+div(class=user.isActive ? 'active' : 'inactive')
+button(disabled=!user.canEdit ? true : false) Edit
+
+//- Case/when statements
+- var page = "home"
+case page
+  when "home"
+    h1 Welcome Home
+    p This is the homepage
+  when "about"
+    h1 About Us
+    p Learn more about our company
+  when "contact"
+    h1 Contact Us
+    p Get in touch with us
+  default
+    h1 Page Not Found
+    p The requested page could not be found
+
+//- LOOPS AND ITERATION
+
+//- Basic each loop
+- var fruits = ["apple", "banana", "orange"]
+ul
+  each fruit in fruits
+    li= fruit
+
+//- Each with index
+ol
+  each fruit, index in fruits
+    li #{index + 1}: #{fruit}
+
+//- Iterating over objects
+- var user = {name: "John", email: "john@example.com", age: 30}
+dl
+  each value, key in user
+    dt= key
+    dd= value
+
+//- Complex iteration with conditionals
+- var users = [{name: "John", active: true}, {name: "Jane", active: false}]
+ul
+  each user in users
+    if user.active
+      li.active #{user.name} (Active)
+    else
+      li.inactive #{user.name} (Inactive)
+
+//- Nested loops
+- var categories = [{name: "Fruits", items: ["apple", "banana"]}, {name: "Vegetables", items: ["carrot", "broccoli"]}]
+each category in categories
+  section
+    h3= category.name
+    ul
+      each item in category.items
+        li= item
+
+//- While loops
+- var count = 0
+ul
+  while count < 3
+    li Item #{++count}
+
+//- For loops (with range)
+ul
+  - for (var i = 1; i <= 5; i++)
+    li Item #{i}
+
+//- Empty iteration handling
+- var emptyArray = []
+if emptyArray.length
+  ul
+    each item in emptyArray
+      li= item
+else
+  p No items to display
+
+//- MIXINS (Reusable Components)
+
+//- Basic mixin
+mixin button(text)
+  button.btn= text
+
++button("Click Me")
++button("Submit")
+
+//- Mixin with attributes
+mixin link(href, text)
+  a(href=href)= text
+
++link("/about", "About Us")
++link("https://example.com", "External Link")
+
+//- Mixin with default parameters
+mixin alert(message, type = "info")
+  div(class=`alert alert-${type}`)= message
+
++alert("Success message", "success")
++alert("Default info message")
+
+//- Mixin with attribute passing
+mixin input(type, name)
+  input(type=type name=name)&attributes(attributes)
+
++input("text", "username")(placeholder="Enter username" required)
++input("email", "email")(placeholder="Enter email")
+
+//- Mixin with block content
+mixin card(title)
+  .card
+    .card-header
+      h3= title
+    .card-body
+      if block
+        block
+      else
+        p No content provided
+
++card("User Information")
+  p Name: John Doe
+  p Email: john@example.com
+
++card("Empty Card")
+
+//- Mixin with multiple blocks
+mixin modal(title)
+  .modal
+    .modal-header
+      h4= title
+      block header
+    .modal-body
+      block content
+    .modal-footer
+      block footer
+
++modal("Confirmation")
+  block header
+    button.close ×
+  block content
+    p Are you sure you want to delete this item?
+  block footer
+    button.btn.btn-danger Delete
+    button.btn.btn-secondary Cancel
+
+//- Conditional mixins
+mixin icon(name, size = "medium")
+  if size === "small"
+    i.icon.icon-sm(class=`icon-${name}`)
+  else if size === "large"
+    i.icon.icon-lg(class=`icon-${name}`)
+  else
+    i.icon(class=`icon-${name}`)
+
++icon("home")
++icon("search", "small")
++icon("settings", "large")
+
+//- Mixin with rest parameters
+mixin breadcrumb(...items)
+  nav.breadcrumb
+    each item, index in items
+      if index < items.length - 1
+        a.breadcrumb-link(href=item.url)= item.text
+        span.separator /
+      else
+        span.breadcrumb-current= item.text
+
++breadcrumb({text: "Home", url: "/"}, {text: "Products", url: "/products"}, {text: "Laptops"})
+
+//- INCLUDES AND EXTENDS
+
+//- Include other Pug files
+include includes/header.pug
+include includes/navigation.pug
+
+main
+  h1 Main Content
+  include includes/sidebar.pug
+
+include includes/footer.pug
+
+//- Include with variables
+- var pageTitle = "About Us"
+include includes/header.pug
+
+//- Include non-Pug files (treated as plain text)
+script
+  include scripts/analytics.js
+
+style
+  include styles/inline.css
+
+//- Template inheritance with extends
+//- Layout file (layout.pug)
 doctype html
 html
   head
-    title
-    link(rel="stylesheet" href="CSSS.css")
+    title #{title || "Default Title"}
+    block styles
+      link(rel="stylesheet" href="/css/main.css")
   body
     header
+      block header
+        h1 Default Header
+    
     main
+      block content
+    
     footer
-    script(src="JSS.js")
+      block footer
+        p © 2024 My Website
+    
+    block scripts
+      script(src="/js/main.js")
 
+//- Child template using layout
+extends layout.pug
 
-//- Variables
-- var string = "Hello"
-h1 #{string} World
+block title
+  title About Us - My Website
 
-- var superString = string + " World"
-h1= superString
+block styles
+  link(rel="stylesheet" href="/css/about.css")
 
+block header
+  h1 About Our Company
 
-//- Iterations
-each value in ["one", "two", "three"]
-  p= value
-
-while x < 10
-  p= x
-  x++
-
-
-//- Conditionals
-if false
-  h1 This is false !
-else if true
-  h1 This is true !
-else
-  h1 This is bleh !
-
-
-//- Mixin
-mixin image(url, caption)
-  figure
-    img(src=url, alt=caption)
-    figcaption= caption
+block content
+  section
+    h2 Our Story
+    p We are a company dedicated to excellence...
   
-+image("https://media.giphy.com/media/2NKQ8MmushHi0/giphy.gif", "a sailing pug")
+  section
+    h2 Our Team
+    .team-grid
+      each member in team
+        .team-member
+          img(src=member.photo alt=member.name)
+          h3= member.name
+          p= member.role
 
+block scripts
+  script(src="/js/about.js")
 
-//- Includes
-include anotherPugFile.pug
+//- Appending and prepending blocks
+extends layout.pug
 
-include otherFileTypeAsPlainText.css
-include otherFileTypeAsPlainText.js
+append styles
+  link(rel="stylesheet" href="/css/additional.css")
 
+prepend scripts
+  script(src="/js/polyfills.js")
 
+//- FILTERS
 
-//- https://codepen.io/mimoduo/post/pug-js-cheat-sheet
-//- https://pugjs.org/api/getting-started.html
+//- Markdown filter (requires markdown-it)
+:markdown-it
+  # Heading
+  This is **bold** text and this is *italic* text.
+  
+  - List item 1
+  - List item 2
+
+//- Stylus filter
+:stylus
+  body
+    background-color: #f0f0f0
+    font-family: Arial, sans-serif
+    
+    .container
+      max-width: 1200px
+      margin: 0 auto
+
+//- Sass filter
+:sass
+  $primary-color: #3498db
+  $font-stack: 'Helvetica Neue', sans-serif
+  
+  .header
+    background-color: $primary-color
+    font-family: $font-stack
+
+//- CoffeeScript filter
+:coffeescript
+  square = (x) -> x * x
+  console.log square(5)
+
+//- Custom filters
+:uppercase
+  this text will be uppercase
+
+:custom-filter
+  Content to be processed by custom filter
+
+//- COMMENTS
+
+//- Pug comments (not rendered to HTML)
+//- This is a Pug comment
+//- It won't appear in the final HTML
+
+//- Multi-line Pug comments
+//-
+  This is a multi-line comment
+  It can span several lines
+  And won't appear in HTML
+
+// HTML comments (rendered to HTML)
+// This will appear in the HTML output
+
+//
+  Multi-line HTML comment
+  This will also appear in the HTML
+
+//- Conditional comments for IE
+<!--[if IE]>
+p You are using Internet Explorer
+<![endif]-->
+
+//- ADVANCED FEATURES
+
+//- Interpolation with JavaScript expressions
+- var price = 29.99
+- var tax = 0.08
+p Total: $#{(price * (1 + tax)).toFixed(2)}
+
+//- Date formatting
+- var now = new Date()
+p Current date: #{now.toLocaleDateString()}
+p Current time: #{now.toLocaleTimeString()}
+
+//- Array methods
+- var numbers = [1, 2, 3, 4, 5]
+p Sum: #{numbers.reduce((a, b) => a + b, 0)}
+p Even numbers: #{numbers.filter(n => n % 2 === 0).join(', ')}
+
+//- Object manipulation
+- var user = {firstName: "John", lastName: "Doe"}
+- var fullName = `${user.firstName} ${user.lastName}`
+p Welcome, #{fullName}!
+
+//- Conditional classes with expressions
+- var isActive = true
+- var isPrimary = false
+div(class={
+  'btn': true,
+  'btn-active': isActive,
+  'btn-primary': isPrimary,
+  'btn-secondary': !isPrimary
+}) Button
+
+//- Dynamic tag names
+- var tagName = "article"
+#{tagName}
+  h2 Dynamic Article
+  p This is content in a dynamic tag
+
+//- Buffered and unbuffered code
+- var title = "Page Title" // Unbuffered (no output)
+= title // Buffered (outputs value)
+!= "<strong>" + title + "</strong>" // Unescaped buffered
+
+//- PRACTICAL EXAMPLES
+
+//- Navigation component
+mixin nav-item(text, url, active = false)
+  li(class={active: active})
+    a(href=url)= text
+
+nav.main-nav
+  ul
+    +nav-item("Home", "/", currentPage === "home")
+    +nav-item("About", "/about", currentPage === "about")
+    +nav-item("Services", "/services", currentPage === "services")
+    +nav-item("Contact", "/contact", currentPage === "contact")
+
+//- Card grid with data
+- var products = [
+  {id: 1, name: "Laptop", price: 999, image: "laptop.jpg"},
+  {id: 2, name: "Phone", price: 599, image: "phone.jpg"},
+  {id: 3, name: "Tablet", price: 399, image: "tablet.jpg"}
+]
+
+.product-grid
+  each product in products
+    .product-card(data-product-id=product.id)
+      img.product-image(src=`/images/${product.image}` alt=product.name)
+      .product-info
+        h3.product-name= product.name
+        p.product-price $#{product.price}
+        button.btn.btn-primary Add to Cart
+
+//- Form with validation states
+mixin form-field(label, type, name, value = "", errors = [])
+  .form-group(class={error: errors.length > 0})
+    label(for=name)= label
+    input(
+      type=type
+      id=name
+      name=name
+      value=value
+      class={error: errors.length > 0}
+    )
+    if errors.length > 0
+      .error-messages
+        each error in errors
+          p.error-message= error
+
+form.contact-form
+  +form-field("Full Name", "text", "name", formData.name, validationErrors.name)
+  +form-field("Email", "email", "email", formData.email, validationErrors.email)
+  +form-field("Phone", "tel", "phone", formData.phone, validationErrors.phone)
+  
+  .form-group
+    label(for="message") Message
+    textarea#message(name="message" rows="5")= formData.message
+    if validationErrors.message
+      each error in validationErrors.message
+        p.error-message= error
+  
+  button.btn.btn-primary(type="submit") Send Message
+
+//- Table with sorting and pagination
+mixin table-header(text, sortKey, currentSort)
+  th(class={sorted: currentSort.key === sortKey})
+    a(href=`?sort=${sortKey}&order=${currentSort.key === sortKey && currentSort.order === 'asc' ? 'desc' : 'asc'}`)
+      = text
+      if currentSort.key === sortKey
+        span.sort-indicator= currentSort.order === 'asc' ? '↑' : '↓'
+
+table.data-table
+  thead
+    tr
+      +table-header("Name", "name", sortConfig)
+      +table-header("Email", "email", sortConfig)
+      +table-header("Role", "role", sortConfig)
+      +table-header("Created", "created_at", sortConfig)
+      th Actions
+  
+  tbody
+    each user in users
+      tr(class={admin: user.role === 'admin'})
+        td= user.name
+        td= user.email
+        td
+          span.badge(class=`badge-${user.role}`)= user.role
+        td= new Date(user.created_at).toLocaleDateString()
+        td.actions
+          a.btn.btn-sm(href=`/users/${user.id}/edit`) Edit
+          button.btn.btn-sm.btn-danger(data-user-id=user.id) Delete
+
+//- Pagination component
+mixin pagination(currentPage, totalPages, baseUrl)
+  nav.pagination
+    if currentPage > 1
+      a.page-link(href=`${baseUrl}?page=${currentPage - 1}`) Previous
+    
+    - var startPage = Math.max(1, currentPage - 2)
+    - var endPage = Math.min(totalPages, currentPage + 2)
+    
+    if startPage > 1
+      a.page-link(href=`${baseUrl}?page=1`) 1
+      if startPage > 2
+        span.page-ellipsis ...
+    
+    - for (var i = startPage; i <= endPage; i++)
+      if i === currentPage
+        span.page-link.current= i
+      else
+        a.page-link(href=`${baseUrl}?page=${i}`)= i
+    
+    if endPage < totalPages
+      if endPage < totalPages - 1
+        span.page-ellipsis ...
+      a.page-link(href=`${baseUrl}?page=${totalPages}`)= totalPages
+    
+    if currentPage < totalPages
+      a.page-link(href=`${baseUrl}?page=${currentPage + 1}`) Next
+
+//- Modal dialog
+mixin modal(id, title, size = "medium")
+  .modal(id=id class=`modal-${size}`)
+    .modal-backdrop
+    .modal-dialog
+      .modal-content
+        .modal-header
+          h4.modal-title= title
+          button.modal-close(data-modal-close) ×
+        .modal-body
+          block
+        .modal-footer
+          button.btn.btn-secondary(data-modal-close) Cancel
+          block footer
+
++modal("confirm-delete", "Confirm Deletion")
+  p Are you sure you want to delete this item? This action cannot be undone.
+  block footer
+    button.btn.btn-danger#confirm-delete-btn Delete
+
+//- Responsive image component
+mixin responsive-image(src, alt, sizes = "100vw")
+  picture
+    //- WebP format for modern browsers
+    source(srcset=`${src}.webp` type="image/webp")
+    //- Fallback to original format
+    img(
+      src=src
+      alt=alt
+      sizes=sizes
+      loading="lazy"
+    )
+
++responsive-image("/images/hero-image", "Hero banner", "(max-width: 768px) 100vw, 50vw")
+
+//- Configuration and environment handling
+case process.env.NODE_ENV
+  when "development"
+    script(src="/js/dev-tools.js")
+    link(rel="stylesheet" href="/css/debug.css")
+  when "production"
+    script(src="/js/analytics.js")
+    link(rel="stylesheet" href="/css/optimized.min.css")
+
+//- Internationalization
+mixin t(key, ...args)
+  = translations[locale][key] ? util.format(translations[locale][key], ...args) : key
+
+h1
+  +t("welcome_message", user.name)
+p
+  +t("items_count", items.length)
+
+//- SEO meta tags
+mixin seo-meta(data)
+  title= data.title
+  meta(name="description" content=data.description)
+  meta(name="keywords" content=data.keywords)
+  
+  //- Open Graph
+  meta(property="og:title" content=data.title)
+  meta(property="og:description" content=data.description)
+  meta(property="og:image" content=data.image)
+  meta(property="og:url" content=data.url)
+  
+  //- Twitter Card
+  meta(name="twitter:card" content="summary_large_image")
+  meta(name="twitter:title" content=data.title)
+  meta(name="twitter:description" content=data.description)
+  meta(name="twitter:image" content=data.image)
+
+//- JSON-LD structured data
+script(type="application/ld+json")
+  != JSON.stringify(structuredData)
+
+//- Error handling and debugging
+- var debugMode = process.env.NODE_ENV === 'development'
+
+if debugMode
+  .debug-info
+    h4 Debug Information
+    pre= JSON.stringify(locals, null, 2)
+
+if error
+  .error-message
+    h3 Error Occurred
+    if debugMode
+      pre= error.stack
+    else
+      p An error occurred. Please try again later.
+
+//- Performance optimization
+//- Preload critical resources
+link(rel="preload" href="/fonts/main.woff2" as="font" type="font/woff2" crossorigin)
+link(rel="preload" href="/css/critical.css" as="style")
+
+//- Lazy load non-critical resources
+script(defer src="/js/non-critical.js")
+
+//- BEST PRACTICES AND TIPS
+
+//- 1. Use consistent indentation (2 spaces recommended)
+//- 2. Keep lines under 80 characters when possible
+//- 3. Use meaningful variable names
+//- 4. Group related functionality in mixins
+//- 5. Comment complex logic
+//- 6. Escape user input to prevent XSS
+//- 7. Use semantic HTML tags
+//- 8. Test compiled HTML output
+//- 9. Use includes for reusable components
+//- 10. Leverage extends for consistent layouts
+
+//- INTEGRATION WITH BUILD TOOLS
+
+//- Webpack configuration example:
+//-   module.exports = {
+//-     module: {
+//-       rules: [
+//-         {
+//-           test: /\.pug$/,
+//-           use: ['html-loader', 'pug-html-loader']
+//-         }
+//-       ]
+//-     }
+//-   }
+
+//- Gulp task example:
+//-   gulp.task('pug', () => {
+//-     return gulp.src('src/**/*.pug')
+//-       .pipe(pug({
+//-         pretty: true,
+//-         locals: data
+//-       }))
+//-       .pipe(gulp.dest('dist/'))
+//-   })
+
+//- Express.js integration:
+//-   app.set('view engine', 'pug')
+//-   app.set('views', './views')
+//-   
+//-   app.get('/', (req, res) => {
+//-     res.render('index', { title: 'My App', user: req.user })
+//-   })
+
+//- COMMON PATTERNS AND SOLUTIONS
+
+//- Conditional wrapper
+mixin conditional-wrapper(condition, tag = 'div', attributes = {})
+  if condition
+    #{tag}&attributes(attributes)
+      block
+  else
+    block
+
++conditional-wrapper(user.isAdmin, 'section', {class: 'admin-section'})
+  p Admin content here
+
+//- Dynamic component rendering
+mixin render-component(type, data)
+  case type
+    when 'text'
+      p= data.content
+    when 'image'
+      img(src=data.src alt=data.alt)
+    when 'video'
+      video(controls)
+        source(src=data.src type=data.type)
+    default
+      p Unknown component type
+
+each component in pageComponents
+  +render-component(component.type, component.data)
+
+//- Cache busting for assets
+- var assetVersion = Date.now()
+link(rel="stylesheet" href=`/css/main.css?v=${assetVersion}`)
+script(src=`/js/main.js?v=${assetVersion}`)
+
+//- Environment-specific configurations
+- var config = {
+  development: {
+    apiUrl: 'http://localhost:3000/api',
+    debug: true
+  },
+  production: {
+    apiUrl: 'https://api.example.com',
+    debug: false
+  }
+}[process.env.NODE_ENV || 'development']
+
+script
+  | window.CONFIG = !{JSON.stringify(config)};
+
+//- TROUBLESHOOTING
+
+//- Common issues and solutions:
+//- 1. Indentation errors - Use consistent spacing (2 or 4 spaces)
+//- 2. Missing commas in attributes - Use proper syntax
+//- 3. Unescaped interpolation - Use #{} for safe interpolation
+//- 4. Block inheritance issues - Check extends and block structure
+//- 5. Mixin parameter errors - Verify parameter passing
+//- 6. Include path issues - Use correct relative paths
+
+//- Debug helpers
+if typeof debug !== 'undefined' && debug
+  .debug-panel
+    h4 Template Debug
+    p Template: #{__filename}
+    p Locals: 
+    pre= JSON.stringify(locals, null, 2)
+
+//- Performance considerations
+//- 1. Minimize template complexity
+//- 2. Use caching in production
+//- 3. Optimize included files
+//- 4. Minimize template nesting
+//- 5. Use efficient data structures
+
+//- RESOURCES AND REFERENCES
+
+//- Official documentation: https://pugjs.org/
+//- Language reference: https://pugjs.org/language/
+//- API reference: https://pugjs.org/api/
+//- GitHub repository: https://github.com/pugjs/pug
+//- VS Code extension: "Pug beautify"
+//- Syntax highlighting: Available for most editors
+
+//- COMPILATION EXAMPLES
+
+//- Command line usage:
+//- pug --help                          # Show help
+//- pug --version                       # Show version
+//- pug template.pug                    # Compile to HTML
+//- pug --client template.pug           # Compile to JavaScript function
+//- pug --pretty template.pug           # Pretty print HTML
+//- pug --watch --out dist src/*.pug    # Watch and compile
+
+//- Programmatic usage:
+//- const pug = require('pug');
+//- const html = pug.renderFile('template.pug', {
+//-   title: 'My Page',
+//-   user: { name: 'John' }
+//- });
+
+//- Template caching:
+//- const compiledFunction = pug.compileFile('template.pug');
+//- const html = compiledFunction({ title: 'My Page' });
+
+//===========================================
+//- PUG REFERENCE COMPLETE!
+//- 
+//- Pug makes HTML more readable and maintainable
+//- Remember: Indentation is significant in Pug
+//- Always escape user input: #{userInput}
+//- Use mixins for reusable components
+//- Leverage template inheritance for consistency
+//- 
+//- Start with: npm install pug-cli -g
+//- Then: pug --watch template.pug
+//===========================================
