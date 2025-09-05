@@ -182,3 +182,30 @@ print(a == c)      # True (same content)
 fruits = ["apple", "banana", "cherry"]
 print("apple" in fruits)      # True
 print("grape" not in fruits)  # True
+
+# CONTROL STRUCTURES
+
+# If statements
+age = 18
+
+if age >= 18:
+    print("You are an adult")
+elif age >= 13:
+    print("You are a teenager")
+else:
+    print("You are a child")
+
+# Ternary operator (conditional expression)
+status = "adult" if age >= 18 else "minor"
+
+# Match statement (Python 3.10+)
+def handle_status(status):
+    match status:
+        case "active":
+            return "User is active"
+        case "inactive":
+            return "User is inactive"
+        case "pending":
+            return "User registration pending"
+        case _:  # Default case
+            return "Unknown status"
