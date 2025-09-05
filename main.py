@@ -1419,3 +1419,70 @@ def process_large_dataset():
     # Memory efficient
     data_generator = (x**2 for x in range(1000000))
     return sum(data_generator)
+
+
+# PACKAGING AND DISTRIBUTION
+
+# Project structure
+"""
+my_package/
+├── my_package/
+│   ├── __init__.py
+│   ├── core.py
+│   └── utils.py
+├── tests/
+│   ├── __init__.py
+│   └── test_core.py
+├── setup.py
+├── README.md
+├── requirements.txt
+└── .gitignore
+"""
+
+# setup.py example
+"""
+from setuptools import setup, find_packages
+
+setup(
+    name="my-package",
+    version="1.0.0",
+    author="Your Name",
+    author_email="your.email@example.com",
+    description="A short description of your package",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/yourusername/my-package",
+    packages=find_packages(),
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+    ],
+    python_requires=">=3.8",
+    install_requires=[
+        "requests>=2.25.0",
+        "click>=7.0",
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=6.0",
+            "black>=21.0",
+            "flake8>=3.8",
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "my-command=my_package.cli:main",
+        ],
+    },
+)
+"""
+
+# Build and distribute
+# python setup.py sdist bdist_wheel
+# pip install twine
+# twine upload dist/*
