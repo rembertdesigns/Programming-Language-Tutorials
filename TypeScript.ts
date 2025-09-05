@@ -88,3 +88,37 @@ function infiniteLoop(): never {
     // infinite loop
   }
 }
+
+
+// ARRAYS AND TUPLES
+
+// Array types
+let numbers: number[] = [1, 2, 3, 4, 5];
+let strings: Array<string> = ["hello", "world"];
+let mixed: (string | number)[] = ["hello", 42, "world"];
+
+// Array methods with typing
+let fruits: string[] = ["apple", "banana"];
+fruits.push("orange");                    // OK
+// fruits.push(42);                       // Error: number not assignable to string
+
+// Readonly arrays
+let readonlyNumbers: readonly number[] = [1, 2, 3];
+// readonlyNumbers.push(4);               // Error: push doesn't exist on readonly array
+
+// Tuples (fixed length arrays with specific types)
+let coordinate: [number, number] = [10, 20];
+let nameAge: [string, number] = ["Alice", 25];
+
+// Named tuples (TypeScript 4.0+)
+let point: [x: number, y: number] = [10, 20];
+
+// Optional tuple elements
+let optionalTuple: [string, number?] = ["hello"];
+
+// Rest elements in tuples
+let restTuple: [string, ...number[]] = ["hello", 1, 2, 3];
+
+// Tuple destructuring
+let [x, y] = coordinate;                  // x: number, y: number
+let [name, age] = nameAge;               // name: string, age: number
