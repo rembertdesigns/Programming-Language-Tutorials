@@ -420,3 +420,93 @@ function factorial($n) {
 }
 
 echo factorial(5); // 120
+
+
+// OBJECT-ORIENTED PROGRAMMING
+
+// Basic class
+class User {
+  // Properties
+  public $name;
+  public $email;
+  private $password;
+  protected $created_at;
+  
+  // Constructor
+  public function __construct($name, $email) {
+      $this->name = $name;
+      $this->email = $email;
+      $this->created_at = date('Y-m-d H:i:s');
+  }
+  
+  // Methods
+  public function getName() {
+      return $this->name;
+  }
+  
+  public function setPassword($password) {
+      $this->password = password_hash($password, PASSWORD_DEFAULT);
+  }
+  
+  public function verifyPassword($password) {
+      return password_verify($password, $this->password);
+  }
+  
+  // Magic methods
+  public function __toString() {
+      return $this->name . " (" . $this->email . ")";
+  }
+  
+  public function __get($property) {
+      if (property_exists($this, $property)) {
+          return $this->$property;
+      }
+  }
+}
+
+// Create objects
+$user = new User("John Doe", "john@example.com");
+$user->setPassword("secretpassword");
+echo $user->getName();
+
+// Inheritance
+class AdminUser extends User {
+  private $permissions = [];
+  
+  public function __construct($name, $email, $permissions = []) {
+      parent::__construct($name, $email);
+      $this->permissions = $permissions;
+  }
+  
+  public function addPermission($permission) {
+      $this->permissions[] = $permission;
+  }
+  
+  public function hasPermission($permission) {
+      return in_array($permission, $this->permissions);
+  }
+}
+
+$admin = new AdminUser("Admin", "admin@example.com", ["read", "write"]);
+$admin->addPermission("delete");
+
+// Abstract classes
+abstract class Animal {
+  protected $name;
+  
+  public function __construct($name) {
+      $this->name = $name;
+  }
+  
+  abstract public function makeSound();
+  
+  public function getName() {
+      return $this->name;
+  }
+}
+
+class Dog extends Animal {
+  public function makeSound() {
+      return "Woof!";
+  }
+}
