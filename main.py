@@ -1363,3 +1363,59 @@ def process_files_in_directory(directory_path):
         with py_file.open("r") as f:
             lines = f.readlines()
             print(f"  Lines: {len(lines)}")
+
+
+# PERFORMANCE OPTIMIZATION
+
+import time
+import functools
+from functools import lru_cache
+
+# Timing decorator
+def timer(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"{func.__name__} took {end - start:.4f} seconds")
+        return result
+    return wrapper
+
+# Memoization with lru_cache
+@lru_cache(maxsize=128)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+# Profile code performance
+import cProfile
+import pstats
+
+def profile_function(func, *args, **kwargs):
+    """Profile a function's performance."""
+    profiler = cProfile.Profile()
+    profiler.enable()
+    
+    result = func(*args, **kwargs)
+    
+    profiler.disable()
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative')
+    stats.print_stats(10)  # Top 10 functions
+    
+    return result
+
+# Memory-efficient iteration
+def read_large_file(filename):
+    """Read large file line by line (memory efficient)."""
+    with open(filename, 'r') as file:
+        for line in file:
+            yield line.strip()
+
+# Use generators instead of lists for large datasets
+def process_large_dataset():
+    # Memory efficient
+    data_generator = (x**2 for x in range(1000000))
+    return sum(data_generator)
