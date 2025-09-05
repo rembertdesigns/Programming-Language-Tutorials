@@ -623,3 +623,84 @@ def fibonacci():
 
 fib = fibonacci()
 first_ten_fib = [next(fib) for _ in range(10)]
+
+
+# ADVANCED FEATURES
+
+# Context managers
+class FileManager:
+    def __init__(self, filename, mode):
+        self.filename = filename
+        self.mode = mode
+        self.file = None
+    
+    def __enter__(self):
+        self.file = open(self.filename, self.mode)
+        return self.file
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.file:
+            self.file.close()
+
+# Use custom context manager
+with FileManager("test.txt", "w") as f:
+    f.write("Hello from context manager")
+
+# Using contextlib
+from contextlib import contextmanager
+
+@contextmanager
+def timer():
+    import time
+    start = time.time()
+    try:
+        yield
+    finally:
+        end = time.time()
+        print(f"Elapsed time: {end - start:.4f} seconds")
+
+with timer():
+    # Some time-consuming operation
+    sum(range(1000000))
+
+# Multiple inheritance and method resolution order
+class A:
+    def method(self):
+        print("Method from A")
+
+class B:
+    def method(self):
+        print("Method from B")
+
+class C(A, B):  # Multiple inheritance
+    pass
+
+c = C()
+c.method()  # Prints "Method from A" (left-to-right MRO)
+print(C.__mro__)  # Shows method resolution order
+
+# Magic methods (dunder methods)
+class Vector:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    
+    def __add__(self, other):
+        return Vector(self.x + other.x, self.y + other.y)
+    
+    def __str__(self):
+        return f"Vector({self.x}, {self.y})"
+    
+    def __repr__(self):
+        return f"Vector({self.x}, {self.y})"
+    
+    def __len__(self):
+        return int((self.x**2 + self.y**2)**0.5)
+    
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+v1 = Vector(2, 3)
+v2 = Vector(1, 4)
+v3 = v1 + v2  # Uses __add__
+print(v3)     # Uses __str__
