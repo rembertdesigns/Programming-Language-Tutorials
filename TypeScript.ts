@@ -870,3 +870,439 @@ function sealed(constructor: Function) {
   
   // InstanceType - extract instance type of constructor
   type RectangleInstance = InstanceType<typeof Rectangle>; // Rectangle
+
+
+  // ADVANCED TYPES
+
+// Template literal types (TypeScript 4.1+)
+type World = "world";
+type Greeting = `hello ${World}`;              // "hello world"
+
+type EmailLocaleIDs = "welcome_email" | "email_heading";
+type FooterLocaleIDs = "footer_title" | "footer_sendoff";
+type AllLocaleIDs = `${EmailLocaleIDs | FooterLocaleIDs}_id`; // "welcome_email_id" | "email_heading_id" | "footer_title_id" | "footer_sendoff_id"
+
+// Recursive types
+type Json = 
+  | string
+  | number
+  | boolean
+  | null
+  | { [property: string]: Json }
+  | Json[];
+
+// Conditional types
+type TypeName<T> = 
+  T extends string ? "string" :
+  T extends number ? "number" :
+  T extends boolean ? "boolean" :
+  T extends undefined ? "undefined" :
+  T extends Function ? "function" :
+  "object";
+
+type T1 = TypeName<string>;    // "string"
+type T2 = TypeName<number>;    // "number"
+type T3 = TypeName<() => void>; // "function"
+
+// Distributive conditional types
+type ToArray<T> = T extends any ? T[] : never;
+type StrOrNumArray = ToArray<string | number>; // string[] | number[]
+
+// infer keyword
+type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
+
+type Unpromisify<T> = T extends Promise<infer U> ? U : T;
+type T = Unpromisify<Promise<string>>; // string
+
+
+// ERROR HANDLING
+
+// Error types
+class ValidationError extends Error {
+  constructor(public field: string, message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+// Result type pattern
+type Result<T, E = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+function parseNumber(input: string): Result<number> {
+  const num = parseInt(input, 10);
+  if (isNaN(num)) {
+    return { success: false, error: new Error("Invalid number") };
+  }
+  return { success: true, data: num };
+}
+
+// Using the result
+const result = parseNumber("42");
+if (result.success) {
+  console.log(result.data); // TypeScript knows this is number
+} else {
+  console.error(result.error.message);
+}
+
+// Optional chaining and nullish coalescing
+interface User {
+  name: string;
+  address?: {
+    street?: string;
+    city?: string;
+  };
+}
+
+const user: User = { name: "Alice" };
+
+// Optional chaining
+const street = user.address?.street;
+const streetLength = user.address?.street?.length;
+
+// Nullish coalescing
+const displayName = user.name ?? "Anonymous";
+const defaultStreet = user.address?.street ?? "Unknown Street";
+
+
+// WORKING WITH EXTERNAL LIBRARIES
+
+// Type definitions
+// npm install --save-dev @types/lodash
+// npm install --save-dev @types/node
+// npm install --save-dev @types/react
+
+// Ambient declarations
+declare const API_KEY: string;
+declare function gtag(command: string, ...args: any[]): void;
+
+// Module declarations
+declare module "custom-library" {
+  export function customFunction(): string;
+  export interface CustomInterface {
+    prop: number;
+  }
+}
+
+// Global augmentation
+declare global {
+  interface Window {
+    customProperty: string;
+  }
+  
+  namespace NodeJS {
+    interface ProcessEnv {
+      API_KEY: string;
+      DATABASE_URL: string;
+    }
+  }
+}
+
+// Using declaration merging
+interface User {
+  name: string;
+}
+
+interface User {
+  age: number;
+}
+
+// Now User has both name and age properties
+
+
+// REACT WITH TYPESCRIPT
+
+// Component props
+interface Props {
+  title: string;
+  count?: number;
+  onIncrement: () => void;
+}
+
+const Counter: React.FC<Props> = ({ title, count = 0, onIncrement }) => {
+  return (
+    <div>
+      <h2>{title}</h2>
+      <p>Count: {count}</p>
+      <button onClick={onIncrement}>Increment</button>
+    </div>
+  );
+};
+
+// Generic component
+interface ListProps<T> {
+  items: T[];
+  renderItem: (item: T) => React.ReactNode;
+}
+
+function List<T>({ items, renderItem }: ListProps<T>) {
+  return <ul>{items.map(renderItem)}</ul>;
+}
+
+// Hooks with TypeScript
+const [count, setCount] = useState<number>(0);
+const [user, setUser] = useState<User | null>(null);
+
+// Custom hook
+function useLocalStorage<T>(key: string, initialValue: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      return initialValue;
+    }
+  });
+
+  const setStoredValue = (value: T | ((val: T) => T)) => {
+    try {
+      const valueToStore = value instanceof Function ? value(value) : value;
+      setValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  return [value, setStoredValue] as const;
+}
+
+
+// NODE.JS WITH TYPESCRIPT
+
+// Express with TypeScript
+import express, { Request, Response, NextFunction } from 'express';
+
+const app = express();
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+// Extending Request interface
+interface AuthenticatedRequest extends Request {
+  user?: User;
+}
+
+// Middleware with types
+const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  // Authentication logic
+  req.user = { id: 1, name: "Alice", email: "alice@example.com" };
+  next();
+};
+
+// Route handlers with types
+app.get('/users/:id', authenticate, (req: AuthenticatedRequest, res: Response) => {
+  const userId = parseInt(req.params.id);
+  const user = req.user;
+  res.json({ userId, user });
+});
+
+// Environment variables with types
+interface Environment {
+  NODE_ENV: 'development' | 'production' | 'test';
+  PORT: number;
+  DATABASE_URL: string;
+}
+
+const env: Environment = {
+  NODE_ENV: process.env.NODE_ENV as Environment['NODE_ENV'] || 'development',
+  PORT: parseInt(process.env.PORT || '3000'),
+  DATABASE_URL: process.env.DATABASE_URL || 'localhost'
+};
+
+
+// TESTING WITH TYPESCRIPT
+
+// Jest with TypeScript
+describe('Calculator', () => {
+  test('should add two numbers', () => {
+    const result = add(2, 3);
+    expect(result).toBe(5);
+  });
+  
+  test('should handle user input', async () => {
+    const mockUser: User = {
+      id: 1,
+      name: 'Test User',
+      email: 'test@example.com'
+    };
+    
+    const result = await createUser(mockUser);
+    expect(result).toEqual(mockUser);
+  });
+});
+
+// Type-safe mocks
+const mockRepository: jest.Mocked<Repository<User>> = {
+  save: jest.fn(),
+  findById: jest.fn(),
+  findAll: jest.fn()
+};
+
+
+// BEST PRACTICES
+
+// 1. Use strict mode
+// "strict": true in tsconfig.json
+
+// 2. Enable additional checks
+// "noUnusedLocals": true
+// "noUnusedParameters": true
+// "noImplicitReturns": true
+// "noFallthroughCasesInSwitch": true
+
+// 3. Prefer interfaces over type aliases for object shapes
+interface User {  // ✅ Good
+  name: string;
+  age: number;
+}
+
+type User = {     // ❌ Less preferred for objects
+  name: string;
+  age: number;
+};
+
+// 4. Use type aliases for unions and complex types
+type Status = 'loading' | 'success' | 'error';  // ✅ Good
+type EventHandler<T> = (event: T) => void;      // ✅ Good
+
+// 5. Avoid any, prefer unknown
+function processInput(input: unknown) {  // ✅ Good
+  if (typeof input === 'string') {
+    return input.toUpperCase();
+  }
+}
+
+function processInput(input: any) {      // ❌ Avoid
+  return input.toUpperCase();
+}
+
+// 6. Use const assertions
+const colors = ['red', 'green', 'blue'] as const;  // ✅ readonly ['red', 'green', 'blue']
+const config = {
+  apiUrl: 'https://api.example.com',
+  timeout: 5000
+} as const;
+
+// 7. Prefer type guards over type assertions
+function isString(value: unknown): value is string {  // ✅ Good
+  return typeof value === 'string';
+}
+
+// 8. Use discriminated unions for better type safety
+interface LoadingState {
+  status: 'loading';
+}
+
+interface SuccessState {
+  status: 'success';
+  data: User[];
+}
+
+interface ErrorState {
+  status: 'error';
+  error: string;
+}
+
+type AppState = LoadingState | SuccessState | ErrorState;
+
+// 9. Leverage generic constraints
+function processItems<T extends { id: number }>(items: T[]): T[] {
+  return items.filter(item => item.id > 0);
+}
+
+// 10. Use readonly for immutable data
+interface ReadonlyUser {
+  readonly id: number;
+  readonly name: string;
+  readonly createdAt: Date;
+}
+
+
+// COMMON PATTERNS
+
+// Builder pattern
+class UserBuilder {
+  private user: Partial<User> = {};
+  
+  setName(name: string): this {
+    this.user.name = name;
+    return this;
+  }
+  
+  setAge(age: number): this {
+    this.user.age = age;
+    return this;
+  }
+  
+  setEmail(email: string): this {
+    this.user.email = email;
+    return this;
+  }
+  
+  build(): User {
+    if (!this.user.name || !this.user.age || !this.user.email) {
+      throw new Error('Missing required fields');
+    }
+    return this.user as User;
+  }
+}
+
+const user = new UserBuilder()
+  .setName('Alice')
+  .setAge(25)
+  .setEmail('alice@example.com')
+  .build();
+
+// Factory pattern
+interface Product {
+  name: string;
+  price: number;
+}
+
+class ProductFactory {
+  static create(type: 'book' | 'electronics', name: string, price: number): Product {
+    switch (type) {
+      case 'book':
+        return new Book(name, price);
+      case 'electronics':
+        return new Electronics(name, price);
+      default:
+        throw new Error('Unknown product type');
+    }
+  }
+}
+
+// Observer pattern
+interface Observer<T> {
+  update(data: T): void;
+}
+
+class Subject<T> {
+  private observers: Observer<T>[] = [];
+  
+  subscribe(observer: Observer<T>): void {
+    this.observers.push(observer);
+  }
+  
+  unsubscribe(observer: Observer<T>): void {
+    const index = this.observers.indexOf(observer);
+    if (index > -1) {
+      this.observers.splice(index, 1);
+    }
+  }
+  
+  notify(data: T): void {
+    this.observers.forEach(observer => observer.update(data));
+  }
+}
+
+
+console.log("TypeScript Reference Complete!");
+console.log("TypeScript adds type safety to JavaScript while maintaining flexibility");
+console.log("Use 'tsc --watch' for continuous compilation during development");
+console.log("Remember: TypeScript compiles to JavaScript, so all JS is valid TS!");
