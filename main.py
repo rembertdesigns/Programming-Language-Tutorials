@@ -209,3 +209,53 @@ def handle_status(status):
             return "User registration pending"
         case _:  # Default case
             return "Unknown status"
+        
+# LOOPS
+
+# For loops
+# Iterate over list
+fruits = ["apple", "banana", "cherry"]
+for fruit in fruits:
+    print(fruit)
+
+# Iterate with index
+for i, fruit in enumerate(fruits):
+    print(f"{i}: {fruit}")
+
+# Iterate over range
+for i in range(5):          # 0 to 4
+    print(i)
+
+for i in range(1, 6):       # 1 to 5
+    print(i)
+
+for i in range(0, 10, 2):   # 0, 2, 4, 6, 8
+    print(i)
+
+# Iterate over dictionary
+person = {"name": "Alice", "age": 25}
+for key in person:
+    print(key, person[key])
+
+for key, value in person.items():
+    print(f"{key}: {value}")
+
+# While loops
+count = 0
+while count < 5:
+    print(f"Count: {count}")
+    count += 1
+
+# Loop control statements
+for i in range(10):
+    if i == 3:
+        continue  # Skip this iteration
+    if i == 7:
+        break     # Exit loop
+    print(i)
+
+# Loop with else clause
+for i in range(5):
+    print(i)
+else:
+    print("Loop completed normally")  # Runs if loop wasn't broken
