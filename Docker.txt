@@ -33,3 +33,93 @@ docker run hello-world           # Test installation
 # Registry: Repository for storing and sharing images (Docker Hub)
 # Volume: Persistent data storage for containers
 # Network: Communication layer between containers
+
+# WORKING WITH IMAGES
+
+# Search for images
+docker search nginx               # Search Docker Hub for nginx images
+docker search --limit 5 python   # Limit search results
+
+# Pull images from registry
+docker pull nginx                 # Pull latest nginx image
+docker pull nginx:1.21           # Pull specific version
+docker pull ubuntu:20.04         # Pull Ubuntu 20.04
+
+# List images
+docker images                     # List all local images
+docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+# Remove images
+docker rmi nginx                  # Remove nginx image
+docker rmi $(docker images -q)   # Remove all images
+docker image prune                # Remove unused images
+docker image prune -a             # Remove all unused images
+
+# Image history and details
+docker history nginx              # Show image layer history
+docker inspect nginx             # Detailed image information
+
+# Save and load images
+docker save nginx > nginx.tar    # Save image to tar file
+docker load < nginx.tar          # Load image from tar file
+
+# Tag images
+docker tag nginx my-nginx:v1.0   # Create new tag for existing image
+docker tag nginx:latest nginx:backup
+
+
+# WORKING WITH CONTAINERS
+
+# Run containers
+docker run nginx                  # Run nginx container (foreground)
+docker run -d nginx              # Run in detached mode (background)
+docker run -d --name web-server nginx  # Run with custom name
+docker run -p 8080:80 nginx      # Map port 8080 to container port 80
+docker run -p 127.0.0.1:8080:80 nginx  # Bind to specific interface
+
+# Interactive containers
+docker run -it ubuntu bash       # Run interactive terminal
+docker run -it --rm ubuntu bash  # Remove container when it exits
+docker run -it python:3.9 python # Run Python interpreter
+
+# Environment variables
+docker run -e NODE_ENV=production node:14  # Set environment variable
+docker run --env-file .env node:14         # Load from .env file
+
+# Volume mounts
+docker run -v /host/path:/container/path nginx     # Bind mount
+docker run -v my-volume:/app/data nginx           # Named volume
+docker run -v $(pwd):/app node:14                 # Mount current directory
+
+# List containers
+docker ps                         # Show running containers
+docker ps -a                      # Show all containers (including stopped)
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# Container management
+docker start container_name       # Start stopped container
+docker stop container_name        # Stop running container
+docker restart container_name     # Restart container
+docker pause container_name       # Pause container processes
+docker unpause container_name     # Unpause container
+
+# Execute commands in running containers
+docker exec -it container_name bash           # Open bash shell
+docker exec container_name ls -la /app        # Run single command
+docker exec -u root container_name whoami     # Run as different user
+
+# Container logs
+docker logs container_name        # View container logs
+docker logs -f container_name     # Follow logs (like tail -f)
+docker logs --tail 50 container_name  # Show last 50 lines
+docker logs --since 2h container_name # Show logs from last 2 hours
+
+# Copy files between host and container
+docker cp file.txt container_name:/app/       # Copy to container
+docker cp container_name:/app/file.txt ./     # Copy from container
+
+# Remove containers
+docker rm container_name          # Remove stopped container
+docker rm -f container_name       # Force remove running container
+docker rm $(docker ps -aq)       # Remove all containers
+docker container prune           # Remove all stopped containers
