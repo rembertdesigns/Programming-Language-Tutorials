@@ -1216,3 +1216,93 @@ def get_users_by_age(min_age):
 
 # setup_database()
 # adult_users = get_users_by_age(18)
+
+
+# ASYNC/AWAIT (Python 3.7+)
+
+import asyncio
+import aiohttp  # pip install aiohttp
+
+# Basic async function
+async def say_hello(name, delay):
+    await asyncio.sleep(delay)
+    print(f"Hello, {name}!")
+
+# Run async function
+# asyncio.run(say_hello("Alice", 1))
+
+# Async HTTP requests
+async def fetch_url(session, url):
+    try:
+        async with session.get(url) as response:
+            return await response.text()
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+        return None
+
+async def fetch_multiple_urls(urls):
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_url(session, url) for url in urls]
+        results = await asyncio.gather(*tasks)
+        return results
+
+# urls = ["https://httpbin.org/delay/1", "https://httpbin.org/delay/2"]
+# results = asyncio.run(fetch_multiple_urls(urls))
+
+# Async generator
+async def async_counter(limit):
+    for i in range(limit):
+        await asyncio.sleep(0.1)
+        yield i
+
+async def consume_async_generator():
+    async for number in async_counter(5):
+        print(number)
+
+# asyncio.run(consume_async_generator())
+
+
+# LOGGING
+
+import logging
+from datetime import datetime
+
+# Basic logging setup
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    filename="app.log"
+)
+
+logger = logging.getLogger(__name__)
+
+# Different log levels
+logger.debug("This is a debug message")
+logger.info("This is an info message")
+logger.warning("This is a warning message")
+logger.error("This is an error message")
+logger.critical("This is a critical message")
+
+# Custom logger with multiple handlers
+def setup_logger(name, log_file, level=logging.INFO):
+    """Set up a logger with file and console handlers."""
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    # File handler
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# app_logger = setup_logger("my_app", "application.log")
