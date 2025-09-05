@@ -345,3 +345,105 @@ def count_up_to(n):
 
 for number in count_up_to(5):
     print(number)
+
+
+# CLASSES AND OBJECTS
+
+# Basic class
+class Person:
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+    
+    def introduce(self):
+        return f"Hi, I'm {self.name} and I'm {self.age} years old"
+    
+    def have_birthday(self):
+        self.age += 1
+
+# Create objects
+person1 = Person("Alice", 25)
+person2 = Person("Bob", 30)
+
+print(person1.introduce())
+person1.have_birthday()
+print(f"Alice is now {person1.age}")
+
+# Class with class variables and methods
+class BankAccount:
+    bank_name = "Python Bank"  # Class variable
+    accounts_created = 0       # Class variable
+    
+    def __init__(self, owner, balance=0):
+        self.owner = owner
+        self.balance = balance
+        BankAccount.accounts_created += 1
+    
+    def deposit(self, amount):
+        if amount > 0:
+            self.balance += amount
+            return True
+        return False
+    
+    def withdraw(self, amount):
+        if 0 < amount <= self.balance:
+            self.balance -= amount
+            return True
+        return False
+    
+    @classmethod
+    def get_bank_info(cls):
+        return f"Bank: {cls.bank_name}, Accounts: {cls.accounts_created}"
+    
+    @staticmethod
+    def validate_amount(amount):
+        return amount > 0
+    
+    def __str__(self):
+        return f"Account({self.owner}: ${self.balance})"
+
+account = BankAccount("Alice", 1000)
+account.deposit(500)
+print(account)  # Uses __str__ method
+
+# Inheritance
+class SavingsAccount(BankAccount):
+    def __init__(self, owner, balance=0, interest_rate=0.02):
+        super().__init__(owner, balance)  # Call parent constructor
+        self.interest_rate = interest_rate
+    
+    def add_interest(self):
+        interest = self.balance * self.interest_rate
+        self.balance += interest
+        return interest
+
+savings = SavingsAccount("Bob", 1000, 0.05)
+interest_earned = savings.add_interest()
+
+# Property decorators
+class Temperature:
+    def __init__(self, celsius=0):
+        self._celsius = celsius
+    
+    @property
+    def celsius(self):
+        return self._celsius
+    
+    @celsius.setter
+    def celsius(self, value):
+        if value < -273.15:
+            raise ValueError("Temperature cannot be below absolute zero")
+        self._celsius = value
+    
+    @property
+    def fahrenheit(self):
+        return (self._celsius * 9/5) + 32
+    
+    @fahrenheit.setter
+    def fahrenheit(self, value):
+        self.celsius = (value - 32) * 5/9
+
+temp = Temperature(25)
+print(temp.fahrenheit)  # 77.0
+temp.fahrenheit = 86
+print(temp.celsius)     # 30.0
