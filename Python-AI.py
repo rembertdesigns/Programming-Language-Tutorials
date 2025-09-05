@@ -199,3 +199,64 @@ df2 = pd.DataFrame({'key': ['A', 'B', 'D'], 'value2': [4, 5, 6]})
 inner_join = pd.merge(df1, df2, on='key', how='inner')  # Inner join
 left_join = pd.merge(df1, df2, on='key', how='left')    # Left join
 outer_join = pd.merge(df1, df2, on='key', how='outer')  # Outer join
+
+
+# MATPLOTLIB - DATA VISUALIZATION
+
+import matplotlib.pyplot as plt
+
+# Basic plotting
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+
+plt.figure(figsize=(10, 6))
+plt.plot(x, y, label='sin(x)')
+plt.xlabel('X values')
+plt.ylabel('Y values')
+plt.title('Sine Wave')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Multiple plots
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+# Line plot
+axes[0, 0].plot(x, y)
+axes[0, 0].set_title('Line Plot')
+
+# Scatter plot
+axes[0, 1].scatter(df['Age'], df['Salary'])
+axes[0, 1].set_title('Age vs Salary')
+axes[0, 1].set_xlabel('Age')
+axes[0, 1].set_ylabel('Salary')
+
+# Histogram
+axes[1, 0].hist(df['Age'], bins=10, alpha=0.7)
+axes[1, 0].set_title('Age Distribution')
+
+# Bar plot
+city_counts = df['City'].value_counts()
+axes[1, 1].bar(city_counts.index, city_counts.values)
+axes[1, 1].set_title('City Distribution')
+axes[1, 1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.show()
+
+# Advanced plotting features
+plt.figure(figsize=(10, 6))
+
+# Multiple series
+plt.plot(x, np.sin(x), label='sin(x)', linewidth=2)
+plt.plot(x, np.cos(x), label='cos(x)', linewidth=2, linestyle='--')
+plt.plot(x, np.tan(x), label='tan(x)', linewidth=2, linestyle=':', alpha=0.7)
+
+plt.xlim(0, 2*np.pi)
+plt.ylim(-2, 2)
+plt.xlabel('X values')
+plt.ylabel('Y values')
+plt.title('Trigonometric Functions')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
