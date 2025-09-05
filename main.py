@@ -259,3 +259,89 @@ for i in range(5):
     print(i)
 else:
     print("Loop completed normally")  # Runs if loop wasn't broken
+
+
+# FUNCTIONS
+
+# Basic function
+def greet():
+    print("Hello!")
+
+greet()  # Call function
+
+# Function with parameters
+def greet_person(name):
+    print(f"Hello, {name}!")
+
+greet_person("Alice")
+
+# Function with return value
+def add_numbers(a, b):
+    return a + b
+
+result = add_numbers(5, 3)
+
+# Function with default parameters
+def greet_with_title(name, title="Mr."):
+    return f"Hello, {title} {name}!"
+
+print(greet_with_title("Smith"))           # Uses default title
+print(greet_with_title("Smith", "Dr."))    # Uses provided title
+
+# Function with keyword arguments
+def create_profile(name, age, city="Unknown", occupation="Student"):
+    return {
+        "name": name,
+        "age": age,
+        "city": city,
+        "occupation": occupation
+    }
+
+profile = create_profile("Alice", 25, occupation="Engineer")
+
+# Function with *args (variable positional arguments)
+def sum_all(*numbers):
+    return sum(numbers)
+
+total = sum_all(1, 2, 3, 4, 5)
+
+# Function with **kwargs (variable keyword arguments)
+def create_user(**details):
+    return details
+
+user = create_user(name="Alice", age=25, city="New York")
+
+# Lambda functions (anonymous functions)
+square = lambda x: x ** 2
+add = lambda a, b: a + b
+
+numbers = [1, 2, 3, 4, 5]
+squared = list(map(square, numbers))      # Apply function to each element
+even_numbers = list(filter(lambda x: x % 2 == 0, numbers))  # Filter elements
+
+# Function decorators
+def timer_decorator(func):
+    import time
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"{func.__name__} took {end - start:.4f} seconds")
+        return result
+    return wrapper
+
+@timer_decorator
+def slow_function():
+    import time
+    time.sleep(1)
+    return "Done"
+
+# Generator functions
+def count_up_to(n):
+    count = 1
+    while count <= n:
+        yield count
+        count += 1
+
+for number in count_up_to(5):
+    print(number)
