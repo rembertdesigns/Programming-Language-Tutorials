@@ -447,3 +447,78 @@ temp = Temperature(25)
 print(temp.fahrenheit)  # 77.0
 temp.fahrenheit = 86
 print(temp.celsius)     # 30.0
+
+
+# FILE HANDLING
+
+# Reading files
+# Read entire file
+with open("example.txt", "r") as file:
+    content = file.read()
+
+# Read line by line
+with open("example.txt", "r") as file:
+    for line in file:
+        print(line.strip())  # strip() removes newline characters
+
+# Read all lines into a list
+with open("example.txt", "r") as file:
+    lines = file.readlines()
+
+# Writing files
+# Write to file (overwrites existing content)
+with open("output.txt", "w") as file:
+    file.write("Hello, World!\n")
+    file.write("This is a new line")
+
+# Append to file
+with open("output.txt", "a") as file:
+    file.write("\nThis line is appended")
+
+# Write multiple lines
+lines = ["Line 1\n", "Line 2\n", "Line 3\n"]
+with open("output.txt", "w") as file:
+    file.writelines(lines)
+
+# Working with CSV files
+import csv
+
+# Write CSV
+data = [
+    ["Name", "Age", "City"],
+    ["Alice", 25, "New York"],
+    ["Bob", 30, "San Francisco"]
+]
+
+with open("people.csv", "w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerows(data)
+
+# Read CSV
+with open("people.csv", "r") as file:
+    reader = csv.reader(file)
+    for row in reader:
+        print(row)
+
+# CSV with dictionaries
+with open("people.csv", "r") as file:
+    reader = csv.DictReader(file)
+    for row in reader:
+        print(f"{row['Name']} is {row['Age']} years old")
+
+# Working with JSON
+import json
+
+# Write JSON
+data = {"name": "Alice", "age": 25, "city": "New York"}
+with open("person.json", "w") as file:
+    json.dump(data, file, indent=2)
+
+# Read JSON
+with open("person.json", "r") as file:
+    person = json.load(file)
+    print(person["name"])
+
+# JSON string conversion
+json_string = json.dumps(data)  # Convert to JSON string
+parsed_data = json.loads(json_string)  # Parse JSON string
