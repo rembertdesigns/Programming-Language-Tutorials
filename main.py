@@ -1,59 +1,61 @@
-# Python  - Beginners Guide - by Richard Rembert
-# Comments start with # & will show code below with examples
+# PYTHON - Comprehensive Programming Language - by Richard Rembert
+
+# Comments start with # and will show code below with examples
+
+# Python is a high-level, interpreted programming language known for its simple syntax
+# and readability, making it ideal for beginners and powerful for advanced applications
+
+
+# SETUP AND BASICS
+
+# Install Python from python.org or use package managers
+# python --version  # Check Python version
+# pip install package_name  # Install packages
+# pip freeze  # List installed packages
+# pip freeze > requirements.txt  # Save dependencies
+# pip install -r requirements.txt  # Install from requirements file
+
+# Run Python files
+# python filename.py
+# python3 filename.py  # On systems with both Python 2 and 3
+
+# Interactive Python shell
+# python  # Start interactive mode
+# exit()  # Exit interactive mode
 
 # First Python script people use 
 print("Hello, World!") 
 
 
-# Primitive (Fundamental) Data Types:
-# Primitive data types represent simple values. These data types are the most basic and essential units used to store and manipulate information in a program. They translate directly into low-level machine code.
+# PRIMITIVE (FUNDAMENTAL) DATA TYPES
 
-# Primitive data types include:
-String (str): Represents sequences of characters. Should be enclosed in quotes. Example: "Hello, Python!"
-Integer (int): Represents whole numbers without decimals. Example: 42
-Float (float): Represents numbers with decimals. Example: 3.14
-Boolean (bool): Represents either True or False.
-
-# String Example 
+# String (str): Represents sequences of characters
 name = "John"
-# Integer Example
-age = 25 
-# Float Example 
-height = 1.75 
-# Boolean Example
+message = 'Single quotes work too'
+multiline = """This is a
+multiline string"""
+template = f"Hello, {name}!"  # f-string formatting
+
+# Integer (int): Represents whole numbers
+age = 25
+big_number = 1_000_000  # Underscores for readability
+binary = 0b1010  # Binary (equals 10)
+octal = 0o12    # Octal (equals 10)
+hexadecimal = 0xa  # Hexadecimal (equals 10)
+
+# Float (float): Represents numbers with decimals
+height = 1.75
+scientific = 2.5e-4  # Scientific notation (0.00025)
+
+# Boolean (bool): Represents True or False
 is_student = True
+is_employed = False
+
+# None: Represents absence of value
+result = None
+
 # Print variable values 
 print("Name:", name) 
 print("Age:", age) 
 print("Height:", height)
 print("Is student?", is_student)
-
-#Output
-Name: John
-Age: 25
-Height: 1.75
-Is student? True
-
-
-# Non-Primitive (Composite) Data Types:
-# Non-primitive data types are structures that can hold multiple values and are composed of other data types, including both primitive and other composite types. Unlike primitive data types, non-primitive types allow for more complex and structured representations of data.
-
-# Non-primitive data types include:
-List (list): Represents an ordered and mutable collection of values. Example: fruits = ["apple", "banana", "cherry"]
-Tuple (tuple): Represents an ordered and immutable collection of values. Example: coordinates = (3, 7)
-Dictionary (dict): Represents an unordered collection of key-value pairs. Example: person = {"name": "Alice", "age": 25, "is_student": True}
-
-# List Example
-fruits = ["apple", "banana", "cherry"]
-print("List Example:", fruits)
-# Tuple Example
-coordinates = (3, 7)
-print("Tuple Example:", coordinates)
-# Dictionary Example
-person = {"name": "Alice", "age": 25, "is_student": True}
-print("Dictionary Example:", person)
-
-# Output
-List Example: ['apple', 'banana', 'cherry']
-Tuple Example: (3, 7) 
-Dictionary Example: {'name': 'Alice', 'age': 25, 'is_student': True}
