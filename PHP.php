@@ -256,3 +256,51 @@ $array1 = [1, 2, 3];
 $array2 = [4, 5, 6];
 $merged = array_merge($array1, $array2);
 $slice = array_slice($numbers, 2, 3); // Extract portion
+
+
+// CONTROL STRUCTURES
+
+// If statements
+$score = 85;
+
+if ($score >= 90) {
+    echo "Grade A";
+} elseif ($score >= 80) {
+    echo "Grade B";
+} elseif ($score >= 70) {
+    echo "Grade C";
+} else {
+    echo "Grade F";
+}
+
+// Ternary operator
+$status = ($score >= 70) ? "Pass" : "Fail";
+
+// Null coalescing operator (PHP 7+)
+$username = $_GET['user'] ?? 'guest';
+$config = $user_config ?? $default_config ?? 'fallback';
+
+// Switch statement
+$day = "Monday";
+switch ($day) {
+    case "Monday":
+    case "Tuesday":
+    case "Wednesday":
+    case "Thursday":
+    case "Friday":
+        echo "Weekday";
+        break;
+    case "Saturday":
+    case "Sunday":
+        echo "Weekend";
+        break;
+    default:
+        echo "Invalid day";
+}
+
+// Match expression (PHP 8+)
+$result = match($day) {
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday' => 'Weekday',
+    'Saturday', 'Sunday' => 'Weekend',
+    default => 'Invalid day'
+};
