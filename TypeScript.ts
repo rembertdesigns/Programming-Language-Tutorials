@@ -122,3 +122,87 @@ let restTuple: [string, ...number[]] = ["hello", 1, 2, 3];
 // Tuple destructuring
 let [x, y] = coordinate;                  // x: number, y: number
 let [name, age] = nameAge;               // name: string, age: number
+
+
+// OBJECTS AND INTERFACES
+
+// Object type annotations
+let user: { name: string; age: number } = {
+    name: "Alice",
+    age: 25
+  };
+  
+  // Optional properties
+  let optionalUser: { name: string; age?: number } = {
+    name: "Bob"  // age is optional
+  };
+  
+  // Readonly properties
+  let readonlyUser: { readonly id: number; name: string } = {
+    id: 1,
+    name: "Charlie"
+  };
+  // readonlyUser.id = 2;                   // Error: readonly property
+  
+  // Index signatures
+  let scores: { [subject: string]: number } = {
+    math: 95,
+    science: 87,
+    english: 92
+  };
+  
+  // Interfaces (preferred way to define object shapes)
+  interface Person {
+    name: string;
+    age: number;
+    email?: string;                        // optional property
+    readonly id: number;                   // readonly property
+  }
+  
+  let person: Person = {
+    id: 1,
+    name: "Alice",
+    age: 25
+  };
+  
+  // Interface inheritance
+  interface Employee extends Person {
+    department: string;
+    salary: number;
+  }
+  
+  let employee: Employee = {
+    id: 1,
+    name: "Bob",
+    age: 30,
+    department: "Engineering",
+    salary: 75000
+  };
+  
+  // Multiple interface inheritance
+  interface Timestamped {
+    createdAt: Date;
+    updatedAt: Date;
+  }
+  
+  interface UserProfile extends Person, Timestamped {
+    bio: string;
+  }
+  
+  // Interface methods
+  interface Calculator {
+    add(a: number, b: number): number;
+    subtract(a: number, b: number): number;
+  }
+  
+  let calc: Calculator = {
+    add: (a, b) => a + b,
+    subtract: (a, b) => a - b
+  };
+  
+  // Callable interfaces
+  interface StringProcessor {
+    (input: string): string;
+  }
+  
+  let upperCase: StringProcessor = (input) => input.toUpperCase();
