@@ -164,3 +164,133 @@ contract DataTypes {
     uint256 internal internalVar;  // This contract + children
     uint256 private privateVar;    // Only this contract
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           4. FUNCTIONS AND MODIFIERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+contract Functions {
+    address public owner;
+    mapping(address => uint256) public balances;
+    
+    // Events for logging
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    
+    constructor() {
+        owner = msg.sender;
+        balances[msg.sender] = 1000000;
+    }
+    
+    // Modifiers - reusable code that can be applied to functions
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;  // Function body is inserted here
+    }
+    
+    modifier validAddress(address _addr) {
+        require(_addr != address(0), "Invalid address");
+        require(_addr != address(this), "Cannot be contract address");
+        _;
+    }
+    
+    modifier sufficientBalance(address _from, uint256 _amount) {
+        require(balances[_from] >= _amount, "Insufficient balance");
+        _;
+    }
+    
+    // Function visibility:
+    // public: Callable from anywhere, creates automatic getter for state variables
+    // external: Only callable from outside the contract (more gas efficient)
+    // internal: Only callable from within this contract and inherited contracts
+    // private: Only callable from within this contract
+    
+    // Function state mutability:
+    // (default): Can read and modify state
+    // view: Can read state but cannot modify it
+    // pure: Cannot read or modify state
+    // payable: Can receive Ether
+    
+    // Pure function - no state access
+    function add(uint256 a, uint256 b) public pure returns (uint256) {
+        return a + b;
+    }
+    
+    // View function - reads state but doesn't modify
+    function getBalance(address _account) public view returns (uint256) {
+        return balances[_account];
+    }
+    
+    // State-changing function with modifiers
+    function transfer(address _to, uint256 _amount) 
+        public 
+        validAddress(_to) 
+        sufficientBalance(msg.sender, _amount) 
+        returns (bool) 
+    {
+        balances[msg.sender] -= _amount;
+        balances[_to] += _amount;
+        
+        emit Transfer(msg.sender, _to, _amount);
+        return true;
+    }
+    
+    // Payable function - can receive Ether
+    function deposit() public payable {
+        require(msg.value > 0, "Must send some Ether");
+        balances[msg.sender] += msg.value;
+    }
+    
+    // Internal function (can only be called within this contract or inherited contracts)
+    function _mint(address _to, uint256 _amount) internal validAddress(_to) {
+        balances[_to] += _amount;
+        emit Transfer(address(0), _to, _amount);
+    }
+    
+    // External function (can only be called from outside)
+    function mint(address _to, uint256 _amount) external onlyOwner {
+        _mint(_to, _amount);
+    }
+    
+    // Function overloading (same name, different parameters)
+    function withdraw() external {
+        withdraw(balances[msg.sender]);
+    }
+    
+    function withdraw(uint256 _amount) public sufficientBalance(msg.sender, _amount) {
+        balances[msg.sender] -= _amount;
+        payable(msg.sender).transfer(_amount);
+    }
+    
+    // Multiple return values
+    function getAccountInfo(address _account) 
+        public 
+        view 
+        returns (uint256 balance, bool isOwner, uint256 contractBalance) 
+    {
+        return (
+            balances[_account],
+            _account == owner,
+            address(this).balance
+        );
+    }
+    
+    // Transfer ownership
+    function transferOwnership(address _newOwner) public onlyOwner validAddress(_newOwner) {
+        address previousOwner = owner;
+        owner = _newOwner;
+        emit OwnershipTransferred(previousOwner, _newOwner);
+    }
+    
+    // Fallback function - called when function doesn't exist
+    fallback() external payable {
+        // Handle unknown function calls
+        revert("Function does not exist");
+    }
+    
+    // Receive function - called for plain Ether transfers
+    receive() external payable {
+        deposit();
+    }
+}
