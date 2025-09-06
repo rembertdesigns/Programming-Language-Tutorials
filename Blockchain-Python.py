@@ -2319,3 +2319,129 @@ def setup_environment():
         Path(directory).mkdir(exist_ok=True)
     
     print("Environment setup complete!")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           13. ADVANCED SMART CONTRACT DEVELOPMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SmartContractDeployer:
+    """Deploy and manage smart contracts"""
+    
+    def __init__(self, w3: Web3, private_key: str):
+        self.w3 = w3
+        self.account = w3.eth.account.from_key(private_key)
+        
+    def compile_contract(self, contract_source: str, contract_name: str) -> Dict:
+        """Compile Solidity contract"""
+        try:
+            from solcx import compile_source, install_solc
+            
+            # Install Solidity compiler if needed
+            try:
+                compiled_sol = compile_source(contract_source)
+            except:
+                install_solc('0.8.19')
+                compiled_sol = compile_source(contract_source)
+            
+            contract_interface = compiled_sol[f'<stdin>:{contract_name}']
+            
+            return {
+                'abi': contract_interface['abi'],
+                'bytecode': contract_interface['bin']
+            }
+            
+        except Exception as e:
+            logger.error(f"Error compiling contract: {e}")
+            return {}
+    
+    def deploy_contract(self, abi: List[Dict], bytecode: str, 
+                       constructor_args: List = None, gas_limit: int = 3000000) -> Optional[str]:
+        """Deploy a smart contract"""
+        try:
+            # Create contract instance
+            contract = self.w3.eth.contract(abi=abi, bytecode=bytecode)
+            
+            # Build constructor transaction
+            if constructor_args:
+                constructor = contract.constructor(*constructor_args)
+            else:
+                constructor = contract.constructor()
+            
+            transaction = constructor.build_transaction({
+                'from': self.account.address,
+                'gas': gas_limit,
+                'gasPrice': self.w3.eth.gas_price,
+                'nonce': self.w3.eth.get_transaction_count(self.account.address),
+                'chainId': self.w3.eth.chain_id
+            })
+            
+            # Sign and send transaction
+            signed_txn = self.w3.eth.account.sign_transaction(transaction, self.account.key)
+            tx_hash = self.w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            
+            # Wait for transaction receipt
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+            
+            if receipt['status'] == 1:
+                logger.info(f"Contract deployed at: {receipt['contractAddress']}")
+                return receipt['contractAddress']
+            else:
+                logger.error("Contract deployment failed")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error deploying contract: {e}")
+            return None
+
+# Example ERC-20 token contract
+ERC20_CONTRACT_SOURCE = '''
+pragma solidity ^0.8.0;
+
+contract SimpleToken {
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+    uint256 public totalSupply;
+    
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    
+    constructor(string memory _name, string memory _symbol, uint256 _totalSupply) {
+        name = _name;
+        symbol = _symbol;
+        decimals = 18;
+        totalSupply = _totalSupply * 10**decimals;
+        balanceOf[msg.sender] = totalSupply;
+    }
+    
+    function transfer(address to, uint256 value) public returns (bool) {
+        require(balanceOf[msg.sender] >= value, "Insufficient balance");
+        balanceOf[msg.sender] -= value;
+        balanceOf[to] += value;
+        emit Transfer(msg.sender, to, value);
+        return true;
+    }
+    
+    function approve(address spender, uint256 value) public returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+    
+    function transferFrom(address from, address to, uint256 value) public returns (bool) {
+        require(balanceOf[from] >= value, "Insufficient balance");
+        require(allowance[from][msg.sender] >= value, "Insufficient allowance");
+        
+        balanceOf[from] -= value;
+        balanceOf[to] += value;
+        allowance[from][msg.sender] -= value;
+        
+        emit Transfer(from, to, value);
+        return true;
+    }
+}
+'''
