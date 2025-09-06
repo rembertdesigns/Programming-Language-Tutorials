@@ -1747,3 +1747,1443 @@ export const useTransactionManager = () => {
         getTransactionStatus: txManager.getTransactionStatus.bind(txManager)
     };
 };
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. REAL-TIME DATA AND WEBSOCKETS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// WebSocket manager for real-time blockchain data
+class BlockchainWebSocketManager {
+    constructor() {
+        this.connections = new Map();
+        this.subscriptions = new Map();
+        this.listeners = new Map();
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+    }
+    
+    // Connect to WebSocket provider
+    connect(provider, url) {
+        if (this.connections.has(provider)) {
+            this.disconnect(provider);
+        }
+        
+        try {
+            const ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                console.log(`Connected to ${provider} WebSocket`);
+                this.reconnectAttempts = 0;
+                this.notifyListeners(provider, 'connected', {});
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleMessage(provider, data);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log(`Disconnected from ${provider} WebSocket`);
+                this.connections.delete(provider);
+                this.attemptReconnect(provider, url);
+                this.notifyListeners(provider, 'disconnected', {});
+            };
+            
+            ws.onerror = (error) => {
+                console.error(`WebSocket error for ${provider}:`, error);
+                this.notifyListeners(provider, 'error', { error });
+            };
+            
+            this.connections.set(provider, ws);
+            
+        } catch (error) {
+            console.error(`Failed to connect to ${provider}:`, error);
+            throw error;
+        }
+    }
+    
+    // Disconnect from WebSocket provider
+    disconnect(provider) {
+        const ws = this.connections.get(provider);
+        if (ws) {
+            ws.close();
+            this.connections.delete(provider);
+        }
+        
+        // Clean up subscriptions
+        this.subscriptions.delete(provider);
+    }
+    
+    // Subscribe to real-time events
+    subscribe(provider, subscription) {
+        const ws = this.connections.get(provider);
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            throw new Error(`Not connected to ${provider}`);
+        }
+        
+        const subscriptionId = this.generateSubscriptionId();
+        const subscribeMessage = {
+            id: subscriptionId,
+            method: 'eth_subscribe',
+            params: [subscription.type, subscription.params || {}]
+        };
+        
+        ws.send(JSON.stringify(subscribeMessage));
+        
+        // Store subscription
+        if (!this.subscriptions.has(provider)) {
+            this.subscriptions.set(provider, new Map());
+        }
+        this.subscriptions.get(provider).set(subscriptionId, subscription);
+        
+        return subscriptionId;
+    }
+    
+    // Unsubscribe from events
+    unsubscribe(provider, subscriptionId) {
+        const ws = this.connections.get(provider);
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        
+        const unsubscribeMessage = {
+            id: this.generateSubscriptionId(),
+            method: 'eth_unsubscribe',
+            params: [subscriptionId]
+        };
+        
+        ws.send(JSON.stringify(unsubscribeMessage));
+        
+        // Remove subscription
+        const providerSubs = this.subscriptions.get(provider);
+        if (providerSubs) {
+            providerSubs.delete(subscriptionId);
+        }
+    }
+    
+    // Handle incoming WebSocket messages
+    handleMessage(provider, data) {
+        if (data.method === 'eth_subscription') {
+            const subscriptionId = data.params.subscription;
+            const result = data.params.result;
+            
+            const providerSubs = this.subscriptions.get(provider);
+            const subscription = providerSubs?.get(subscriptionId);
+            
+            if (subscription) {
+                this.notifyListeners(provider, 'data', {
+                    subscription: subscription.type,
+                    data: result
+                });
+            }
+        }
+    }
+    
+    // Attempt to reconnect
+    attemptReconnect(provider, url) {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error(`Max reconnection attempts reached for ${provider}`);
+            return;
+        }
+        
+        this.reconnectAttempts++;
+        const delay = Math.pow(2, this.reconnectAttempts) * 1000; // Exponential backoff
+        
+        setTimeout(() => {
+            console.log(`Attempting to reconnect to ${provider} (attempt ${this.reconnectAttempts})`);
+            this.connect(provider, url);
+        }, delay);
+    }
+    
+    // Add event listener
+    addListener(provider, callback) {
+        if (!this.listeners.has(provider)) {
+            this.listeners.set(provider, []);
+        }
+        this.listeners.get(provider).push(callback);
+    }
+    
+    // Remove event listener
+    removeListener(provider, callback) {
+        const providerListeners = this.listeners.get(provider);
+        if (providerListeners) {
+            const index = providerListeners.indexOf(callback);
+            if (index > -1) {
+                providerListeners.splice(index, 1);
+            }
+        }
+    }
+    
+    // Notify listeners
+    notifyListeners(provider, event, data) {
+        const providerListeners = this.listeners.get(provider);
+        if (providerListeners) {
+            providerListeners.forEach(callback => {
+                try {
+                    callback(event, data);
+                } catch (error) {
+                    console.error('WebSocket listener error:', error);
+                }
+            });
+        }
+    }
+    
+    // Generate subscription ID
+    generateSubscriptionId() {
+        return `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+}
+
+// React hook for real-time blockchain data
+export const useBlockchainWebSocket = (provider, url) => {
+    const [wsManager] = useState(() => new BlockchainWebSocketManager());
+    const [isConnected, setIsConnected] = useState(false);
+    const [subscriptions, setSubscriptions] = useState(new Map());
+    const [latestData, setLatestData] = useState(new Map());
+    
+    useEffect(() => {
+        const handleEvent = (event, data) => {
+            switch (event) {
+                case 'connected':
+                    setIsConnected(true);
+                    break;
+                case 'disconnected':
+                    setIsConnected(false);
+                    break;
+                case 'data':
+                    setLatestData(prev => new Map(prev.set(data.subscription, data.data)));
+                    break;
+            }
+        };
+        
+        wsManager.addListener(provider, handleEvent);
+        
+        if (url) {
+            wsManager.connect(provider, url);
+        }
+        
+        return () => {
+            wsManager.removeListener(provider, handleEvent);
+            wsManager.disconnect(provider);
+        };
+    }, [wsManager, provider, url]);
+    
+    const subscribe = useCallback((subscriptionType, params) => {
+        if (!isConnected) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const subscription = {
+            type: subscriptionType,
+            params
+        };
+        
+        const subscriptionId = wsManager.subscribe(provider, subscription);
+        setSubscriptions(prev => new Map(prev.set(subscriptionId, subscription)));
+        
+        return subscriptionId;
+    }, [wsManager, provider, isConnected]);
+    
+    const unsubscribe = useCallback((subscriptionId) => {
+        wsManager.unsubscribe(provider, subscriptionId);
+        setSubscriptions(prev => {
+            const newSubs = new Map(prev);
+            newSubs.delete(subscriptionId);
+            return newSubs;
+        });
+    }, [wsManager, provider]);
+    
+    return {
+        isConnected,
+        subscribe,
+        unsubscribe,
+        latestData,
+        subscriptions
+    };
+};
+
+// Real-time price feed component
+export const PriceFeed = ({ symbol, onPriceUpdate }) => {
+    const [price, setPrice] = useState(null);
+    const [change24h, setChange24h] = useState(null);
+    const [loading, setLoading] = useState(true);
+    
+    useEffect(() => {
+        // Connect to a price feed WebSocket (example with CoinGecko)
+        const connectToPriceFeed = () => {
+            const ws = new WebSocket('wss://ws.coincap.io/prices?assets=bitcoin,ethereum');
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    const symbolMap = {
+                        'bitcoin': 'BTC',
+                        'ethereum': 'ETH'
+                    };
+                    
+                    Object.entries(data).forEach(([asset, price]) => {
+                        const mappedSymbol = symbolMap[asset];
+                        if (mappedSymbol === symbol) {
+                            const newPrice = parseFloat(price);
+                            setPrice(newPrice);
+                            setLoading(false);
+                            
+                            if (onPriceUpdate) {
+                                onPriceUpdate(mappedSymbol, newPrice);
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error parsing price data:', error);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('Price feed WebSocket error:', error);
+                setLoading(false);
+            };
+            
+            return ws;
+        };
+        
+        const ws = connectToPriceFeed();
+        
+        return () => {
+            if (ws) {
+                ws.close();
+            }
+        };
+    }, [symbol, onPriceUpdate]);
+    
+    if (loading) {
+        return <div className="price-feed loading">Loading price...</div>;
+    }
+    
+    return (
+        <div className="price-feed">
+            <div className="price">${price?.toLocaleString()}</div>
+            <div className="symbol">{symbol}</div>
+            {change24h && (
+                <div className={`change ${change24h >= 0 ? 'positive' : 'negative'}`}>
+                    {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. UTILITY FUNCTIONS AND HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Address and format utilities
+export const AddressUtils = {
+    // Format address for display
+    formatAddress: (address, startLength = 6, endLength = 4) => {
+        if (!address) return '';
+        if (address.length <= startLength + endLength) return address;
+        return `${address.slice(0, startLength)}...${address.slice(-endLength)}`;
+    },
+    
+    // Validate Ethereum address
+    isValidAddress: (address) => {
+        return /^0x[a-fA-F0-9]{40}$/.test(address);
+    },
+    
+    // Convert address to checksum format
+    toChecksumAddress: (address) => {
+        if (typeof window !== 'undefined' && window.Web3) {
+            return window.Web3.utils.toChecksumAddress(address);
+        }
+        return address.toLowerCase();
+    },
+    
+    // Compare addresses (case insensitive)
+    compareAddresses: (addr1, addr2) => {
+        if (!addr1 || !addr2) return false;
+        return addr1.toLowerCase() === addr2.toLowerCase();
+    }
+};
+
+// Number and token utilities
+export const TokenUtils = {
+    // Format token amount for display
+    formatTokenAmount: (amount, decimals = 18, displayDecimals = 4) => {
+        if (!amount) return '0';
+        
+        const BigNumber = require('bignumber.js');
+        const formatted = new BigNumber(amount)
+            .dividedBy(new BigNumber(10).pow(decimals))
+            .toFixed(displayDecimals);
+        
+        // Remove trailing zeros
+        return parseFloat(formatted).toString();
+    },
+    
+    // Parse token amount from string
+    parseTokenAmount: (amount, decimals = 18) => {
+        if (!amount) return '0';
+        
+        const BigNumber = require('bignumber.js');
+        return new BigNumber(amount)
+            .multipliedBy(new BigNumber(10).pow(decimals))
+            .toFixed(0);
+    },
+    
+    // Format number with commas
+    formatNumber: (number, decimals = 2) => {
+        if (typeof number !== 'number') {
+            number = parseFloat(number);
+        }
+        
+        if (isNaN(number)) return '0';
+        
+        return number.toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        });
+    },
+    
+    // Format currency
+    formatCurrency: (amount, currency = 'USD') => {
+        if (typeof amount !== 'number') {
+            amount = parseFloat(amount);
+        }
+        
+        if (isNaN(amount)) return '$0.00';
+        
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currency
+        }).format(amount);
+    },
+    
+    // Calculate percentage change
+    calculatePercentageChange: (oldValue, newValue) => {
+        if (!oldValue || oldValue === 0) return 0;
+        return ((newValue - oldValue) / oldValue) * 100;
+    }
+};
+
+// Time utilities
+export const TimeUtils = {
+    // Format timestamp for display
+    formatTimestamp: (timestamp, format = 'short') => {
+        const date = new Date(timestamp);
+        
+        switch (format) {
+            case 'short':
+                return date.toLocaleDateString();
+            case 'long':
+                return date.toLocaleString();
+            case 'relative':
+                return this.getRelativeTime(timestamp);
+            default:
+                return date.toString();
+        }
+    },
+    
+    // Get relative time (e.g., "2 hours ago")
+    getRelativeTime: (timestamp) => {
+        const now = Date.now();
+        const diff = now - timestamp;
+        
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) {
+            return `${days} day${days > 1 ? 's' : ''} ago`;
+        } else if (hours > 0) {
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        } else if (minutes > 0) {
+            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        } else {
+            return 'Just now';
+        }
+    },
+    
+    // Convert block number to estimated timestamp
+    blockToTimestamp: (blockNumber, averageBlockTime = 12000) => {
+        // This is an approximation - in reality you'd query the block
+        const estimatedTime = Date.now() - ((Date.now() / averageBlockTime) - blockNumber) * averageBlockTime;
+        return estimatedTime;
+    }
+};
+
+// Network utilities
+export const NetworkUtils = {
+    // Get network configuration
+    getNetworkConfig: (chainId) => {
+        const networks = {
+            '0x1': {
+                name: 'Ethereum Mainnet',
+                shortName: 'Ethereum',
+                chainId: 1,
+                currency: 'ETH',
+                explorer: 'https://etherscan.io',
+                rpc: 'https://mainnet.infura.io/v3/',
+                icon: '/icons/ethereum.svg'
+            },
+            '0x89': {
+                name: 'Polygon Mainnet',
+                shortName: 'Polygon',
+                chainId: 137,
+                currency: 'MATIC',
+                explorer: 'https://polygonscan.com',
+                rpc: 'https://polygon-rpc.com/',
+                icon: '/icons/polygon.svg'
+            },
+            '0xa4b1': {
+                name: 'Arbitrum One',
+                shortName: 'Arbitrum',
+                chainId: 42161,
+                currency: 'ETH',
+                explorer: 'https://arbiscan.io',
+                rpc: 'https://arb1.arbitrum.io/rpc',
+                icon: '/icons/arbitrum.svg'
+            },
+            '0xa': {
+                name: 'Optimism',
+                shortName: 'Optimism',
+                chainId: 10,
+                currency: 'ETH',
+                explorer: 'https://optimistic.etherscan.io',
+                rpc: 'https://mainnet.optimism.io',
+                icon: '/icons/optimism.svg'
+            }
+        };
+        
+        return networks[chainId] || null;
+    },
+    
+    // Get explorer URL for transaction
+    getExplorerUrl: (chainId, txHash, type = 'tx') => {
+        const network = NetworkUtils.getNetworkConfig(chainId);
+        if (!network) return null;
+        
+        return `${network.explorer}/${type}/${txHash}`;
+    },
+    
+    // Check if network is testnet
+    isTestnet: (chainId) => {
+        const testnets = ['0x5', '0x80001', '0x66eed', '0x1a4'];
+        return testnets.includes(chainId);
+    }
+};
+
+// Error handling utilities
+export const ErrorUtils = {
+    // Parse Web3 error messages
+    parseError: (error) => {
+        if (!error) return 'Unknown error';
+        
+        const message = error.message || error.toString();
+        
+        // Common error patterns
+        if (message.includes('user rejected')) {
+            return 'Transaction was rejected by user';
+        }
+        
+        if (message.includes('insufficient funds')) {
+            return 'Insufficient funds for transaction';
+        }
+        
+        if (message.includes('gas required exceeds allowance')) {
+            return 'Transaction would fail - try increasing gas limit';
+        }
+        
+        if (message.includes('nonce too low')) {
+            return 'Transaction nonce is too low - try refreshing';
+        }
+        
+        if (message.includes('replacement transaction underpriced')) {
+            return 'Replacement transaction gas price too low';
+        }
+        
+        // Extract revert reason
+        const revertMatch = message.match(/revert (.+)/);
+        if (revertMatch) {
+            return `Transaction reverted: ${revertMatch[1]}`;
+        }
+        
+        return message;
+    },
+    
+    // Create user-friendly error messages
+    createUserError: (error, context = '') => {
+        const parsedError = ErrorUtils.parseError(error);
+        
+        return {
+            title: 'Transaction Failed',
+            message: parsedError,
+            context,
+            timestamp: Date.now(),
+            originalError: error
+        };
+    }
+};
+
+// Storage utilities for persisting data
+export const StorageUtils = {
+    // Save to localStorage with error handling
+    save: (key, data) => {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const serialized = JSON.stringify(data);
+                localStorage.setItem(key, serialized);
+                return true;
+            }
+        } catch (error) {
+            console.warn('Failed to save to localStorage:', error);
+        }
+        return false;
+    },
+    
+    // Load from localStorage with error handling
+    load: (key, defaultValue = null) => {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const item = localStorage.getItem(key);
+                if (item) {
+                    return JSON.parse(item);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load from localStorage:', error);
+        }
+        return defaultValue;
+    },
+    
+    // Remove from localStorage
+    remove: (key) => {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.removeItem(key);
+                return true;
+            }
+        } catch (error) {
+            console.warn('Failed to remove from localStorage:', error);
+        }
+        return false;
+    },
+    
+    // Clear all localStorage
+    clear: () => {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.clear();
+                return true;
+            }
+        } catch (error) {
+            console.warn('Failed to clear localStorage:', error);
+        }
+        return false;
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. TESTING UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Mock Web3 provider for testing
+export class MockWeb3Provider {
+    constructor() {
+        this.accounts = ['0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A'];
+        this.chainId = '0x1';
+        this.isConnected = true;
+        this.requestCalls = [];
+    }
+    
+    async request({ method, params }) {
+        this.requestCalls.push({ method, params });
+        
+        switch (method) {
+            case 'eth_requestAccounts':
+                return this.accounts;
+            case 'eth_accounts':
+                return this.accounts;
+            case 'eth_chainId':
+                return this.chainId;
+            case 'eth_getBalance':
+                return '0x1bc16d674ec80000'; // 2 ETH in wei
+            case 'eth_sendTransaction':
+                return '0x' + 'a'.repeat(64); // Mock transaction hash
+            case 'eth_gasPrice':
+                return '0x4a817c800'; // 20 Gwei
+            case 'eth_estimateGas':
+                return '0x5208'; // 21000 gas
+            default:
+                throw new Error(`Unsupported method: ${method}`);
+        }
+    }
+    
+    on(event, callback) {
+        // Mock event listener
+    }
+    
+    removeListener(event, callback) {
+        // Mock remove listener
+    }
+    
+    // Helper methods for testing
+    setAccounts(accounts) {
+        this.accounts = accounts;
+    }
+    
+    setChainId(chainId) {
+        this.chainId = chainId;
+    }
+    
+    getRequestCalls() {
+        return this.requestCalls;
+    }
+    
+    clearRequestCalls() {
+        this.requestCalls = [];
+    }
+}
+
+// Test utilities
+export const TestUtils = {
+    // Create mock Web3 provider
+    createMockProvider: () => {
+        return new MockWeb3Provider();
+    },
+    
+    // Wait for next React render
+    waitForRender: () => {
+        return new Promise(resolve => setTimeout(resolve, 0));
+    },
+    
+    // Mock transaction receipt
+    createMockReceipt: (overrides = {}) => {
+        return {
+            transactionHash: '0x' + 'a'.repeat(64),
+            blockNumber: 12345678,
+            gasUsed: 21000,
+            status: true,
+            ...overrides
+        };
+    },
+    
+    // Mock contract ABI
+    getMockERC20ABI: () => {
+        return [
+            {
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            }
+        ];
+    },
+    
+    // Generate random address
+    generateRandomAddress: () => {
+        const chars = '0123456789abcdef';
+        let address = '0x';
+        for (let i = 0; i < 40; i++) {
+            address += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return address;
+    }
+};
+
+// React Testing Library helpers
+export const TestHelpers = {
+    // Render component with Web3 provider
+    renderWithWeb3: (component, mockProvider = null) => {
+        const provider = mockProvider || TestUtils.createMockProvider();
+        
+        // Mock window.ethereum
+        Object.defineProperty(window, 'ethereum', {
+            value: provider,
+            writable: true
+        });
+        
+        return {
+            provider,
+            // You would import render from @testing-library/react here
+            // render: render(<Web3Provider>{component}</Web3Provider>)
+        };
+    },
+    
+    // Wait for wallet connection
+    waitForConnection: async () => {
+        await TestUtils.waitForRender();
+        // Additional wait for async operations
+        await new Promise(resolve => setTimeout(resolve, 100));
+    },
+    
+    // Simulate user wallet interaction
+    simulateWalletConnect: async (provider) => {
+        provider.setAccounts(['0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A']);
+        // Trigger connection event
+        return TestHelpers.waitForConnection();
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. PERFORMANCE OPTIMIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Caching utilities for Web3 calls
+class Web3Cache {
+    constructor(ttl = 30000) { // 30 seconds default TTL
+        this.cache = new Map();
+        this.ttl = ttl;
+    }
+    
+    // Generate cache key
+    generateKey(method, params) {
+        return `${method}_${JSON.stringify(params)}`;
+    }
+    
+    // Get from cache
+    get(method, params) {
+        const key = this.generateKey(method, params);
+        const item = this.cache.get(key);
+        
+        if (!item) return null;
+        
+        // Check if expired
+        if (Date.now() - item.timestamp > this.ttl) {
+            this.cache.delete(key);
+            return null;
+        }
+        
+        return item.data;
+    }
+    
+    // Set cache
+    set(method, params, data) {
+        const key = this.generateKey(method, params);
+        this.cache.set(key, {
+            data,
+            timestamp: Date.now()
+        });
+    }
+    
+    // Clear cache
+    clear() {
+        this.cache.clear();
+    }
+    
+    // Clear expired items
+    clearExpired() {
+        const now = Date.now();
+        for (const [key, item] of this.cache.entries()) {
+            if (now - item.timestamp > this.ttl) {
+                this.cache.delete(key);
+            }
+        }
+    }
+}
+
+// Debounced Web3 calls
+export const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    
+    return debouncedValue;
+};
+
+// Batch Web3 requests
+class Web3BatchManager {
+    constructor(web3, batchSize = 10, batchDelay = 100) {
+        this.web3 = web3;
+        this.batchSize = batchSize;
+        this.batchDelay = batchDelay;
+        this.requestQueue = [];
+        this.processing = false;
+    }
+    
+    // Add request to batch
+    addRequest(method, params) {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({
+                method,
+                params,
+                resolve,
+                reject
+            });
+            
+            this.processBatch();
+        });
+    }
+    
+    // Process batched requests
+    async processBatch() {
+        if (this.processing || this.requestQueue.length === 0) {
+            return;
+        }
+        
+        this.processing = true;
+        
+        // Wait for more requests to accumulate
+        await new Promise(resolve => setTimeout(resolve, this.batchDelay));
+        
+        const batch = this.requestQueue.splice(0, this.batchSize);
+        
+        try {
+            // Create batch request
+            const batchRequest = this.web3.createBatch();
+            
+            batch.forEach((request, index) => {
+                batchRequest.add(
+                    this.web3.eth[request.method].request(...request.params),
+                    (error, result) => {
+                        if (error) {
+                            request.reject(error);
+                        } else {
+                            request.resolve(result);
+                        }
+                    }
+                );
+            });
+            
+            batchRequest.execute();
+            
+        } catch (error) {
+            // Reject all requests in batch
+            batch.forEach(request => request.reject(error));
+        }
+        
+        this.processing = false;
+        
+        // Process next batch if queue not empty
+        if (this.requestQueue.length > 0) {
+            setTimeout(() => this.processBatch(), 0);
+        }
+    }
+}
+
+// Performance monitoring
+export const usePerformanceMonitor = () => {
+    const [metrics, setMetrics] = useState({
+        web3Calls: 0,
+        averageResponseTime: 0,
+        errorRate: 0,
+        cacheHitRate: 0
+    });
+    
+    const recordCall = useCallback((duration, success = true) => {
+        setMetrics(prev => ({
+            ...prev,
+            web3Calls: prev.web3Calls + 1,
+            averageResponseTime: (prev.averageResponseTime + duration) / 2,
+            errorRate: success ? prev.errorRate : (prev.errorRate + 1) / 2
+        }));
+    }, []);
+    
+    return { metrics, recordCall };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           12. EXAMPLE DAPP IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Complete DeFi DApp example
+export const DeFiDApp = () => {
+    const { isConnected, account } = useWeb3();
+    const [activeTab, setActiveTab] = useState('swap');
+    
+    return (
+        <div className="defi-dapp">
+            <header className="dapp-header">
+                <h1>DeFi Dashboard</h1>
+                <WalletConnector />
+            </header>
+            
+            {isConnected ? (
+                <main className="dapp-main">
+                    <nav className="dapp-nav">
+                        <button 
+                            className={activeTab === 'swap' ? 'active' : ''}
+                            onClick={() => setActiveTab('swap')}
+                        >
+                            Swap
+                        </button>
+                        <button 
+                            className={activeTab === 'pool' ? 'active' : ''}
+                            onClick={() => setActiveTab('pool')}
+                        >
+                            Pool
+                        </button>
+                        <button 
+                            className={activeTab === 'farm' ? 'active' : ''}
+                            onClick={() => setActiveTab('farm')}
+                        >
+                            Farm
+                        </button>
+                    </nav>
+                    
+                    <div className="dapp-content">
+                        {activeTab === 'swap' && <SwapInterface />}
+                        {activeTab === 'pool' && <PoolInterface />}
+                        {activeTab === 'farm' && <FarmInterface />}
+                    </div>
+                </main>
+            ) : (
+                <div className="connect-prompt">
+                    <h2>Connect your wallet to start using DeFi</h2>
+                    <p>Connect with one of our available wallet providers</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Token swap interface
+const SwapInterface = () => {
+    const [fromToken, setFromToken] = useState('ETH');
+    const [toToken, setToToken] = useState('USDC');
+    const [fromAmount, setFromAmount] = useState('');
+    const [toAmount, setToAmount] = useState('');
+    const [loading, setLoading] = useState(false);
+    
+    const handleSwap = async () => {
+        setLoading(true);
+        try {
+            // Implement swap logic here
+            console.log('Swapping', fromAmount, fromToken, 'for', toToken);
+        } catch (error) {
+            console.error('Swap failed:', error);
+        }
+        setLoading(false);
+    };
+    
+    return (
+        <div className="swap-interface">
+            <h3>Swap Tokens</h3>
+            
+            <div className="swap-form">
+                <div className="token-input">
+                    <input
+                        type="number"
+                        placeholder="0.0"
+                        value={fromAmount}
+                        onChange={(e) => setFromAmount(e.target.value)}
+                    />
+                    <select value={fromToken} onChange={(e) => setFromToken(e.target.value)}>
+                        <option value="ETH">ETH</option>
+                        <option value="USDC">USDC</option>
+                        <option value="DAI">DAI</option>
+                    </select>
+                </div>
+                
+                <div className="swap-arrow">↓</div>
+                
+                <div className="token-input">
+                    <input
+                        type="number"
+                        placeholder="0.0"
+                        value={toAmount}
+                        onChange={(e) => setToAmount(e.target.value)}
+                        readOnly
+                    />
+                    <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
+                        <option value="USDC">USDC</option>
+                        <option value="ETH">ETH</option>
+                        <option value="DAI">DAI</option>
+                    </select>
+                </div>
+                
+                <TransactionButton
+                    onClick={handleSwap}
+                    disabled={!fromAmount || loading}
+                    className="swap-button"
+                >
+                    {loading ? 'Swapping...' : 'Swap'}
+                </TransactionButton>
+            </div>
+        </div>
+    );
+};
+
+// Liquidity pool interface
+const PoolInterface = () => {
+    const [token1, setToken1] = useState('ETH');
+    const [token2, setToken2] = useState('USDC');
+    const [amount1, setAmount1] = useState('');
+    const [amount2, setAmount2] = useState('');
+    
+    return (
+        <div className="pool-interface">
+            <h3>Add Liquidity</h3>
+            
+            <div className="pool-form">
+                <div className="token-pair">
+                    <div className="token-input">
+                        <input
+                            type="number"
+                            placeholder="0.0"
+                            value={amount1}
+                            onChange={(e) => setAmount1(e.target.value)}
+                        />
+                        <span>{token1}</span>
+                    </div>
+                    
+                    <div className="token-input">
+                        <input
+                            type="number"
+                            placeholder="0.0"
+                            value={amount2}
+                            onChange={(e) => setAmount2(e.target.value)}
+                        />
+                        <span>{token2}</span>
+                    </div>
+                </div>
+                
+                <TransactionButton
+                    onClick={() => console.log('Adding liquidity')}
+                    disabled={!amount1 || !amount2}
+                    className="add-liquidity-button"
+                >
+                    Add Liquidity
+                </TransactionButton>
+            </div>
+        </div>
+    );
+};
+
+// Yield farming interface
+const FarmInterface = () => {
+    const [stakedAmount, setStakedAmount] = useState('0');
+    const [earnedRewards, setEarnedRewards] = useState('0');
+    
+    return (
+        <div className="farm-interface">
+            <h3>Yield Farming</h3>
+            
+            <div className="farm-stats">
+                <div className="stat">
+                    <label>Staked</label>
+                    <span>{stakedAmount} LP</span>
+                </div>
+                <div className="stat">
+                    <label>Earned</label>
+                    <span>{earnedRewards} REWARD</span>
+                </div>
+            </div>
+            
+            <div className="farm-actions">
+                <TransactionButton
+                    onClick={() => console.log('Staking')}
+                    className="stake-button"
+                >
+                    Stake
+                </TransactionButton>
+                
+                <TransactionButton
+                    onClick={() => console.log('Harvesting')}
+                    className="harvest-button"
+                >
+                    Harvest
+                </TransactionButton>
+            </div>
+        </div>
+    );
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. BEST PRACTICES AND CONCLUSION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/*
+WEB3 JAVASCRIPT DEVELOPMENT BEST PRACTICES:
+
+1. SECURITY:
+   - Always validate user inputs before sending transactions
+   - Implement proper error handling for all Web3 calls
+   - Use HTTPS for all external API calls
+   - Validate contract addresses and ABIs
+   - Implement transaction confirmation requirements
+   - Use secure random number generation
+   - Sanitize all user-generated content
+
+2. USER EXPERIENCE:
+   - Provide clear loading states for all operations
+   - Show meaningful error messages to users
+   - Implement proper transaction status tracking
+   - Allow users to cancel pending transactions
+   - Cache frequently accessed data
+   - Implement optimistic UI updates where appropriate
+   - Provide clear gas estimation and costs
+
+3. PERFORMANCE:
+   - Use React.memo for expensive components
+   - Implement proper dependency arrays in useEffect
+   - Debounce user inputs for API calls
+   - Use Web Workers for heavy computations
+   - Implement virtual scrolling for large lists
+   - Optimize bundle size with code splitting
+   - Use efficient data structures
+
+4. RELIABILITY:
+   - Implement proper error boundaries
+   - Handle network failures gracefully
+   - Provide offline capabilities where possible
+   - Use proper TypeScript types
+   - Implement comprehensive testing
+   - Use proper state management
+   - Handle edge cases thoroughly
+
+5. ACCESSIBILITY:
+   - Use semantic HTML elements
+   - Provide proper ARIA labels
+   - Ensure keyboard navigation
+   - Maintain color contrast ratios
+   - Support screen readers
+   - Provide alternative text for images
+   - Test with assistive technologies
+
+EXAMPLE PROJECT STRUCTURE:
+
+my-dapp/
+├── public/
+│   ├── index.html
+│   └── favicon.ico
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── WalletConnector.jsx
+│   │   │   ├── TransactionButton.jsx
+│   │   │   └── LoadingSpinner.jsx
+│   │   ├── defi/
+│   │   │   ├── SwapInterface.jsx
+│   │   │   ├── PoolInterface.jsx
+│   │   │   └── FarmInterface.jsx
+│   │   └── nft/
+│   │       ├── NFTCard.jsx
+│   │       ├── NFTGallery.jsx
+│   │       └── NFTMarketplace.jsx
+│   ├── hooks/
+│   │   ├── useWeb3.js
+│   │   ├── useContract.js
+│   │   ├── useERC20.js
+│   │   └── useTransactionManager.js
+│   ├── utils/
+│   │   ├── web3Manager.js
+│   │   ├── contractManager.js
+│   │   ├── formatters.js
+│   │   └── constants.js
+│   ├── context/
+│   │   ├── Web3Context.jsx
+│   │   └── ThemeContext.jsx
+│   ├── styles/
+│   │   ├── components/
+│   │   └── globals.css
+│   ├── tests/
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   └── utils/
+│   ├── App.jsx
+│   └── index.js
+├── package.json
+├── README.md
+└── .env.example
+
+PACKAGE.JSON EXAMPLE:
+
+{
+  "name": "my-dapp",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "web3": "^4.0.0",
+    "ethers": "^6.0.0",
+    "@web3-react/core": "^8.0.0",
+    "wagmi": "^1.0.0",
+    "viem": "^1.0.0",
+    "@rainbow-me/rainbowkit": "^1.0.0",
+    "axios": "^1.0.0",
+    "bignumber.js": "^9.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^13.0.0",
+    "@testing-library/jest-dom": "^5.0.0",
+    "jest": "^29.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^2.0.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  }
+}
+
+ENVIRONMENT VARIABLES (.env):
+
+REACT_APP_INFURA_ID=your_infura_project_id
+REACT_APP_ALCHEMY_KEY=your_alchemy_api_key
+REACT_APP_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+REACT_APP_OPENSEA_API_KEY=your_opensea_api_key
+REACT_APP_CONTRACT_ADDRESS=0x...
+REACT_APP_NETWORK=mainnet
+
+TESTING STRATEGY:
+
+1. Unit Tests:
+   - Test utility functions
+   - Test custom hooks
+   - Test component logic
+   - Mock Web3 providers
+
+2. Integration Tests:
+   - Test wallet connection flows
+   - Test transaction processes
+   - Test contract interactions
+   - Test error handling
+
+3. End-to-End Tests:
+   - Test complete user journeys
+   - Test across different browsers
+   - Test wallet integrations
+   - Test network switching
+
+DEPLOYMENT CHECKLIST:
+
+□ Environment variables configured
+□ Smart contracts deployed and verified
+□ Frontend built and optimized
+□ Error tracking configured (Sentry)
+□ Analytics configured (Google Analytics)
+□ Performance monitoring enabled
+□ Security headers configured
+□ SSL certificate installed
+□ Domain configured
+□ CDN configured for static assets
+
+SECURITY CONSIDERATIONS:
+
+1. Frontend Security:
+   - Validate all inputs client-side
+   - Use Content Security Policy (CSP)
+   - Implement proper CORS headers
+   - Sanitize user-generated content
+   - Use HTTPS everywhere
+   - Implement rate limiting
+
+2. Smart Contract Security:
+   - Audit all smart contracts
+   - Use proven contract patterns
+   - Implement proper access controls
+   - Test edge cases thoroughly
+   - Use time locks for critical functions
+   - Monitor for unusual activity
+
+3. User Security:
+   - Educate users about phishing
+   - Implement transaction warnings
+   - Show clear approval messages
+   - Verify contract addresses
+   - Warn about high gas fees
+   - Provide transaction simulation
+
+PERFORMANCE OPTIMIZATION:
+
+1. Bundle Optimization:
+   - Code splitting by route
+   - Lazy load components
+   - Tree shake unused code
+   - Optimize images and assets
+   - Use modern image formats
+   - Implement caching strategies
+
+2. Runtime Optimization:
+   - Memoize expensive calculations
+   - Debounce user inputs
+   - Use virtual scrolling
+   - Implement efficient re-renders
+   - Optimize state updates
+   - Use Web Workers for heavy tasks
+
+3. Network Optimization:
+   - Cache Web3 calls
+   - Batch multiple requests
+   - Use WebSockets for real-time data
+   - Implement offline support
+   - Optimize API calls
+   - Use CDN for static assets
+
+RESOURCES FOR CONTINUED LEARNING:
+
+1. Web3 Development:
+   - Ethereum Developer Documentation
+   - Web3.js Documentation
+   - Ethers.js Documentation
+   - Wagmi Documentation
+   - RainbowKit Documentation
+
+2. React Development:
+   - React Documentation
+   - React Hooks Guide
+   - React Performance Guide
+   - Testing Library Documentation
+   - Jest Documentation
+
+3. DeFi Protocols:
+   - Uniswap Documentation
+   - Aave Documentation
+   - Compound Documentation
+   - OpenZeppelin Contracts
+   - DeFi Pulse
+
+4. Security Resources:
+   - ConsenSys Security Best Practices
+   - Smart Contract Security Verification Standard
+   - Web3 Security Library
+   - Rekt News (for learning from exploits)
+   - Trail of Bits Guidelines
+
+CONCLUSION:
+
+This comprehensive Web3 JavaScript reference provides everything needed to build
+production-ready decentralized applications. JavaScript's ubiquity and rich
+ecosystem make it the perfect choice for Web3 frontend development.
+
+Key takeaways:
+- Start with solid wallet integration and Web3 provider management
+- Build reusable components and hooks for common Web3 operations
+- Prioritize user experience with clear loading states and error handling
+- Implement proper security measures throughout the application
+- Use modern React patterns and performance optimizations
+- Test thoroughly across different wallets and networks
+- Stay updated with the rapidly evolving Web3 ecosystem
+
+The Web3 space moves quickly, so continue learning, building, and contributing
+to the decentralized web. The future of the internet is being built today,
+and JavaScript developers are at the forefront of this revolution.
+
+Happy building! 🚀
+
+This completes our comprehensive blockchain development reference series:
+✅ Python - Blockchain development and analysis
+✅ Rust - High-performance blockchain programming (Solana)
+✅ Go - Blockchain infrastructure and networking
+✅ JavaScript - Web3 frontend and dApp development
+
+Together, these references provide a complete toolkit for full-stack
+blockchain development across the entire technology stack.
+*/
