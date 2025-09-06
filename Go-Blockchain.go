@@ -2965,3 +2965,1203 @@ func (n *Node) SyncWithNetwork() {
 	
 	n.broadcastMessage(syncRequest, "")
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. MONITORING AND METRICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import (
+	"runtime"
+	"time"
+)
+
+// MetricsCollector collects blockchain metrics
+type MetricsCollector struct {
+	blockchain        *Blockchain
+	mempool          *Mempool
+	node             *Node
+	startTime        time.Time
+	blockTimes       []time.Duration
+	transactionCount uint64
+	mutex            sync.RWMutex
+}
+
+// Metrics represents collected metrics
+type Metrics struct {
+	// System metrics
+	Uptime              time.Duration `json:"uptime"`
+	MemoryUsage         uint64        `json:"memory_usage"`
+	GoroutineCount      int           `json:"goroutine_count"`
+	
+	// Blockchain metrics
+	BlockHeight         int64         `json:"block_height"`
+	TotalTransactions   uint64        `json:"total_transactions"`
+	PendingTransactions int           `json:"pending_transactions"`
+	AverageBlockTime    float64       `json:"average_block_time"`
+	
+	// Network metrics
+	PeerCount           int           `json:"peer_count"`
+	NetworkLatency      float64       `json:"network_latency"`
+	
+	// Performance metrics
+	TransactionTPS      float64       `json:"transaction_tps"`
+	BlocksPerHour       float64       `json:"blocks_per_hour"`
+	
+	Timestamp           time.Time     `json:"timestamp"`
+}
+
+// NewMetricsCollector creates a new metrics collector
+func NewMetricsCollector(blockchain *Blockchain, mempool *Mempool, node *Node) *MetricsCollector {
+	return &MetricsCollector{
+		blockchain: blockchain,
+		mempool:    mempool,
+		node:       node,
+		startTime:  time.Now(),
+		blockTimes: make([]time.Duration, 0),
+	}
+}
+
+// CollectMetrics collects current metrics
+func (mc *MetricsCollector) CollectMetrics() *Metrics {
+	mc.mutex.RLock()
+	defer mc.mutex.RUnlock()
+	
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	
+	uptime := time.Since(mc.startTime)
+	
+	mc.blockchain.mutex.RLock()
+	blockHeight := int64(len(mc.blockchain.Blocks))
+	mc.blockchain.mutex.RUnlock()
+	
+	mc.node.PeersMutex.RLock()
+	peerCount := len(mc.node.Peers)
+	mc.node.PeersMutex.RUnlock()
+	
+	pendingTxs := mc.mempool.GetPendingCount()
+	
+	// Calculate average block time
+	avgBlockTime := 0.0
+	if len(mc.blockTimes) > 0 {
+		total := time.Duration(0)
+		for _, duration := range mc.blockTimes {
+			total += duration
+		}
+		avgBlockTime = total.Seconds() / float64(len(mc.blockTimes))
+	}
+	
+	// Calculate TPS
+	tps := 0.0
+	if uptime.Seconds() > 0 {
+		tps = float64(mc.transactionCount) / uptime.Seconds()
+	}
+	
+	// Calculate blocks per hour
+	blocksPerHour := 0.0
+	if uptime.Hours() > 0 {
+		blocksPerHour = float64(blockHeight) / uptime.Hours()
+	}
+	
+	return &Metrics{
+		Uptime:              uptime,
+		MemoryUsage:         mem.Alloc,
+		GoroutineCount:      runtime.NumGoroutine(),
+		BlockHeight:         blockHeight,
+		TotalTransactions:   mc.transactionCount,
+		PendingTransactions: pendingTxs,
+		AverageBlockTime:    avgBlockTime,
+		PeerCount:           peerCount,
+		NetworkLatency:      0, // Would need actual network measurements
+		TransactionTPS:      tps,
+		BlocksPerHour:       blocksPerHour,
+		Timestamp:           time.Now(),
+	}
+}
+
+// RecordBlockTime records the time taken to mine a block
+func (mc *MetricsCollector) RecordBlockTime(duration time.Duration) {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+	
+	mc.blockTimes = append(mc.blockTimes, duration)
+	
+	// Keep only last 100 block times
+	if len(mc.blockTimes) > 100 {
+		mc.blockTimes = mc.blockTimes[1:]
+	}
+}
+
+// IncrementTransactionCount increments the transaction counter
+func (mc *MetricsCollector) IncrementTransactionCount() {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+	
+	mc.transactionCount++
+}
+
+// Logger provides structured logging for blockchain operations
+type Logger struct {
+	*logrus.Logger
+	component string
+}
+
+// NewLogger creates a new component logger
+func NewLogger(component string) *Logger {
+	logger := logrus.New()
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	
+	return &Logger{
+		Logger:    logger,
+		component: component,
+	}
+}
+
+// WithFields adds component field to log entry
+func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
+	if fields == nil {
+		fields = logrus.Fields{}
+	}
+	fields["component"] = l.component
+	return l.Logger.WithFields(fields)
+}
+
+// LogTransaction logs transaction events
+func (l *Logger) LogTransaction(event string, tx *Transaction) {
+	l.WithFields(logrus.Fields{
+		"event":     event,
+		"tx_id":     tx.ID,
+		"from":      tx.From,
+		"to":        tx.To,
+		"amount":    tx.Amount,
+		"fee":       tx.Fee,
+		"timestamp": tx.Timestamp,
+	}).Info("Transaction event")
+}
+
+// LogBlock logs block events
+func (l *Logger) LogBlock(event string, block *Block) {
+	l.WithFields(logrus.Fields{
+		"event":       event,
+		"block_index": block.Index,
+		"block_hash":  block.Hash,
+		"tx_count":    len(block.Transactions),
+		"timestamp":   block.Timestamp,
+	}).Info("Block event")
+}
+
+// LogPeer logs peer events
+func (l *Logger) LogPeer(event string, peer *Peer) {
+	l.WithFields(logrus.Fields{
+		"event":     event,
+		"peer_id":   peer.ID,
+		"address":   peer.Address,
+		"port":      peer.Port,
+		"last_seen": peer.LastSeen,
+	}).Info("Peer event")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. CLI AND CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+// Config represents the application configuration
+type Config struct {
+	// Node configuration
+	NodeID      string `mapstructure:"node_id"`
+	DataDir     string `mapstructure:"data_dir"`
+	LogLevel    string `mapstructure:"log_level"`
+	
+	// Network configuration
+	ListenAddress string `mapstructure:"listen_address"`
+	ListenPort    int    `mapstructure:"listen_port"`
+	BootstrapPeers []string `mapstructure:"bootstrap_peers"`
+	
+	// API configuration
+	APIEnabled bool `mapstructure:"api_enabled"`
+	APIPort    int  `mapstructure:"api_port"`
+	
+	// Mining configuration
+	MiningEnabled  bool   `mapstructure:"mining_enabled"`
+	MinerAddress   string `mapstructure:"miner_address"`
+	MiningWorkers  int    `mapstructure:"mining_workers"`
+	
+	// Consensus configuration
+	ConsensusType string `mapstructure:"consensus_type"`
+	Difficulty    int    `mapstructure:"difficulty"`
+	
+	// Mempool configuration
+	MaxPoolSize    int `mapstructure:"max_pool_size"`
+	MaxPerSender   int `mapstructure:"max_per_sender"`
+}
+
+// DefaultConfig returns default configuration
+func DefaultConfig() *Config {
+	return &Config{
+		NodeID:         "node-" + generateRandomID(8),
+		DataDir:        "./data",
+		LogLevel:       "info",
+		ListenAddress:  "0.0.0.0",
+		ListenPort:     8080,
+		BootstrapPeers: []string{},
+		APIEnabled:     true,
+		APIPort:        8081,
+		MiningEnabled:  false,
+		MinerAddress:   generateRandomAddress(),
+		MiningWorkers:  4,
+		ConsensusType:  "pow",
+		Difficulty:     4,
+		MaxPoolSize:    10000,
+		MaxPerSender:   100,
+	}
+}
+
+// LoadConfig loads configuration from file and environment
+func LoadConfig(configPath string) (*Config, error) {
+	config := DefaultConfig()
+	
+	viper.SetConfigFile(configPath)
+	viper.SetEnvPrefix("BLOCKCHAIN")
+	viper.AutomaticEnv()
+	
+	// Set defaults
+	viper.SetDefault("node_id", config.NodeID)
+	viper.SetDefault("data_dir", config.DataDir)
+	viper.SetDefault("log_level", config.LogLevel)
+	viper.SetDefault("listen_address", config.ListenAddress)
+	viper.SetDefault("listen_port", config.ListenPort)
+	viper.SetDefault("api_enabled", config.APIEnabled)
+	viper.SetDefault("api_port", config.APIPort)
+	viper.SetDefault("mining_enabled", config.MiningEnabled)
+	viper.SetDefault("miner_address", config.MinerAddress)
+	viper.SetDefault("mining_workers", config.MiningWorkers)
+	viper.SetDefault("consensus_type", config.ConsensusType)
+	viper.SetDefault("difficulty", config.Difficulty)
+	viper.SetDefault("max_pool_size", config.MaxPoolSize)
+	viper.SetDefault("max_per_sender", config.MaxPerSender)
+	
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, err
+		}
+	}
+	
+	if err := viper.Unmarshal(config); err != nil {
+		return nil, err
+	}
+	
+	return config, nil
+}
+
+// CLI represents the command line interface
+type CLI struct {
+	config     *Config
+	blockchain *Blockchain
+	storage    Storage
+	mempool    *Mempool
+	node       *Node
+	miner      *Miner
+	apiServer  *APIServer
+	logger     *Logger
+}
+
+// NewCLI creates a new CLI instance
+func NewCLI() *CLI {
+	return &CLI{
+		logger: NewLogger("cli"),
+	}
+}
+
+// Execute executes the CLI
+func (cli *CLI) Execute() error {
+	var rootCmd = &cobra.Command{
+		Use:   "blockchain-go",
+		Short: "A blockchain implementation in Go",
+		Long:  "A complete blockchain implementation with mining, networking, and smart contracts",
+	}
+	
+	// Global flags
+	rootCmd.PersistentFlags().StringP("config", "c", "config.yaml", "configuration file")
+	rootCmd.PersistentFlags().StringP("data-dir", "d", "./data", "data directory")
+	rootCmd.PersistentFlags().StringP("log-level", "l", "info", "log level")
+	
+	// Commands
+	rootCmd.AddCommand(cli.startCmd())
+	rootCmd.AddCommand(cli.initCmd())
+	rootCmd.AddCommand(cli.walletCmd())
+	rootCmd.AddCommand(cli.networkCmd())
+	rootCmd.AddCommand(cli.miningCmd())
+	rootCmd.AddCommand(cli.versionCmd())
+	
+	return rootCmd.Execute()
+}
+
+// startCmd creates the start command
+func (cli *CLI) startCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "start",
+		Short: "Start the blockchain node",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
+			
+			// Load configuration
+			config, err := LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %v", err)
+			}
+			cli.config = config
+			
+			// Setup logging
+			level, err := logrus.ParseLevel(config.LogLevel)
+			if err != nil {
+				return fmt.Errorf("invalid log level: %v", err)
+			}
+			logrus.SetLevel(level)
+			
+			// Initialize components
+			if err := cli.initialize(); err != nil {
+				return fmt.Errorf("failed to initialize: %v", err)
+			}
+			
+			// Start services
+			return cli.start()
+		},
+	}
+}
+
+// initCmd creates the init command
+func (cli *CLI) initCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a new blockchain",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dataDir, _ := cmd.Flags().GetString("data-dir")
+			
+			// Create data directory
+			if err := os.MkdirAll(dataDir, 0755); err != nil {
+				return fmt.Errorf("failed to create data directory: %v", err)
+			}
+			
+			// Create default config
+			config := DefaultConfig()
+			config.DataDir = dataDir
+			
+			// Save config
+			configData, err := json.MarshalIndent(config, "", "  ")
+			if err != nil {
+				return err
+			}
+			
+			configPath := filepath.Join(dataDir, "config.json")
+			if err := os.WriteFile(configPath, configData, 0644); err != nil {
+				return err
+			}
+			
+			fmt.Printf("Blockchain initialized in %s\n", dataDir)
+			fmt.Printf("Node ID: %s\n", config.NodeID)
+			fmt.Printf("Miner Address: %s\n", config.MinerAddress)
+			
+			return nil
+		},
+	}
+}
+
+// walletCmd creates wallet-related commands
+func (cli *CLI) walletCmd() *cobra.Command {
+	walletCmd := &cobra.Command{
+		Use:   "wallet",
+		Short: "Wallet operations",
+	}
+	
+	// Balance command
+	balanceCmd := &cobra.Command{
+		Use:   "balance [address]",
+		Short: "Get wallet balance",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			address := args[0]
+			
+			if cli.blockchain == nil {
+				return fmt.Errorf("blockchain not initialized")
+			}
+			
+			balance := cli.blockchain.GetBalance(address)
+			fmt.Printf("Balance for %s: %d\n", address, balance)
+			
+			return nil
+		},
+	}
+	
+	// Send command
+	sendCmd := &cobra.Command{
+		Use:   "send [from] [to] [amount] [fee]",
+		Short: "Send transaction",
+		Args:  cobra.ExactArgs(4),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			from := args[0]
+			to := args[1]
+			amount, err := strconv.ParseInt(args[2], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid amount: %v", err)
+			}
+			fee, err := strconv.ParseInt(args[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid fee: %v", err)
+			}
+			
+			tx := Transaction{
+				From:      from,
+				To:        to,
+				Amount:    amount,
+				Fee:       fee,
+				Nonce:     0, // Would need to get from state
+				Timestamp: time.Now(),
+			}
+			tx.ID = tx.Hash()
+			
+			if err := cli.mempool.AddTransaction(&tx); err != nil {
+				return fmt.Errorf("failed to add transaction: %v", err)
+			}
+			
+			fmt.Printf("Transaction submitted: %s\n", tx.ID)
+			return nil
+		},
+	}
+	
+	walletCmd.AddCommand(balanceCmd)
+	walletCmd.AddCommand(sendCmd)
+	
+	return walletCmd
+}
+
+// networkCmd creates network-related commands
+func (cli *CLI) networkCmd() *cobra.Command {
+	networkCmd := &cobra.Command{
+		Use:   "network",
+		Short: "Network operations",
+	}
+	
+	// Peers command
+	peersCmd := &cobra.Command{
+		Use:   "peers",
+		Short: "List connected peers",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cli.node == nil {
+				return fmt.Errorf("node not initialized")
+			}
+			
+			cli.node.PeersMutex.RLock()
+			defer cli.node.PeersMutex.RUnlock()
+			
+			fmt.Printf("Connected peers (%d):\n", len(cli.node.Peers))
+			for addr, peer := range cli.node.Peers {
+				fmt.Printf("  %s - %s:%d (last seen: %v)\n", 
+					peer.ID, peer.Address, peer.Port, peer.LastSeen)
+			}
+			
+			return nil
+		},
+	}
+	
+	// Connect command
+	connectCmd := &cobra.Command{
+		Use:   "connect [address] [port]",
+		Short: "Connect to a peer",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cli.node == nil {
+				return fmt.Errorf("node not initialized")
+			}
+			
+			address := args[0]
+			port, err := strconv.Atoi(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid port: %v", err)
+			}
+			
+			if err := cli.node.ConnectToPeer(address, port); err != nil {
+				return fmt.Errorf("failed to connect to peer: %v", err)
+			}
+			
+			fmt.Printf("Connected to peer %s:%d\n", address, port)
+			return nil
+		},
+	}
+	
+	networkCmd.AddCommand(peersCmd)
+	networkCmd.AddCommand(connectCmd)
+	
+	return networkCmd
+}
+
+// miningCmd creates mining-related commands
+func (cli *CLI) miningCmd() *cobra.Command {
+	miningCmd := &cobra.Command{
+		Use:   "mining",
+		Short: "Mining operations",
+	}
+	
+	// Start command
+	startCmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start mining",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cli.miner == nil {
+				return fmt.Errorf("miner not initialized")
+			}
+			
+			cli.miner.Start()
+			fmt.Println("Mining started")
+			
+			return nil
+		},
+	}
+	
+	// Stop command
+	stopCmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Stop mining",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cli.miner == nil {
+				return fmt.Errorf("miner not initialized")
+			}
+			
+			cli.miner.Stop()
+			fmt.Println("Mining stopped")
+			
+			return nil
+		},
+	}
+	
+	// Status command
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Mining status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cli.miner == nil {
+				return fmt.Errorf("miner not initialized")
+			}
+			
+			cli.miner.mutex.RLock()
+			defer cli.miner.mutex.RUnlock()
+			
+			fmt.Printf("Mining Status:\n")
+			fmt.Printf("  Active: %v\n", cli.miner.isActive)
+			fmt.Printf("  Miner ID: %s\n", cli.miner.id)
+			fmt.Printf("  Address: %s\n", cli.miner.address)
+			fmt.Printf("  Workers: %d\n", cli.miner.workers)
+			fmt.Printf("  Difficulty: %d\n", cli.miner.difficulty)
+			
+			return nil
+		},
+	}
+	
+	miningCmd.AddCommand(startCmd)
+	miningCmd.AddCommand(stopCmd)
+	miningCmd.AddCommand(statusCmd)
+	
+	return miningCmd
+}
+
+// versionCmd creates the version command
+func (cli *CLI) versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Blockchain Go v1.0.0")
+			fmt.Println("Built with Go", runtime.Version())
+		},
+	}
+}
+
+// initialize initializes all blockchain components
+func (cli *CLI) initialize() error {
+	// Initialize storage
+	storage, err := NewLevelDBStorage(cli.config.DataDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %v", err)
+	}
+	cli.storage = storage
+	
+	// Initialize blockchain
+	cli.blockchain = NewBlockchain()
+	
+	// Initialize mempool
+	cli.mempool = NewMempool(cli.config.MaxPoolSize, cli.config.MaxPerSender)
+	
+	// Initialize consensus engine
+	var consensus ConsensusEngine
+	switch cli.config.ConsensusType {
+	case "pow":
+		consensus = &ProofOfWork{Difficulty: cli.config.Difficulty}
+	case "pos":
+		consensus = NewProofOfStake()
+	case "dpos":
+		consensus = NewDelegatedProofOfStake()
+	default:
+		return fmt.Errorf("unknown consensus type: %s", cli.config.ConsensusType)
+	}
+	
+	// Initialize node
+	cli.node = NewNode(cli.config.NodeID, cli.config.ListenAddress, cli.config.ListenPort, cli.blockchain)
+	
+	// Initialize miner
+	cli.miner = NewMiner("miner-"+cli.config.NodeID, cli.blockchain, cli.mempool, consensus, cli.config.MinerAddress)
+	cli.miner.workers = cli.config.MiningWorkers
+	
+	// Initialize API server
+	if cli.config.APIEnabled {
+		cli.apiServer = NewAPIServer(cli.blockchain, cli.mempool, cli.miner, cli.node, cli.config.APIPort)
+	}
+	
+	return nil
+}
+
+// start starts all services
+func (cli *CLI) start() error {
+	cli.logger.WithFields(logrus.Fields{
+		"node_id": cli.config.NodeID,
+		"port":    cli.config.ListenPort,
+	}).Info("Starting blockchain node")
+	
+	// Start node
+	if err := cli.node.Start(); err != nil {
+		return fmt.Errorf("failed to start node: %v", err)
+	}
+	
+	// Connect to bootstrap peers
+	for _, peerAddr := range cli.config.BootstrapPeers {
+		parts := strings.Split(peerAddr, ":")
+		if len(parts) == 2 {
+			port, err := strconv.Atoi(parts[1])
+			if err == nil {
+				go cli.node.ConnectToPeer(parts[0], port)
+			}
+		}
+	}
+	
+	// Start mining if enabled
+	if cli.config.MiningEnabled {
+		cli.miner.Start()
+		cli.logger.Info("Mining started")
+	}
+	
+	// Start API server if enabled
+	if cli.config.APIEnabled {
+		go func() {
+			if err := cli.apiServer.Start(); err != nil && err != http.ErrServerClosed {
+				cli.logger.WithError(err).Error("API server error")
+			}
+		}()
+		cli.logger.WithField("port", cli.config.APIPort).Info("API server started")
+	}
+	
+	// Wait for interrupt signal
+	return cli.waitForShutdown()
+}
+
+// waitForShutdown waits for shutdown signal
+func (cli *CLI) waitForShutdown() error {
+	// Create a channel to receive OS signals
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	
+	// Block until signal is received
+	<-c
+	
+	cli.logger.Info("Shutting down...")
+	
+	// Stop services
+	if cli.miner != nil {
+		cli.miner.Stop()
+	}
+	
+	if cli.apiServer != nil {
+		cli.apiServer.Stop()
+	}
+	
+	if cli.node != nil {
+		cli.node.Stop()
+	}
+	
+	if cli.storage != nil {
+		cli.storage.Close()
+	}
+	
+	cli.logger.Info("Shutdown complete")
+	return nil
+}
+
+// Utility functions
+func generateRandomID(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func generateRandomAddress() string {
+	return "addr_" + generateRandomID(32)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           12. MAIN APPLICATION ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import (
+	"math/rand"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"sort"
+	"strings"
+	"syscall"
+)
+
+func main() {
+	// Seed random number generator
+	rand.Seed(time.Now().UnixNano())
+	
+	// Create and execute CLI
+	cli := NewCLI()
+	if err := cli.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. TESTING AND BENCHMARKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Test utilities and benchmarks would go here
+// This demonstrates the testing approach for the blockchain
+
+import (
+	"testing"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// Example test functions (these would be in separate test files)
+
+func TestBlockchain(t *testing.T) {
+	blockchain := NewBlockchain()
+	
+	// Test genesis block
+	assert.Equal(t, 1, len(blockchain.Blocks))
+	assert.Equal(t, int64(0), blockchain.Blocks[0].Index)
+	
+	// Test adding transaction
+	tx := Transaction{
+		From:   "alice",
+		To:     "bob",
+		Amount: 100,
+		Fee:    10,
+		Nonce:  0,
+	}
+	tx.ID = tx.Hash()
+	
+	// Set initial balance
+	blockchain.Balances["alice"] = 1000
+	
+	err := blockchain.AddTransaction(tx)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(blockchain.PendingTxs))
+	
+	// Test mining
+	err = blockchain.MinePendingTransactions("miner")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(blockchain.Blocks))
+	assert.Equal(t, 0, len(blockchain.PendingTxs))
+	
+	// Check balances
+	assert.Equal(t, int64(890), blockchain.GetBalance("alice"))  // 1000 - 100 - 10
+	assert.Equal(t, int64(100), blockchain.GetBalance("bob"))    // +100
+	assert.Equal(t, int64(110), blockchain.GetBalance("miner"))  // +100 reward + 10 fee
+}
+
+func BenchmarkBlockMining(b *testing.B) {
+	blockchain := NewBlockchain()
+	
+	// Create transactions
+	transactions := make([]Transaction, 100)
+	for i := 0; i < 100; i++ {
+		tx := Transaction{
+			From:   fmt.Sprintf("user%d", i),
+			To:     fmt.Sprintf("user%d", (i+1)%100),
+			Amount: int64(i + 1),
+			Fee:    1,
+		}
+		tx.ID = tx.Hash()
+		transactions[i] = tx
+	}
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		block := Block{
+			Index:        1,
+			Timestamp:    time.Now(),
+			Transactions: transactions,
+			PrevHash:     blockchain.GetLatestBlock().Hash,
+			Difficulty:   2, // Lower difficulty for benchmarking
+		}
+		
+		block.MerkleRoot = block.CalculateMerkleRoot()
+		blockchain.mineBlock(&block)
+	}
+}
+
+
+/*
+═══════════════════════════════════════════════════════════════════════════════
+                           BLOCKCHAIN GO BEST PRACTICES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. CONCURRENCY AND PERFORMANCE:
+   - Use goroutines for parallel mining workers
+   - Implement proper mutex locking for shared data
+   - Use channels for safe communication between goroutines
+   - Avoid blocking operations in critical paths
+   - Use connection pooling for database operations
+   - Implement proper context cancellation
+
+2. SECURITY:
+   - Validate all inputs thoroughly
+   - Use cryptographically secure random number generation
+   - Implement proper error handling without information leakage
+   - Use secure communication protocols (TLS)
+   - Validate blockchain integrity regularly
+   - Implement rate limiting and DDoS protection
+
+3. RELIABILITY:
+   - Implement graceful shutdown procedures
+   - Use proper logging with structured fields
+   - Implement health checks and monitoring
+   - Handle network partitions gracefully
+   - Implement automatic recovery mechanisms
+   - Use circuit breakers for external dependencies
+
+4. SCALABILITY:
+   - Design for horizontal scaling
+   - Use efficient data structures (maps, slices)
+   - Implement proper indexing for database queries
+   - Use streaming for large data transfers
+   - Implement proper pagination
+   - Consider sharding strategies
+
+5. CODE ORGANIZATION:
+   - Follow Go conventions and idioms
+   - Use interfaces for testability
+   - Keep functions focused and small
+   - Use proper error handling with error wrapping
+   - Implement comprehensive unit tests
+   - Use dependency injection
+
+6. BLOCKCHAIN-SPECIFIC:
+   - Validate block and transaction integrity
+   - Implement proper consensus mechanisms
+   - Handle chain reorganizations
+   - Implement proper fee markets
+   - Use deterministic operations
+   - Handle edge cases (empty blocks, large transactions)
+
+EXAMPLE PROJECT STRUCTURE:
+
+blockchain-go/
+├── cmd/
+│   ├── blockchain/          # Main blockchain node
+│   ├── miner/              # Standalone miner
+│   ├── wallet/             # Wallet CLI
+│   └── tools/              # Utility tools
+├── pkg/
+│   ├── blockchain/         # Core blockchain logic
+│   ├── consensus/          # Consensus engines
+│   ├── crypto/             # Cryptographic utilities
+│   ├── network/            # P2P networking
+│   ├── storage/            # Data persistence
+│   ├── vm/                 # Virtual machine
+│   └── api/                # API handlers
+├── internal/
+│   ├── config/             # Configuration management
+│   ├── metrics/            # Metrics collection
+│   └── utils/              # Internal utilities
+├── deployments/
+│   ├── docker/             # Docker configurations
+│   ├── kubernetes/         # K8s manifests
+│   └── terraform/          # Infrastructure as code
+├── docs/                   # Documentation
+├── scripts/                # Build and deployment scripts
+├── test/                   # Integration tests
+├── go.mod                  # Go module definition
+├── go.sum                  # Dependency checksums
+├── Makefile               # Build automation
+├── Dockerfile             # Container definition
+└── README.md              # Project documentation
+
+DEPLOYMENT EXAMPLE (Dockerfile):
+
+FROM golang:1.21-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o blockchain-go cmd/blockchain/main.go
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/blockchain-go .
+COPY --from=builder /app/configs/config.yaml .
+EXPOSE 8080 8081
+CMD ["./blockchain-go", "start", "--config", "config.yaml"]
+
+MAKEFILE EXAMPLE:
+
+.PHONY: build test clean run docker
+
+BINARY_NAME=blockchain-go
+DOCKER_TAG=blockchain-go:latest
+
+build:
+	go build -o bin/$(BINARY_NAME) cmd/blockchain/main.go
+
+test:
+	go test -v ./...
+
+test-race:
+	go test -race -v ./...
+
+bench:
+	go test -bench=. -benchmem ./...
+
+lint:
+	golangci-lint run
+
+clean:
+	go clean
+	rm -f bin/$(BINARY_NAME)
+
+run:
+	go run cmd/blockchain/main.go start
+
+docker-build:
+	docker build -t $(DOCKER_TAG) .
+
+docker-run:
+	docker run -p 8080:8080 -p 8081:8081 $(DOCKER_TAG)
+
+deps:
+	go mod tidy
+	go mod verify
+
+CONFIGURATION EXAMPLE (config.yaml):
+
+# Node configuration
+node_id: "node-001"
+data_dir: "./data"
+log_level: "info"
+
+# Network configuration
+listen_address: "0.0.0.0"
+listen_port: 8080
+bootstrap_peers:
+  - "peer1.example.com:8080"
+  - "peer2.example.com:8080"
+
+# API configuration
+api_enabled: true
+api_port: 8081
+
+# Mining configuration
+mining_enabled: true
+miner_address: "miner_addr_123456789"
+mining_workers: 4
+
+# Consensus configuration
+consensus_type: "pow"  # pow, pos, dpos
+difficulty: 4
+
+# Mempool configuration
+max_pool_size: 10000
+max_per_sender: 100
+
+MONITORING AND OBSERVABILITY:
+
+1. Metrics to Track:
+   - Block production rate
+   - Transaction throughput (TPS)
+   - Network latency and peer count
+   - Memory and CPU usage
+   - Database performance
+   - API response times
+
+2. Logging Best Practices:
+   - Use structured logging (JSON format)
+   - Include correlation IDs
+   - Log at appropriate levels
+   - Avoid logging sensitive data
+   - Use consistent field names
+
+3. Health Checks:
+   - Blockchain sync status
+   - Peer connectivity
+   - Database connectivity
+   - Memory usage thresholds
+   - Disk space availability
+
+TESTING STRATEGIES:
+
+1. Unit Tests:
+   - Test individual functions
+   - Mock external dependencies
+   - Test error conditions
+   - Use table-driven tests
+
+2. Integration Tests:
+   - Test component interactions
+   - Use real dependencies where possible
+   - Test network protocols
+   - Test persistence layer
+
+3. Performance Tests:
+   - Benchmark critical paths
+   - Load test network protocols
+   - Test under resource constraints
+   - Memory and CPU profiling
+
+4. Security Tests:
+   - Fuzz testing
+   - Penetration testing
+   - Dependency vulnerability scanning
+   - Input validation testing
+
+PRODUCTION DEPLOYMENT CHECKLIST:
+
+□ Security audit completed
+□ Performance benchmarks passed
+□ All tests passing
+□ Monitoring and alerting configured
+□ Backup and recovery procedures tested
+□ Load balancing configured
+□ SSL/TLS certificates configured
+□ Firewall rules configured
+□ Documentation updated
+□ Team trained on operations
+
+COMMON GOTCHAS AND SOLUTIONS:
+
+1. Goroutine Leaks:
+   - Always use context for cancellation
+   - Close channels when done
+   - Use defer statements for cleanup
+
+2. Race Conditions:
+   - Use mutexes for shared data
+   - Prefer channels over shared memory
+   - Use race detector during testing
+
+3. Memory Leaks:
+   - Profile memory usage regularly
+   - Close database connections
+   - Limit slice/map growth
+
+4. Network Issues:
+   - Handle connection timeouts
+   - Implement exponential backoff
+   - Use connection pooling
+
+5. Blockchain-Specific:
+   - Handle chain reorganizations
+   - Validate all data thoroughly
+   - Implement proper fee estimation
+
+PERFORMANCE OPTIMIZATION TIPS:
+
+1. Database Operations:
+   - Use prepared statements
+   - Implement proper indexing
+   - Batch operations when possible
+   - Use connection pooling
+
+2. Network Operations:
+   - Use HTTP/2 for APIs
+   - Implement compression
+   - Use persistent connections
+   - Implement proper timeouts
+
+3. Memory Management:
+   - Reuse objects when possible
+   - Use sync.Pool for temporary objects
+   - Limit concurrent operations
+   - Monitor garbage collection
+
+4. CPU Optimization:
+   - Use worker pools
+   - Implement proper load balancing
+   - Profile CPU usage
+   - Optimize hot paths
+
+RESOURCES FOR CONTINUED LEARNING:
+
+1. Go-Specific Resources:
+   - "Effective Go" - Official Go guide
+   - "Go Concurrency Patterns" - Google I/O talks
+   - "The Go Programming Language" book
+   - Go blog and documentation
+
+2. Blockchain Resources:
+   - "Mastering Bitcoin" by Andreas Antonopoulos
+   - "Ethereum Whitepaper" - Vitalik Buterin
+   - "Consensus Algorithms" research papers
+   - Blockchain developer communities
+
+3. Infrastructure Resources:
+   - "Designing Data-Intensive Applications"
+   - "Site Reliability Engineering" (SRE) book
+   - Kubernetes documentation
+   - Cloud provider documentation
+
+4. Security Resources:
+   - OWASP guidelines
+   - "The Web Application Hacker's Handbook"
+   - Cryptography engineering resources
+   - Security audit frameworks
+
+CONCLUSION:
+
+This comprehensive Go blockchain reference provides a solid foundation for building
+production-ready blockchain infrastructure. Go's excellent concurrency model,
+performance characteristics, and robust standard library make it ideal for
+blockchain development.
+
+Key takeaways:
+- Start with a solid architecture and interfaces
+- Prioritize security, reliability, and performance
+- Use Go's concurrency features effectively
+- Implement comprehensive testing and monitoring
+- Follow Go best practices and conventions
+- Build incrementally and test thoroughly
+
+The blockchain space is rapidly evolving, so stay current with new developments,
+contribute to open source projects, and engage with the community.
+
+This reference covers the fundamental building blocks. Real-world implementations
+may require additional features like advanced cryptography, sophisticated consensus
+mechanisms, cross-chain interoperability, and specialized optimizations.
+
+Happy building! 🚀
+
+*/
+
+// End of Go Blockchain Infrastructure Reference
