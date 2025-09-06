@@ -2866,3 +2866,1084 @@ pub mod testing {
         }
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. CLI TOOLS AND UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Command-line interface tools
+pub mod cli {
+    use super::*;
+    use clap::{Parser, Subcommand};
+
+    #[derive(Parser)]
+    #[command(name = "blockchain-rust")]
+    #[command(about = "Rust Blockchain Development Tools")]
+    pub struct Cli {
+        #[command(subcommand)]
+        pub command: Commands,
+        
+        #[arg(short, long, default_value = "mainnet-beta")]
+        pub cluster: String,
+        
+        #[arg(short, long)]
+        pub keypair: Option<String>,
+        
+        #[arg(short, long)]
+        pub verbose: bool,
+    }
+
+    #[derive(Subcommand)]
+    pub enum Commands {
+        /// Wallet operations
+        Wallet {
+            #[command(subcommand)]
+            action: WalletCommands,
+        },
+        /// Token operations
+        Token {
+            #[command(subcommand)]
+            action: TokenCommands,
+        },
+        /// Program operations
+        Program {
+            #[command(subcommand)]
+            action: ProgramCommands,
+        },
+        /// Staking operations
+        Stake {
+            #[command(subcommand)]
+            action: StakeCommands,
+        },
+        /// DeFi operations
+        Defi {
+            #[command(subcommand)]
+            action: DefiCommands,
+        },
+        /// NFT operations
+        Nft {
+            #[command(subcommand)]
+            action: NftCommands,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum WalletCommands {
+        /// Create a new wallet
+        Create,
+        /// Show wallet balance
+        Balance {
+            #[arg(short, long)]
+            address: Option<String>,
+        },
+        /// Transfer SOL
+        Transfer {
+            #[arg(short, long)]
+            to: String,
+            #[arg(short, long)]
+            amount: f64,
+        },
+        /// Request airdrop (devnet/testnet only)
+        Airdrop {
+            #[arg(short, long, default_value = "1.0")]
+            amount: f64,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum TokenCommands {
+        /// Create a new token mint
+        CreateMint {
+            #[arg(short, long, default_value = "9")]
+            decimals: u8,
+        },
+        /// Create token account
+        CreateAccount {
+            #[arg(short, long)]
+            mint: String,
+        },
+        /// Mint tokens
+        Mint {
+            #[arg(short, long)]
+            mint: String,
+            #[arg(short, long)]
+            to: String,
+            #[arg(short, long)]
+            amount: u64,
+        },
+        /// Transfer tokens
+        Transfer {
+            #[arg(short, long)]
+            from: String,
+            #[arg(short, long)]
+            to: String,
+            #[arg(short, long)]
+            amount: u64,
+        },
+        /// Show token balance
+        Balance {
+            #[arg(short, long)]
+            account: String,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum ProgramCommands {
+        /// Deploy a program
+        Deploy {
+            #[arg(short, long)]
+            program_path: String,
+        },
+        /// Upgrade a program
+        Upgrade {
+            #[arg(short, long)]
+            program_id: String,
+            #[arg(short, long)]
+            program_path: String,
+        },
+        /// Show program info
+        Show {
+            #[arg(short, long)]
+            program_id: String,
+        },
+        /// Close program
+        Close {
+            #[arg(short, long)]
+            program_id: String,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum StakeCommands {
+        /// Create stake account
+        Create {
+            #[arg(short, long)]
+            amount: f64,
+        },
+        /// Delegate stake
+        Delegate {
+            #[arg(short, long)]
+            stake_account: String,
+            #[arg(short, long)]
+            validator: String,
+        },
+        /// Withdraw stake
+        Withdraw {
+            #[arg(short, long)]
+            stake_account: String,
+            #[arg(short, long)]
+            amount: f64,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum DefiCommands {
+        /// Create liquidity pool
+        CreatePool {
+            #[arg(short, long)]
+            token_a: String,
+            #[arg(short, long)]
+            token_b: String,
+        },
+        /// Add liquidity
+        AddLiquidity {
+            #[arg(short, long)]
+            pool: String,
+            #[arg(short, long)]
+            amount_a: u64,
+            #[arg(short, long)]
+            amount_b: u64,
+        },
+        /// Swap tokens
+        Swap {
+            #[arg(short, long)]
+            pool: String,
+            #[arg(short, long)]
+            input_token: String,
+            #[arg(short, long)]
+            amount: u64,
+        },
+    }
+
+    #[derive(Subcommand)]
+    pub enum NftCommands {
+        /// Create NFT collection
+        CreateCollection {
+            #[arg(short, long)]
+            name: String,
+            #[arg(short, long)]
+            symbol: String,
+        },
+        /// Mint NFT
+        Mint {
+            #[arg(short, long)]
+            collection: String,
+            #[arg(short, long)]
+            name: String,
+            #[arg(short, long)]
+            uri: String,
+        },
+        /// Transfer NFT
+        Transfer {
+            #[arg(short, long)]
+            mint: String,
+            #[arg(short, long)]
+            to: String,
+        },
+    }
+
+    /// CLI implementation
+    pub struct CliHandler {
+        pub client: solana_client::SolanaClient,
+        pub keypair: Keypair,
+    }
+
+    impl CliHandler {
+        pub fn new(cluster: &str, keypair_path: Option<&str>) -> Result<Self> {
+            let rpc_url = match cluster {
+                "mainnet-beta" => "https://api.mainnet-beta.solana.com",
+                "devnet" => "https://api.devnet.solana.com",
+                "testnet" => "https://api.testnet.solana.com",
+                "localhost" => "http://localhost:8899",
+                _ => cluster,
+            };
+
+            let client = solana_client::SolanaClient::new(rpc_url);
+            
+            let keypair = if let Some(path) = keypair_path {
+                solana_sdk::signature::read_keypair_file(path)?
+            } else {
+                Keypair::new()
+            };
+
+            Ok(Self { client, keypair })
+        }
+
+        pub async fn handle_wallet_command(&self, command: WalletCommands) -> Result<()> {
+            match command {
+                WalletCommands::Create => {
+                    println!("New wallet created!");
+                    println!("Address: {}", self.keypair.pubkey());
+                    println!("Save your private key securely!");
+                }
+                WalletCommands::Balance { address } => {
+                    let pubkey = if let Some(addr) = address {
+                        Pubkey::from_str(&addr)?
+                    } else {
+                        self.keypair.pubkey()
+                    };
+                    
+                    let balance = self.client.get_balance(&pubkey).await?;
+                    println!("Balance: {} SOL", balance as f64 / 1_000_000_000.0);
+                }
+                WalletCommands::Transfer { to, amount } => {
+                    let to_pubkey = Pubkey::from_str(&to)?;
+                    let lamports = (amount * 1_000_000_000.0) as u64;
+                    
+                    let signature = self.client.transfer_sol(&self.keypair, &to_pubkey, lamports).await?;
+                    println!("Transfer successful! Signature: {}", signature);
+                }
+                WalletCommands::Airdrop { amount } => {
+                    let lamports = (amount * 1_000_000_000.0) as u64;
+                    let signature = self.client.airdrop(&self.keypair.pubkey(), lamports).await?;
+                    println!("Airdrop successful! Signature: {}", signature);
+                }
+            }
+            Ok(())
+        }
+
+        pub async fn handle_token_command(&self, command: TokenCommands) -> Result<()> {
+            match command {
+                TokenCommands::CreateMint { decimals } => {
+                    let mint_keypair = Keypair::new();
+                    let signature = self.client.create_token_mint(
+                        &self.keypair,
+                        &mint_keypair,
+                        &self.keypair.pubkey(),
+                        None,
+                        decimals,
+                    ).await?;
+                    
+                    println!("Token mint created!");
+                    println!("Mint address: {}", mint_keypair.pubkey());
+                    println!("Signature: {}", signature);
+                }
+                TokenCommands::CreateAccount { mint } => {
+                    let mint_pubkey = Pubkey::from_str(&mint)?;
+                    let account_keypair = Keypair::new();
+                    
+                    let signature = self.client.create_token_account(
+                        &self.keypair,
+                        &account_keypair,
+                        &mint_pubkey,
+                        &self.keypair.pubkey(),
+                    ).await?;
+                    
+                    println!("Token account created!");
+                    println!("Account address: {}", account_keypair.pubkey());
+                    println!("Signature: {}", signature);
+                }
+                TokenCommands::Mint { mint, to, amount } => {
+                    let mint_pubkey = Pubkey::from_str(&mint)?;
+                    let to_pubkey = Pubkey::from_str(&to)?;
+                    
+                    let signature = self.client.mint_tokens(
+                        &self.keypair,
+                        &mint_pubkey,
+                        &to_pubkey,
+                        amount,
+                    ).await?;
+                    
+                    println!("Tokens minted!");
+                    println!("Signature: {}", signature);
+                }
+                TokenCommands::Transfer { from, to, amount } => {
+                    let from_pubkey = Pubkey::from_str(&from)?;
+                    let to_pubkey = Pubkey::from_str(&to)?;
+                    
+                    let signature = self.client.transfer_tokens(
+                        &self.keypair,
+                        &from_pubkey,
+                        &to_pubkey,
+                        amount,
+                    ).await?;
+                    
+                    println!("Tokens transferred!");
+                    println!("Signature: {}", signature);
+                }
+                TokenCommands::Balance { account } => {
+                    let account_pubkey = Pubkey::from_str(&account)?;
+                    let balance = self.client.get_token_account_balance(&account_pubkey).await?;
+                    println!("Token balance: {}", balance);
+                }
+            }
+            Ok(())
+        }
+
+        pub async fn handle_program_command(&self, command: ProgramCommands) -> Result<()> {
+            match command {
+                ProgramCommands::Deploy { program_path } => {
+                    println!("Deploying program from: {}", program_path);
+                    // Implementation would read the program binary and deploy it
+                    println!("Program deployment not yet implemented in this example");
+                }
+                ProgramCommands::Upgrade { program_id, program_path } => {
+                    println!("Upgrading program {} from: {}", program_id, program_path);
+                    println!("Program upgrade not yet implemented in this example");
+                }
+                ProgramCommands::Show { program_id } => {
+                    let pubkey = Pubkey::from_str(&program_id)?;
+                    if let Some(account) = self.client.get_account_info(&pubkey).await? {
+                        println!("Program ID: {}", program_id);
+                        println!("Owner: {}", account.owner);
+                        println!("Executable: {}", account.executable);
+                        println!("Lamports: {}", account.lamports);
+                        println!("Data length: {}", account.data.len());
+                    } else {
+                        println!("Program not found");
+                    }
+                }
+                ProgramCommands::Close { program_id } => {
+                    println!("Closing program: {}", program_id);
+                    println!("Program close not yet implemented in this example");
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           14. EXAMPLES AND TUTORIALS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Comprehensive examples and tutorials
+pub mod examples {
+    use super::*;
+
+    /// Basic Solana program example
+    pub mod basic_program {
+        use super::*;
+
+        pub async fn run_basic_example() -> Result<()> {
+            println!("=== Basic Solana Program Example ===");
+            
+            // Create client
+            let client = solana_client::SolanaClient::new("https://api.devnet.solana.com");
+            
+            // Create keypairs
+            let payer = Keypair::new();
+            let program_account = Keypair::new();
+            
+            println!("Payer: {}", payer.pubkey());
+            println!("Program Account: {}", program_account.pubkey());
+            
+            // Airdrop some SOL for testing
+            println!("Requesting airdrop...");
+            client.airdrop(&payer.pubkey(), 1_000_000_000).await?; // 1 SOL
+            
+            // Check balance
+            let balance = client.get_balance(&payer.pubkey()).await?;
+            println!("Balance after airdrop: {} SOL", balance as f64 / 1_000_000_000.0);
+            
+            Ok(())
+        }
+    }
+
+    /// Token creation and management example
+    pub mod token_example {
+        use super::*;
+
+        pub async fn run_token_example() -> Result<()> {
+            println!("=== Token Creation Example ===");
+            
+            let client = solana_client::SolanaClient::new("https://api.devnet.solana.com");
+            let payer = Keypair::new();
+            let mint_keypair = Keypair::new();
+            
+            // Airdrop SOL
+            client.airdrop(&payer.pubkey(), 2_000_000_000).await?; // 2 SOL
+            
+            // Create token mint
+            println!("Creating token mint...");
+            let signature = client.create_token_mint(
+                &payer,
+                &mint_keypair,
+                &payer.pubkey(), // mint authority
+                None,            // freeze authority
+                9,               // decimals
+            ).await?;
+            
+            println!("Token mint created: {}", mint_keypair.pubkey());
+            println!("Transaction: {}", signature);
+            
+            // Create token account
+            let token_account = Keypair::new();
+            let signature = client.create_token_account(
+                &payer,
+                &token_account,
+                &mint_keypair.pubkey(),
+                &payer.pubkey(),
+            ).await?;
+            
+            println!("Token account created: {}", token_account.pubkey());
+            println!("Transaction: {}", signature);
+            
+            // Mint tokens
+            println!("Minting tokens...");
+            let signature = client.mint_tokens(
+                &payer,
+                &mint_keypair.pubkey(),
+                &token_account.pubkey(),
+                1_000_000_000, // 1 token (9 decimals)
+            ).await?;
+            
+            println!("Tokens minted!");
+            println!("Transaction: {}", signature);
+            
+            // Check balance
+            let balance = client.get_token_account_balance(&token_account.pubkey()).await?;
+            println!("Token balance: {}", balance);
+            
+            Ok(())
+        }
+    }
+
+    /// Simple DeFi AMM example
+    pub mod defi_example {
+        use super::*;
+
+        pub fn run_amm_example() -> Result<()> {
+            println!("=== Simple AMM Example ===");
+            
+            // Create a simple liquidity pool
+            let pool = defi_protocols::LiquidityPool {
+                token_a_mint: Pubkey::new_unique(),
+                token_b_mint: Pubkey::new_unique(),
+                token_a_account: Pubkey::new_unique(),
+                token_b_account: Pubkey::new_unique(),
+                lp_token_mint: Pubkey::new_unique(),
+                fee_rate: 30, // 0.3%
+                total_liquidity: 0,
+                bump: 255,
+            };
+            
+            // Simulate swap calculation
+            let input_amount = 1_000_000; // 1 token
+            let input_reserve = 10_000_000; // 10 tokens
+            let output_reserve = 20_000_000; // 20 tokens
+            
+            let output_amount = pool.calculate_swap_amount(
+                input_amount,
+                input_reserve,
+                output_reserve,
+            )?;
+            
+            println!("Input amount: {}", input_amount);
+            println!("Output amount: {}", output_amount);
+            println!("Exchange rate: {:.6}", output_amount as f64 / input_amount as f64);
+            
+            // Calculate liquidity provision
+            let liquidity_amount = pool.calculate_liquidity_amount(
+                5_000_000, // 5 token A
+                10_000_000, // 10 token B
+                input_reserve,
+                output_reserve,
+            )?;
+            
+            println!("Liquidity tokens to mint: {}", liquidity_amount);
+            
+            Ok(())
+        }
+    }
+
+    /// NFT creation example
+    pub mod nft_example {
+        use super::*;
+
+        pub fn run_nft_example() -> Result<()> {
+            println!("=== NFT Creation Example ===");
+            
+            // Create NFT collection
+            let collection = nft_protocols::Collection {
+                authority: Pubkey::new_unique(),
+                name: "My Awesome Collection".to_string(),
+                symbol: "MAC".to_string(),
+                description: "A collection of awesome NFTs".to_string(),
+                image: "https://example.com/collection.png".to_string(),
+                external_url: Some("https://example.com".to_string()),
+                total_supply: 0,
+                max_supply: 10000,
+                mint_price: 1_000_000_000, // 1 SOL
+                royalty_percentage: 500,   // 5%
+                is_mutable: true,
+                is_verified: false,
+                bump: 255,
+            };
+            
+            println!("Collection created: {}", collection.name);
+            println!("Symbol: {}", collection.symbol);
+            println!("Max supply: {}", collection.max_supply);
+            println!("Mint price: {} SOL", collection.mint_price as f64 / 1_000_000_000.0);
+            
+            // Create individual NFT
+            let mut nft = nft_protocols::Nft {
+                collection: Pubkey::new_unique(),
+                mint: Pubkey::new_unique(),
+                owner: Pubkey::new_unique(),
+                name: "Awesome NFT #1".to_string(),
+                description: "The first awesome NFT".to_string(),
+                image: "https://example.com/nft1.png".to_string(),
+                attributes: vec![
+                    nft_protocols::NftAttribute {
+                        trait_type: "Color".to_string(),
+                        value: "Blue".to_string(),
+                        rarity: Some(0.1), // 10% have this color
+                    },
+                    nft_protocols::NftAttribute {
+                        trait_type: "Size".to_string(),
+                        value: "Large".to_string(),
+                        rarity: Some(0.05), // 5% are large
+                    },
+                ],
+                rarity_score: 0,
+                is_listed: false,
+                list_price: None,
+                bump: 255,
+            };
+            
+            // Calculate rarity score
+            nft.calculate_rarity_score();
+            
+            println!("NFT created: {}", nft.name);
+            println!("Rarity score: {}", nft.rarity_score);
+            
+            Ok(())
+        }
+    }
+
+    /// Governance DAO example
+    pub mod governance_example {
+        use super::*;
+
+        pub fn run_governance_example() -> Result<()> {
+            println!("=== Governance DAO Example ===");
+            
+            // Create DAO
+            let dao = governance::Dao {
+                name: "Example DAO".to_string(),
+                governance_token_mint: Pubkey::new_unique(),
+                treasury: Pubkey::new_unique(),
+                admin: Pubkey::new_unique(),
+                proposal_threshold: 1_000_000, // 1 token minimum
+                voting_period: 86400 * 7,      // 7 days
+                execution_delay: 86400 * 2,    // 2 days
+                quorum_threshold: 1000,        // 10%
+                approval_threshold: 5000,      // 50%
+                total_proposals: 0,
+                is_active: true,
+                bump: 255,
+            };
+            
+            println!("DAO created: {}", dao.name);
+            println!("Proposal threshold: {} tokens", dao.proposal_threshold);
+            println!("Voting period: {} days", dao.voting_period / 86400);
+            
+            // Create proposal
+            let mut proposal = governance::Proposal {
+                dao: Pubkey::new_unique(),
+                proposer: Pubkey::new_unique(),
+                title: "Increase Treasury Allocation".to_string(),
+                description: "Proposal to allocate more funds to development".to_string(),
+                proposal_type: governance::ProposalType::Treasury,
+                target_account: Some(dao.treasury),
+                executable_code: None,
+                for_votes: 7_500_000,    // 7.5M tokens
+                against_votes: 2_000_000, // 2M tokens
+                abstain_votes: 500_000,   // 0.5M tokens
+                start_time: 1640995200,   // Example timestamp
+                end_time: 1641600000,     // Example timestamp
+                execution_time: None,
+                status: governance::ProposalStatus::Active,
+                bump: 255,
+            };
+            
+            // Calculate proposal status
+            proposal.calculate_status(&dao)?;
+            
+            println!("Proposal created: {}", proposal.title);
+            println!("Status: {:?}", proposal.status);
+            println!("For votes: {}", proposal.for_votes);
+            println!("Against votes: {}", proposal.against_votes);
+            
+            Ok(())
+        }
+    }
+
+    /// Performance benchmark example
+    pub mod benchmark_example {
+        use super::*;
+
+        pub fn run_benchmark_example() -> Result<()> {
+            println!("=== Performance Benchmark Example ===");
+            
+            // Benchmark transaction creation
+            let result = testing::BenchmarkSuite::benchmark_function(
+                "Transaction Creation",
+                1000,
+                || {
+                    testing::MockDataGenerator::generate_transaction_data()
+                }
+            );
+            result.print_results();
+            
+            // Benchmark block mining
+            let transactions = (0..100)
+                .map(|_| testing::MockDataGenerator::generate_transaction_data())
+                .collect();
+            
+            let result = testing::BenchmarkSuite::benchmark_function(
+                "Block Creation",
+                10,
+                || {
+                    testing::MockDataGenerator::generate_block_data(transactions.clone())
+                }
+            );
+            result.print_results();
+            
+            // Test cache performance
+            let mut cache = performance::CacheManager::<String, u64>::new(100, 60);
+            
+            let result = testing::BenchmarkSuite::benchmark_function(
+                "Cache Operations",
+                10000,
+                || {
+                    cache.put("key1".to_string(), 42);
+                    cache.get(&"key1".to_string())
+                }
+            );
+            result.print_results();
+            
+            println!("Cache hit rate: {:.2}%", cache.hit_rate() * 100.0);
+            
+            Ok(())
+        }
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           15. MAIN ENTRY POINT AND CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+use cli::{Cli, Commands};
+use clap::Parser;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize logging
+    env_logger::init();
+    
+    // Parse command line arguments
+    let cli = Cli::parse();
+    
+    // Create CLI handler
+    let handler = cli::CliHandler::new(&cli.cluster, cli.keypair.as_deref())?;
+    
+    // Execute command
+    match cli.command {
+        Commands::Wallet { action } => {
+            handler.handle_wallet_command(action).await?;
+        }
+        Commands::Token { action } => {
+            handler.handle_token_command(action).await?;
+        }
+        Commands::Program { action } => {
+            handler.handle_program_command(action).await?;
+        }
+        Commands::Stake { action: _ } => {
+            println!("Stake commands not yet implemented");
+        }
+        Commands::Defi { action: _ } => {
+            println!("DeFi commands not yet implemented");
+        }
+        Commands::Nft { action: _ } => {
+            println!("NFT commands not yet implemented");
+        }
+    }
+    
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           16. BEST PRACTICES AND CONCLUSION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/*
+RUST BLOCKCHAIN DEVELOPMENT BEST PRACTICES:
+
+1. SECURITY:
+   - Always validate account ownership and permissions
+   - Use safe arithmetic operations (checked_add, checked_sub, etc.)
+   - Implement proper access controls with PDAs
+   - Validate all input data thoroughly
+   - Use the principle of least privilege
+   - Implement reentrancy guards where necessary
+   - Audit smart contracts before mainnet deployment
+
+2. PERFORMANCE:
+   - Minimize compute unit usage in programs
+   - Use efficient data structures (Vec, HashMap when appropriate)
+   - Implement proper error handling without panic!()
+   - Use zero-copy deserialization when possible
+   - Optimize account layouts for rent efficiency
+   - Batch transactions when possible
+   - Use connection pooling for RPC calls
+
+3. CODE ORGANIZATION:
+   - Separate concerns into modules (state, instructions, errors)
+   - Use type-safe account structures
+   - Implement comprehensive error types
+   - Write thorough documentation and comments
+   - Follow Rust naming conventions
+   - Use derive macros appropriately
+   - Keep functions focused and single-purpose
+
+4. TESTING:
+   - Write comprehensive unit tests for all functions
+   - Use integration tests for full program flows
+   - Test edge cases and error conditions
+   - Use property-based testing where appropriate
+   - Mock external dependencies
+   - Test on devnet before mainnet deployment
+   - Implement continuous integration
+
+5. DEPLOYMENT:
+   - Use proper versioning for program upgrades
+   - Implement feature flags for gradual rollouts
+   - Monitor program performance and errors
+   - Set up alerting for critical issues
+   - Keep upgrade authority secure
+   - Plan for emergency stops if needed
+   - Document deployment procedures
+
+6. MAINTENANCE:
+   - Regular security audits
+   - Monitor for new vulnerabilities
+   - Keep dependencies updated
+   - Track program usage and performance
+   - Plan for data migrations
+   - Maintain backward compatibility when possible
+   - Document breaking changes clearly
+
+EXAMPLE PROJECT STRUCTURE:
+
+rust-blockchain-project/
+├── Cargo.toml
+├── Anchor.toml                 # Anchor configuration
+├── programs/
+│   └── my-program/
+│       ├── Cargo.toml
+│       └── src/
+│           ├── lib.rs          # Main program logic
+│           ├── state.rs        # Account structures
+│           ├── instructions.rs # Instruction handlers
+│           ├── errors.rs       # Custom errors
+│           └── utils.rs        # Helper functions
+├── app/                        # Frontend application
+├── tests/
+│   ├── integration.rs          # Integration tests
+│   └── utils/
+│       └── mod.rs             # Test utilities
+├── client/
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs            # CLI application
+│       ├── client.rs          # RPC client
+│       └── commands.rs        # CLI commands
+└── scripts/
+    ├── deploy.sh              # Deployment scripts
+    └── test.sh               # Testing scripts
+
+CARGO.TOML EXAMPLE:
+
+[package]
+name = "blockchain-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core Solana
+solana-program = "~1.17.0"
+solana-sdk = "~1.17.0"
+solana-client = "~1.17.0"
+
+# Anchor Framework
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+
+# Serialization
+borsh = "0.10.3"
+serde = { version = "1.0", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# CLI
+clap = { version = "4.0", features = ["derive"] }
+
+# Utilities
+bs58 = "0.4"
+hex = "0.4"
+sha2 = "0.10"
+rand = "0.8"
+
+# Optional: for more advanced features
+spl-token = "4.0.0"
+mpl-token-metadata = "3.0.0"
+
+[dev-dependencies]
+solana-program-test = "~1.17.0"
+solana-validator = "~1.17.0"
+
+ANCHOR.TOML EXAMPLE:
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+my_program = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+
+[programs.devnet]
+my_program = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+
+[programs.mainnet]
+my_program = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+DEPLOYMENT CHECKLIST:
+
+□ Code review completed
+□ Security audit performed
+□ All tests passing
+□ Integration tests on devnet
+□ Performance benchmarks acceptable
+□ Documentation updated
+□ Deployment scripts tested
+□ Monitoring and alerting configured
+□ Rollback plan prepared
+□ Team notified of deployment
+
+COMMON GOTCHAS AND SOLUTIONS:
+
+1. Account Size Miscalculation:
+   - Always account for discriminator (8 bytes for Anchor)
+   - Include padding for future upgrades
+   - Test account creation with actual data
+
+2. Integer Overflow:
+   - Use checked arithmetic operations
+   - Validate input ranges
+   - Consider using fixed-point arithmetic for precision
+
+3. PDA Derivation Issues:
+   - Ensure seeds are deterministic
+   - Handle bump seed correctly
+   - Validate PDA ownership
+
+4. Rent Exemption:
+   - Always make accounts rent-exempt
+   - Calculate minimum balance correctly
+   - Handle rent collection edge cases
+
+5. Cross-Program Invocation (CPI):
+   - Validate target program IDs
+   - Handle CPI errors gracefully
+   - Ensure proper account permissions
+
+SECURITY PATTERNS:
+
+1. Access Control Pattern:
+```rust
+#[derive(Accounts)]
+pub struct SecureInstruction<'info> {
+    #[account(
+        mut,
+        has_one = authority,
+        constraint = account.is_initialized @ ErrorCode::NotInitialized
+    )]
+    pub account: Account<'info, MyAccount>,
+    pub authority: Signer<'info>,
+}
+```
+
+2. State Validation Pattern:
+```rust
+impl MyAccount {
+    pub fn validate_state(&self) -> Result<()> {
+        require!(self.is_initialized, ErrorCode::NotInitialized);
+        require!(self.amount > 0, ErrorCode::InvalidAmount);
+        Ok(())
+    }
+}
+```
+
+3. Arithmetic Safety Pattern:
+```rust
+pub fn safe_add(a: u64, b: u64) -> Result<u64> {
+    a.checked_add(b).ok_or(ErrorCode::ArithmeticOverflow.into())
+}
+```
+
+MONITORING AND OBSERVABILITY:
+
+1. Metrics to Track:
+   - Transaction success/failure rates
+   - Program execution times
+   - Account creation/modification patterns
+   - Error frequency by type
+   - Resource usage (compute units, memory)
+
+2. Alerts to Set Up:
+   - High error rates
+   - Unusual transaction patterns
+   - Performance degradation
+   - Security-related events
+   - Account balance changes
+
+3. Logging Best Practices:
+   - Use structured logging
+   - Include transaction signatures
+   - Log state changes
+   - Avoid logging sensitive data
+   - Implement log rotation
+
+RESOURCES FOR CONTINUED LEARNING:
+
+1. Official Documentation:
+   - Solana Documentation: https://docs.solana.com/
+   - Anchor Book: https://book.anchor-lang.com/
+   - Rust Programming Language: https://doc.rust-lang.org/book/
+
+2. Development Tools:
+   - Solana CLI: Command-line interface
+   - Anchor: Framework for Solana programs
+   - Seahorse: Python-based Solana development
+   - Metaplex: NFT standard and tools
+
+3. Testing and Security:
+   - Soteria: Static analysis tool
+   - Honggfuzz: Fuzzing framework
+   - Anchor Test Suite: Integration testing
+
+4. Community Resources:
+   - Solana Discord: Active developer community
+   - Solana Cookbook: Practical examples
+   - GitHub: Open source projects and examples
+
+ADVANCED TOPICS TO EXPLORE:
+
+1. Program Derived Addresses (PDAs)
+   - Deterministic address generation
+   - Cross-program invocation
+   - Account management patterns
+
+2. Compression Techniques
+   - State compression for large datasets
+   - Merkle trees for efficient verification
+   - Cost optimization strategies
+
+3. Cross-Chain Integration
+   - Wormhole bridge integration
+   - Multi-chain asset management
+   - Interoperability protocols
+
+4. Advanced DeFi Concepts
+   - Automated market makers
+   - Yield farming protocols
+   - Options and derivatives
+
+5. Governance and DAOs
+   - Proposal and voting systems
+   - Treasury management
+   - Multi-signature schemes
+
+CONCLUSION:
+
+Rust provides excellent tools for building high-performance, secure blockchain applications,
+particularly on Solana. The language's emphasis on memory safety, zero-cost abstractions,
+and powerful type system makes it ideal for financial applications where correctness is
+paramount.
+
+Key takeaways:
+- Start with Anchor framework for rapid development
+- Always prioritize security and testing
+- Use the rich Rust ecosystem for common patterns
+- Leverage Solana's unique features like PDAs and parallel execution
+- Build incrementally and test thoroughly
+- Engage with the community for support and learning
+
+This reference provides a comprehensive foundation for Rust blockchain development.
+Continue exploring, building, and contributing to the growing Solana ecosystem!
+
+For the latest updates and best practices, always refer to the official documentation
+and stay engaged with the developer community.
+
+Happy coding! 🦀⚡
+*/
