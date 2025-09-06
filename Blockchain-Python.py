@@ -1837,3 +1837,156 @@ class Layer2Client:
         except Exception as e:
             logger.error(f"Error estimating bridge cost: {e}")
             return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           9. BLOCKCHAIN MONITORING AND ALERTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class BlockchainMonitor:
+    """Comprehensive blockchain monitoring system"""
+    
+    def __init__(self, ethereum_client: EthereumClient):
+        self.eth_client = ethereum_client
+        self.w3 = ethereum_client.w3
+        self.monitors = []
+        self.running = False
+        
+    def add_address_monitor(self, address: str, alert_threshold: float = 0):
+        """Monitor an address for transactions"""
+        monitor = {
+            'type': 'address',
+            'address': self.w3.to_checksum_address(address),
+            'threshold': alert_threshold,
+            'last_checked_block': self.w3.eth.block_number
+        }
+        self.monitors.append(monitor)
+        logger.info(f"Added address monitor for {address}")
+    
+    def add_contract_monitor(self, contract_address: str, event_name: str):
+        """Monitor a contract for specific events"""
+        monitor = {
+            'type': 'contract_event',
+            'address': self.w3.to_checksum_address(contract_address),
+            'event': event_name,
+            'last_checked_block': self.w3.eth.block_number
+        }
+        self.monitors.append(monitor)
+        logger.info(f"Added contract monitor for {contract_address} - {event_name}")
+    
+    def add_gas_monitor(self, threshold_gwei: float):
+        """Monitor gas prices"""
+        monitor = {
+            'type': 'gas_price',
+            'threshold': threshold_gwei
+        }
+        self.monitors.append(monitor)
+        logger.info(f"Added gas price monitor (threshold: {threshold_gwei} Gwei)")
+    
+    def check_monitors(self):
+        """Check all active monitors"""
+        current_block = self.w3.eth.block_number
+        
+        for monitor in self.monitors:
+            try:
+                if monitor['type'] == 'address':
+                    self._check_address_monitor(monitor, current_block)
+                elif monitor['type'] == 'contract_event':
+                    self._check_contract_monitor(monitor, current_block)
+                elif monitor['type'] == 'gas_price':
+                    self._check_gas_monitor(monitor)
+            except Exception as e:
+                logger.error(f"Error checking monitor {monitor}: {e}")
+    
+    def _check_address_monitor(self, monitor: Dict, current_block: int):
+        """Check address monitor"""
+        address = monitor['address']
+        last_block = monitor['last_checked_block']
+        
+        # Check for new transactions
+        for block_num in range(last_block + 1, current_block + 1):
+            try:
+                block = self.w3.eth.get_block(block_num, full_transactions=True)
+                
+                for tx in block['transactions']:
+                    if tx['from'] == address or tx['to'] == address:
+                        value_eth = self.w3.from_wei(tx['value'], 'ether')
+                        
+                        if value_eth >= monitor['threshold']:
+                            self._trigger_alert(
+                                f"Address {address} transaction: {value_eth} ETH",
+                                {
+                                    'type': 'address_transaction',
+                                    'address': address,
+                                    'transaction_hash': tx['hash'].hex(),
+                                    'value': value_eth,
+                                    'block': block_num
+                                }
+                            )
+            except Exception as e:
+                logger.warning(f"Error checking block {block_num}: {e}")
+        
+        monitor['last_checked_block'] = current_block
+    
+    def _check_contract_monitor(self, monitor: Dict, current_block: int):
+        """Check contract event monitor"""
+        # This would require the contract ABI
+        # Simplified implementation
+        logger.info(f"Checking contract monitor for {monitor['address']}")
+        monitor['last_checked_block'] = current_block
+    
+    def _check_gas_monitor(self, monitor: Dict):
+        """Check gas price monitor"""
+        try:
+            current_gas = self.w3.from_wei(self.w3.eth.gas_price, 'gwei')
+            
+            if current_gas >= monitor['threshold']:
+                self._trigger_alert(
+                    f"High gas price alert: {current_gas} Gwei",
+                    {
+                        'type': 'gas_price',
+                        'current_price': current_gas,
+                        'threshold': monitor['threshold']
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Error checking gas price: {e}")
+    
+    def _trigger_alert(self, message: str, data: Dict):
+        """Trigger an alert"""
+        alert = {
+            'timestamp': datetime.now(),
+            'message': message,
+            'data': data
+        }
+        
+        logger.info(f"ALERT: {message}")
+        
+        # Here you could add email, webhook, or other notification methods
+        self._send_notification(alert)
+    
+    def _send_notification(self, alert: Dict):
+        """Send notification (implement your preferred method)"""
+        # Placeholder for notification sending
+        # Could integrate with email, Slack, Discord, etc.
+        pass
+    
+    def start_monitoring(self, interval: int = 30):
+        """Start monitoring loop"""
+        self.running = True
+        logger.info(f"Starting blockchain monitoring (interval: {interval}s)")
+        
+        while self.running:
+            try:
+                self.check_monitors()
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                self.stop_monitoring()
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                time.sleep(interval)
+    
+    def stop_monitoring(self):
+        """Stop monitoring"""
+        self.running = False
+        logger.info("Blockchain monitoring stopped")
