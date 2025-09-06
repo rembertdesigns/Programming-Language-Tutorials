@@ -1990,3 +1990,93 @@ class BlockchainMonitor:
         """Stop monitoring"""
         self.running = False
         logger.info("Blockchain monitoring stopped")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           10. TESTING AND DEVELOPMENT UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import pytest
+import unittest
+from unittest.mock import Mock, patch
+
+class BlockchainTestCase(unittest.TestCase):
+    """Base test case for blockchain applications"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        # Use a local test network or mock
+        self.test_rpc_url = "http://localhost:8545"  # Ganache/Hardhat
+        self.test_private_key = "0x" + "0" * 64  # Test private key
+        
+        try:
+            self.eth_client = EthereumClient(self.test_rpc_url, self.test_private_key)
+            self.connected = True
+        except:
+            self.connected = False
+            logger.warning("No test network available, using mocks")
+    
+    def create_mock_web3(self):
+        """Create a mock Web3 instance for testing"""
+        mock_w3 = Mock()
+        mock_w3.is_connected.return_value = True
+        mock_w3.eth.block_number = 1000000
+        mock_w3.eth.gas_price = 20000000000  # 20 Gwei
+        mock_w3.eth.chain_id = 1
+        return mock_w3
+    
+    def test_ethereum_client_connection(self):
+        """Test Ethereum client connection"""
+        if self.connected:
+            self.assertTrue(self.eth_client.w3.is_connected())
+        else:
+            self.skipTest("No test network available")
+    
+    def test_balance_retrieval(self):
+        """Test balance retrieval"""
+        if self.connected:
+            # Test with a known address
+            test_address = "0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A"
+            balance = self.eth_client.get_balance(test_address)
+            self.assertIsInstance(balance, float)
+            self.assertGreaterEqual(balance, 0)
+        else:
+            self.skipTest("No test network available")
+
+class MockBlockchainData:
+    """Mock blockchain data for testing"""
+    
+    @staticmethod
+    def mock_transaction_data():
+        """Generate mock transaction data"""
+        return {
+            'hash': '0x' + 'a' * 64,
+            'from': '0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A',
+            'to': '0x8ba1f109551bD432803012645Hac136c5a8d3De8',
+            'value': 1.5,
+            'gas': 21000,
+            'gas_price': 20.0,
+            'block_number': 1000000,
+            'timestamp': datetime.now()
+        }
+    
+    @staticmethod
+    def mock_price_data():
+        """Generate mock price data"""
+        dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D')
+        prices = np.random.normal(50000, 5000, len(dates))  # Mock BTC prices
+        
+        return pd.DataFrame({
+            'timestamp': dates,
+            'open': prices,
+            'high': prices * 1.02,
+            'low': prices * 0.98,
+            'close': prices,
+            'volume': np.random.normal(1000000, 100000, len(dates))
+        })
+
+# Test utilities
+def run_blockchain_tests():
+    """Run all blockchain tests"""
+    test_suite = unittest.TestLoader().loadTestsFromTestCase(BlockchainTestCase)
+    unittest.TextTestRunner(verbosity=2).run(test_suite)
