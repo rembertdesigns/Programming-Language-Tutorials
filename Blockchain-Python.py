@@ -967,3 +967,344 @@ class BlockchainDatabase:
             'max_gas_price': row[2] or 0,
             'transaction_count': row[3] or 0
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           5. CRYPTOCURRENCY TRADING AND APIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import ccxt
+import pandas as pd
+from typing import Tuple
+import ta  # Technical analysis library
+
+class CryptocurrencyTrader:
+    """Cryptocurrency trading utilities and API integration"""
+    
+    def __init__(self, exchange_name: str = 'binance', api_key: str = None, 
+                 api_secret: str = None, sandbox: bool = True):
+        """
+        Initialize cryptocurrency trader
+        
+        Args:
+            exchange_name: Exchange name (binance, coinbase, kraken, etc.)
+            api_key: API key for authenticated endpoints
+            api_secret: API secret for authenticated endpoints
+            sandbox: Use sandbox/testnet environment
+        """
+        self.exchange_name = exchange_name
+        
+        # Initialize exchange
+        exchange_class = getattr(ccxt, exchange_name)
+        self.exchange = exchange_class({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'sandbox': sandbox,
+            'enableRateLimit': True,
+        })
+        
+        logger.info(f"Initialized {exchange_name} exchange (sandbox: {sandbox})")
+    
+    def get_ticker(self, symbol: str) -> Optional[Dict]:
+        """Get current price ticker for a symbol"""
+        try:
+            ticker = self.exchange.fetch_ticker(symbol)
+            return {
+                'symbol': ticker['symbol'],
+                'last_price': ticker['last'],
+                'bid': ticker['bid'],
+                'ask': ticker['ask'],
+                'volume': ticker['baseVolume'],
+                'change_24h': ticker['change'],
+                'percentage_change_24h': ticker['percentage'],
+                'timestamp': datetime.fromtimestamp(ticker['timestamp'] / 1000)
+            }
+        except Exception as e:
+            logger.error(f"Error getting ticker for {symbol}: {e}")
+            return None
+    
+    def get_order_book(self, symbol: str, limit: int = 10) -> Optional[Dict]:
+        """Get order book for a symbol"""
+        try:
+            order_book = self.exchange.fetch_order_book(symbol, limit)
+            return {
+                'symbol': symbol,
+                'bids': order_book['bids'][:limit],
+                'asks': order_book['asks'][:limit],
+                'timestamp': datetime.fromtimestamp(order_book['timestamp'] / 1000)
+            }
+        except Exception as e:
+            logger.error(f"Error getting order book for {symbol}: {e}")
+            return None
+    
+    def get_ohlcv(self, symbol: str, timeframe: str = '1h', 
+                  limit: int = 100) -> Optional[pd.DataFrame]:
+        """Get OHLCV (candlestick) data"""
+        try:
+            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            
+            return df
+        except Exception as e:
+            logger.error(f"Error getting OHLCV for {symbol}: {e}")
+            return None
+    
+    def place_order(self, symbol: str, side: str, amount: float, 
+                   price: Optional[float] = None, order_type: str = 'market') -> Optional[Dict]:
+        """Place a trading order"""
+        try:
+            if order_type == 'market':
+                order = self.exchange.create_market_order(symbol, side, amount)
+            elif order_type == 'limit':
+                if price is None:
+                    raise ValueError("Price required for limit orders")
+                order = self.exchange.create_limit_order(symbol, side, amount, price)
+            else:
+                raise ValueError(f"Unsupported order type: {order_type}")
+            
+            logger.info(f"Order placed: {order['id']}")
+            return order
+            
+        except Exception as e:
+            logger.error(f"Error placing order: {e}")
+            return None
+    
+    def get_balance(self) -> Optional[Dict]:
+        """Get account balance"""
+        try:
+            balance = self.exchange.fetch_balance()
+            
+            # Filter out zero balances
+            non_zero_balances = {
+                currency: info for currency, info in balance.items() 
+                if isinstance(info, dict) and info.get('total', 0) > 0
+            }
+            
+            return non_zero_balances
+        except Exception as e:
+            logger.error(f"Error getting balance: {e}")
+            return None
+    
+    def get_my_trades(self, symbol: str, limit: int = 50) -> Optional[List[Dict]]:
+        """Get user's trade history"""
+        try:
+            trades = self.exchange.fetch_my_trades(symbol, limit=limit)
+            return trades
+        except Exception as e:
+            logger.error(f"Error getting trades: {e}")
+            return None
+
+class TechnicalAnalysis:
+    """Technical analysis utilities for trading"""
+    
+    @staticmethod
+    def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
+        """Add technical indicators to OHLCV data"""
+        df = df.copy()
+        
+        # Moving averages
+        df['sma_20'] = ta.trend.sma_indicator(df['close'], window=20)
+        df['sma_50'] = ta.trend.sma_indicator(df['close'], window=50)
+        df['ema_12'] = ta.trend.ema_indicator(df['close'], window=12)
+        df['ema_26'] = ta.trend.ema_indicator(df['close'], window=26)
+        
+        # RSI
+        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+        
+        # MACD
+        df['macd'] = ta.trend.macd_diff(df['close'])
+        df['macd_signal'] = ta.trend.macd_signal(df['close'])
+        
+        # Bollinger Bands
+        bb_indicator = ta.volatility.BollingerBands(df['close'])
+        df['bb_upper'] = bb_indicator.bollinger_hband()
+        df['bb_middle'] = bb_indicator.bollinger_mavg()
+        df['bb_lower'] = bb_indicator.bollinger_lband()
+        
+        # Volume indicators
+        df['volume_sma'] = ta.volume.volume_sma(df['close'], df['volume'])
+        
+        # Volatility
+        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'])
+        
+        return df
+    
+    @staticmethod
+    def detect_signals(df: pd.DataFrame) -> pd.DataFrame:
+        """Detect trading signals"""
+        df = df.copy()
+        
+        # Golden Cross (SMA 20 crosses above SMA 50)
+        df['golden_cross'] = (df['sma_20'] > df['sma_50']) & (df['sma_20'].shift(1) <= df['sma_50'].shift(1))
+        
+        # Death Cross (SMA 20 crosses below SMA 50)
+        df['death_cross'] = (df['sma_20'] < df['sma_50']) & (df['sma_20'].shift(1) >= df['sma_50'].shift(1))
+        
+        # RSI Overbought/Oversold
+        df['rsi_overbought'] = df['rsi'] > 70
+        df['rsi_oversold'] = df['rsi'] < 30
+        
+        # MACD Bullish/Bearish
+        df['macd_bullish'] = (df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))
+        df['macd_bearish'] = (df['macd'] < df['macd_signal']) & (df['macd'].shift(1) >= df['macd_signal'].shift(1))
+        
+        # Bollinger Band signals
+        df['bb_squeeze'] = (df['close'] > df['bb_upper'])
+        df['bb_bounce'] = (df['close'] < df['bb_lower'])
+        
+        return df
+    
+    @staticmethod
+    def calculate_support_resistance(df: pd.DataFrame, window: int = 20) -> Tuple[float, float]:
+        """Calculate support and resistance levels"""
+        recent_data = df.tail(window)
+        
+        # Simple approach: use recent highs and lows
+        resistance = recent_data['high'].max()
+        support = recent_data['low'].min()
+        
+        return support, resistance
+    
+    @staticmethod
+    def backtest_strategy(df: pd.DataFrame, buy_signal_col: str, 
+                         sell_signal_col: str, initial_capital: float = 10000) -> Dict:
+        """Simple backtesting framework"""
+        position = 0  # 0 = no position, 1 = long
+        capital = initial_capital
+        trades = []
+        
+        for i, row in df.iterrows():
+            if row[buy_signal_col] and position == 0:
+                # Buy signal
+                position = 1
+                shares = capital / row['close']
+                capital = 0
+                trades.append({
+                    'type': 'buy',
+                    'date': i,
+                    'price': row['close'],
+                    'shares': shares
+                })
+            
+            elif row[sell_signal_col] and position == 1:
+                # Sell signal
+                position = 0
+                capital = shares * row['close']
+                trades.append({
+                    'type': 'sell',
+                    'date': i,
+                    'price': row['close'],
+                    'shares': shares
+                })
+        
+        # Calculate final value
+        if position == 1:
+            final_value = shares * df['close'].iloc[-1]
+        else:
+            final_value = capital
+        
+        total_return = (final_value - initial_capital) / initial_capital * 100
+        
+        return {
+            'initial_capital': initial_capital,
+            'final_value': final_value,
+            'total_return_pct': total_return,
+            'total_trades': len(trades),
+            'trades': trades
+        }
+
+class PriceAlert:
+    """Price monitoring and alert system"""
+    
+    def __init__(self, trader: CryptocurrencyTrader):
+        self.trader = trader
+        self.alerts = []
+        self.running = False
+    
+    def add_alert(self, symbol: str, condition: str, price: float, 
+                  message: str = None, email: str = None):
+        """
+        Add price alert
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTC/USDT')
+            condition: 'above' or 'below'
+            price: Trigger price
+            message: Custom alert message
+            email: Email to send alert (optional)
+        """
+        alert = {
+            'id': len(self.alerts),
+            'symbol': symbol,
+            'condition': condition,
+            'price': price,
+            'message': message or f"{symbol} {condition} {price}",
+            'email': email,
+            'triggered': False,
+            'created_at': datetime.now()
+        }
+        
+        self.alerts.append(alert)
+        logger.info(f"Alert added: {alert['message']}")
+    
+    def check_alerts(self):
+        """Check all active alerts"""
+        for alert in self.alerts:
+            if alert['triggered']:
+                continue
+            
+            ticker = self.trader.get_ticker(alert['symbol'])
+            if not ticker:
+                continue
+            
+            current_price = ticker['last_price']
+            
+            should_trigger = False
+            if alert['condition'] == 'above' and current_price > alert['price']:
+                should_trigger = True
+            elif alert['condition'] == 'below' and current_price < alert['price']:
+                should_trigger = True
+            
+            if should_trigger:
+                self.trigger_alert(alert, current_price)
+    
+    def trigger_alert(self, alert: Dict, current_price: float):
+        """Trigger an alert"""
+        alert['triggered'] = True
+        alert['triggered_at'] = datetime.now()
+        alert['triggered_price'] = current_price
+        
+        message = f"ALERT: {alert['message']} (Current: {current_price})"
+        logger.info(message)
+        
+        # Send email if configured
+        if alert['email']:
+            self.send_email_alert(alert['email'], message)
+    
+    def send_email_alert(self, email: str, message: str):
+        """Send email alert (implement with your preferred email service)"""
+        # Placeholder for email sending
+        logger.info(f"Email alert sent to {email}: {message}")
+    
+    def start_monitoring(self, interval: int = 60):
+        """Start continuous price monitoring"""
+        self.running = True
+        logger.info(f"Starting price monitoring (interval: {interval}s)")
+        
+        while self.running:
+            try:
+                self.check_alerts()
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                self.stop_monitoring()
+            except Exception as e:
+                logger.error(f"Error during monitoring: {e}")
+                time.sleep(interval)
+    
+    def stop_monitoring(self):
+        """Stop price monitoring"""
+        self.running = False
+        logger.info("Price monitoring stopped")
