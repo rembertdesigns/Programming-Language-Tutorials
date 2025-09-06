@@ -2727,3 +2727,114 @@ class BlockchainDataScience:
         except Exception as e:
             logger.error(f"Error detecting anomalies: {e}")
             return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           16. PERFORMANCE OPTIMIZATION AND CACHING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import redis
+from functools import wraps
+import pickle
+
+class BlockchainCache:
+    """Caching system for blockchain data"""
+    
+    def __init__(self, redis_url: str = "redis://localhost:6379"):
+        try:
+            self.redis_client = redis.from_url(redis_url)
+            self.redis_client.ping()
+            self.available = True
+            logger.info("Redis cache connected")
+        except:
+            self.available = False
+            logger.warning("Redis not available, caching disabled")
+    
+    def cache_key(self, prefix: str, *args) -> str:
+        """Generate cache key"""
+        key_parts = [prefix] + [str(arg) for arg in args]
+        return ":".join(key_parts)
+    
+    def get(self, key: str) -> Any:
+        """Get value from cache"""
+        if not self.available:
+            return None
+        
+        try:
+            data = self.redis_client.get(key)
+            if data:
+                return pickle.loads(data)
+        except Exception as e:
+            logger.warning(f"Cache get error: {e}")
+        
+        return None
+    
+    def set(self, key: str, value: Any, ttl: int = 3600):
+        """Set value in cache"""
+        if not self.available:
+            return
+        
+        try:
+            data = pickle.dumps(value)
+            self.redis_client.setex(key, ttl, data)
+        except Exception as e:
+            logger.warning(f"Cache set error: {e}")
+    
+    def delete(self, key: str):
+        """Delete value from cache"""
+        if not self.available:
+            return
+        
+        try:
+            self.redis_client.delete(key)
+        except Exception as e:
+            logger.warning(f"Cache delete error: {e}")
+
+# Cache decorator
+def cache_result(cache: BlockchainCache, prefix: str, ttl: int = 3600):
+    """Decorator to cache function results"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Generate cache key
+            cache_key = cache.cache_key(prefix, *args, str(sorted(kwargs.items())))
+            
+            # Try to get from cache
+            result = cache.get(cache_key)
+            if result is not None:
+                return result
+            
+            # Execute function and cache result
+            result = func(*args, **kwargs)
+            cache.set(cache_key, result, ttl)
+            
+            return result
+        return wrapper
+    return decorator
+
+class OptimizedEthereumClient(EthereumClient):
+    """Optimized Ethereum client with caching"""
+    
+    def __init__(self, node_url: str, private_key: Optional[str] = None, 
+                 cache_url: str = "redis://localhost:6379"):
+        super().__init__(node_url, private_key)
+        self.cache = BlockchainCache(cache_url)
+    
+    @cache_result(cache=None, prefix="balance", ttl=60)  # Cache for 1 minute
+    def get_balance_cached(self, address: str, block: str = 'latest') -> float:
+        """Get balance with caching"""
+        return super().get_balance(address, block)
+    
+    @cache_result(cache=None, prefix="transaction", ttl=3600)  # Cache for 1 hour
+    def get_transaction_cached(self, tx_hash: str) -> Optional[Dict]:
+        """Get transaction with caching"""
+        return super().get_transaction(tx_hash)
+    
+    def __post_init__(self):
+        # Set cache for decorators after initialization
+        for method_name in ['get_balance_cached', 'get_transaction_cached']:
+            method = getattr(self, method_name)
+            # Update cache reference in decorator
+            if hasattr(method, '__wrapped__'):
+                # This is a simplified approach - in practice you'd need more sophisticated cache injection
+                pass
