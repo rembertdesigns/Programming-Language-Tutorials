@@ -1150,3 +1150,500 @@ pub mod solana_client {
         }
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           6. DeFi AND TOKEN PROTOCOLS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// DeFi protocols and token management
+pub mod defi_protocols {
+    use super::*;
+    use anchor_lang::prelude::*;
+    use anchor_spl::token::{Token, TokenAccount, Mint};
+
+    /// Automated Market Maker (AMM) implementation
+    #[account]
+    pub struct LiquidityPool {
+        pub token_a_mint: Pubkey,
+        pub token_b_mint: Pubkey,
+        pub token_a_account: Pubkey,
+        pub token_b_account: Pubkey,
+        pub lp_token_mint: Pubkey,
+        pub fee_rate: u64, // basis points (e.g., 30 = 0.3%)
+        pub total_liquidity: u64,
+        pub bump: u8,
+    }
+
+    impl LiquidityPool {
+        pub const LEN: usize = 8 + 32 * 5 + 8 + 8 + 1;
+
+        pub fn calculate_swap_amount(
+            &self,
+            input_amount: u64,
+            input_reserve: u64,
+            output_reserve: u64,
+        ) -> Result<u64> {
+            // Constant product formula: x * y = k
+            // With fees: output = (input * 997 * output_reserve) / (input_reserve * 1000 + input * 997)
+            
+            let input_with_fee = input_amount
+                .checked_mul(1000 - self.fee_rate)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+            let numerator = input_with_fee
+                .checked_mul(output_reserve)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+            let denominator = input_reserve
+                .checked_mul(1000)
+                .ok_or(ProgramError::ArithmeticOverflow)?
+                .checked_add(input_with_fee)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+            if denominator == 0 {
+                return Err(ProgramError::DivisionByZero.into());
+            }
+            
+            Ok(numerator / denominator)
+        }
+
+        pub fn calculate_liquidity_amount(
+            &self,
+            token_a_amount: u64,
+            token_b_amount: u64,
+            token_a_reserve: u64,
+            token_b_reserve: u64,
+        ) -> Result<u64> {
+            if self.total_liquidity == 0 {
+                // Initial liquidity
+                return Ok((token_a_amount * token_b_amount).sqrt());
+            }
+
+            let liquidity_a = token_a_amount
+                .checked_mul(self.total_liquidity)
+                .ok_or(ProgramError::ArithmeticOverflow)?
+                .checked_div(token_a_reserve)
+                .ok_or(ProgramError::DivisionByZero)?;
+
+            let liquidity_b = token_b_amount
+                .checked_mul(self.total_liquidity)
+                .ok_or(ProgramError::ArithmeticOverflow)?
+                .checked_div(token_b_reserve)
+                .ok_or(ProgramError::DivisionByZero)?;
+
+            Ok(liquidity_a.min(liquidity_b))
+        }
+    }
+
+    /// Staking pool for token rewards
+    #[account]
+    pub struct StakingPool {
+        pub stake_token_mint: Pubkey,
+        pub reward_token_mint: Pubkey,
+        pub stake_token_account: Pubkey,
+        pub reward_token_account: Pubkey,
+        pub reward_rate: u64, // tokens per second
+        pub total_staked: u64,
+        pub last_update_time: i64,
+        pub accumulated_reward_per_token: u128,
+        pub bump: u8,
+    }
+
+    impl StakingPool {
+        pub const LEN: usize = 8 + 32 * 4 + 8 * 3 + 16 + 1;
+
+        pub fn update_rewards(&mut self) -> Result<()> {
+            let clock = Clock::get()?;
+            let current_time = clock.unix_timestamp;
+            
+            if self.total_staked > 0 {
+                let time_diff = current_time - self.last_update_time;
+                let reward_amount = self.reward_rate * time_diff as u64;
+                let reward_per_token = (reward_amount as u128 * 1e18 as u128) / self.total_staked as u128;
+                
+                self.accumulated_reward_per_token += reward_per_token;
+            }
+            
+            self.last_update_time = current_time;
+            Ok(())
+        }
+
+        pub fn calculate_pending_rewards(
+            &self,
+            user_stake: u64,
+            user_reward_debt: u128,
+        ) -> u128 {
+            let user_accumulated = (user_stake as u128 * self.accumulated_reward_per_token) / 1e18 as u128;
+            user_accumulated.saturating_sub(user_reward_debt)
+        }
+    }
+
+    /// User stake information
+    #[account]
+    pub struct UserStake {
+        pub user: Pubkey,
+        pub pool: Pubkey,
+        pub amount: u64,
+        pub reward_debt: u128,
+        pub last_stake_time: i64,
+        pub bump: u8,
+    }
+
+    impl UserStake {
+        pub const LEN: usize = 8 + 32 * 2 + 8 + 16 + 8 + 1;
+    }
+
+    /// Lending protocol structures
+    #[account]
+    pub struct LendingMarket {
+        pub admin: Pubkey,
+        pub reserves: Vec<Pubkey>,
+        pub oracle: Pubkey,
+        pub liquidation_threshold: u64, // basis points
+        pub liquidation_bonus: u64,     // basis points
+        pub bump: u8,
+    }
+
+    #[account]
+    pub struct Reserve {
+        pub market: Pubkey,
+        pub token_mint: Pubkey,
+        pub supply_token_account: Pubkey,
+        pub borrow_token_account: Pubkey,
+        pub collateral_mint: Pubkey,
+        pub debt_mint: Pubkey,
+        pub total_supply: u64,
+        pub total_borrow: u64,
+        pub supply_rate: u64,
+        pub borrow_rate: u64,
+        pub last_update_time: i64,
+        pub reserve_factor: u64, // percentage of interest that goes to reserves
+        pub bump: u8,
+    }
+
+    impl Reserve {
+        pub const LEN: usize = 8 + 32 * 6 + 8 * 6 + 1;
+
+        pub fn calculate_supply_rate(&self, utilization_rate: u64) -> u64 {
+            // Simple linear interest rate model
+            let base_rate = 200; // 2% base rate
+            let multiplier = 1000; // 10% multiplier
+            
+            base_rate + (utilization_rate * multiplier / 10000)
+        }
+
+        pub fn calculate_borrow_rate(&self, utilization_rate: u64) -> u64 {
+            let supply_rate = self.calculate_supply_rate(utilization_rate);
+            supply_rate + 200 // 2% spread
+        }
+
+        pub fn get_utilization_rate(&self) -> u64 {
+            if self.total_supply == 0 {
+                0
+            } else {
+                (self.total_borrow * 10000) / self.total_supply
+            }
+        }
+    }
+
+    /// Yield farming implementation
+    #[account]
+    pub struct Farm {
+        pub lp_token_mint: Pubkey,
+        pub reward_token_mint: Pubkey,
+        pub lp_token_account: Pubkey,
+        pub reward_token_account: Pubkey,
+        pub reward_per_block: u64,
+        pub total_staked: u64,
+        pub last_reward_block: u64,
+        pub accumulated_reward_per_share: u128,
+        pub start_block: u64,
+        pub end_block: u64,
+        pub bump: u8,
+    }
+
+    impl Farm {
+        pub const LEN: usize = 8 + 32 * 4 + 8 * 6 + 16 + 1;
+
+        pub fn update_pool(&mut self, current_block: u64) -> Result<()> {
+            if current_block <= self.last_reward_block {
+                return Ok(());
+            }
+
+            if self.total_staked == 0 {
+                self.last_reward_block = current_block;
+                return Ok(());
+            }
+
+            let blocks_passed = current_block - self.last_reward_block;
+            let reward_amount = blocks_passed * self.reward_per_block;
+            
+            self.accumulated_reward_per_share += 
+                (reward_amount as u128 * 1e12 as u128) / self.total_staked as u128;
+            
+            self.last_reward_block = current_block;
+            Ok(())
+        }
+
+        pub fn calculate_pending_reward(&self, user_amount: u64, user_reward_debt: u128) -> u128 {
+            let user_accumulated = (user_amount as u128 * self.accumulated_reward_per_share) / 1e12 as u128;
+            user_accumulated.saturating_sub(user_reward_debt)
+        }
+    }
+
+    /// Options protocol for derivatives
+    #[account]
+    pub struct Option {
+        pub underlying_mint: Pubkey,
+        pub strike_price: u64,
+        pub expiry_time: i64,
+        pub option_type: OptionType, // Call or Put
+        pub premium: u64,
+        pub writer: Pubkey,
+        pub holder: Option<Pubkey>,
+        pub collateral_amount: u64,
+        pub is_exercised: bool,
+        pub bump: u8,
+    }
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+    pub enum OptionType {
+        Call,
+        Put,
+    }
+
+    impl Option {
+        pub const LEN: usize = 8 + 32 * 3 + 1 + 8 * 3 + 33 + 1 + 1;
+
+        pub fn is_in_the_money(&self, current_price: u64) -> bool {
+            match self.option_type {
+                OptionType::Call => current_price > self.strike_price,
+                OptionType::Put => current_price < self.strike_price,
+            }
+        }
+
+        pub fn calculate_intrinsic_value(&self, current_price: u64) -> u64 {
+            if !self.is_in_the_money(current_price) {
+                return 0;
+            }
+
+            match self.option_type {
+                OptionType::Call => current_price.saturating_sub(self.strike_price),
+                OptionType::Put => self.strike_price.saturating_sub(current_price),
+            }
+        }
+
+        pub fn is_expired(&self) -> Result<bool> {
+            let clock = Clock::get()?;
+            Ok(clock.unix_timestamp >= self.expiry_time)
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           7. NFT AND DIGITAL ASSETS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// NFT and digital asset management
+pub mod nft_protocols {
+    use super::*;
+    use anchor_lang::prelude::*;
+    use mpl_token_metadata::state::{Metadata, TokenMetadataAccount};
+
+    /// NFT Collection structure
+    #[account]
+    pub struct Collection {
+        pub authority: Pubkey,
+        pub name: String,
+        pub symbol: String,
+        pub description: String,
+        pub image: String,
+        pub external_url: Option<String>,
+        pub total_supply: u64,
+        pub max_supply: u64,
+        pub mint_price: u64,
+        pub royalty_percentage: u16, // basis points
+        pub is_mutable: bool,
+        pub is_verified: bool,
+        pub bump: u8,
+    }
+
+    impl Collection {
+        pub const MAX_NAME_LENGTH: usize = 32;
+        pub const MAX_SYMBOL_LENGTH: usize = 10;
+        pub const MAX_DESCRIPTION_LENGTH: usize = 200;
+        pub const MAX_URL_LENGTH: usize = 200;
+        
+        pub const LEN: usize = 8 + 32 + 4 + Self::MAX_NAME_LENGTH + 4 + Self::MAX_SYMBOL_LENGTH + 
+            4 + Self::MAX_DESCRIPTION_LENGTH + 4 + Self::MAX_URL_LENGTH + 
+            1 + 4 + Self::MAX_URL_LENGTH + 8 + 8 + 8 + 2 + 1 + 1 + 1;
+    }
+
+    /// Individual NFT data
+    #[account]
+    pub struct Nft {
+        pub collection: Pubkey,
+        pub mint: Pubkey,
+        pub owner: Pubkey,
+        pub name: String,
+        pub description: String,
+        pub image: String,
+        pub attributes: Vec<NftAttribute>,
+        pub rarity_score: u32,
+        pub is_listed: bool,
+        pub list_price: Option<u64>,
+        pub bump: u8,
+    }
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+    pub struct NftAttribute {
+        pub trait_type: String,
+        pub value: String,
+        pub rarity: Option<f32>,
+    }
+
+    impl Nft {
+        pub const MAX_ATTRIBUTES: usize = 10;
+        pub const MAX_ATTRIBUTE_LENGTH: usize = 50;
+        
+        pub fn calculate_rarity_score(&mut self) {
+            let mut score = 0u32;
+            for attr in &self.attributes {
+                if let Some(rarity) = attr.rarity {
+                    score += (1.0 / rarity * 10000.0) as u32;
+                }
+            }
+            self.rarity_score = score;
+        }
+    }
+
+    /// NFT Marketplace
+    #[account]
+    pub struct Marketplace {
+        pub authority: Pubkey,
+        pub treasury: Pubkey,
+        pub fee_percentage: u16, // basis points
+        pub total_volume: u64,
+        pub total_sales: u64,
+        pub is_active: bool,
+        pub bump: u8,
+    }
+
+    impl Marketplace {
+        pub const LEN: usize = 8 + 32 * 2 + 2 + 8 * 2 + 1 + 1;
+    }
+
+    /// Listing for NFT sales
+    #[account]
+    pub struct Listing {
+        pub marketplace: Pubkey,
+        pub nft_mint: Pubkey,
+        pub seller: Pubkey,
+        pub price: u64,
+        pub created_at: i64,
+        pub expires_at: Option<i64>,
+        pub is_active: bool,
+        pub bump: u8,
+    }
+
+    impl Listing {
+        pub const LEN: usize = 8 + 32 * 3 + 8 + 8 + 1 + 8 + 1 + 1;
+
+        pub fn is_expired(&self) -> Result<bool> {
+            if let Some(expires_at) = self.expires_at {
+                let clock = Clock::get()?;
+                Ok(clock.unix_timestamp >= expires_at)
+            } else {
+                Ok(false)
+            }
+        }
+    }
+
+    /// Auction system for NFTs
+    #[account]
+    pub struct Auction {
+        pub nft_mint: Pubkey,
+        pub seller: Pubkey,
+        pub starting_price: u64,
+        pub current_bid: u64,
+        pub highest_bidder: Option<Pubkey>,
+        pub end_time: i64,
+        pub min_bid_increment: u64,
+        pub is_active: bool,
+        pub is_settled: bool,
+        pub bump: u8,
+    }
+
+    impl Auction {
+        pub const LEN: usize = 8 + 32 * 2 + 8 * 3 + 33 + 8 + 8 + 1 + 1 + 1;
+
+        pub fn is_ended(&self) -> Result<bool> {
+            let clock = Clock::get()?;
+            Ok(clock.unix_timestamp >= self.end_time)
+        }
+
+        pub fn calculate_next_min_bid(&self) -> u64 {
+            if self.current_bid == 0 {
+                self.starting_price
+            } else {
+                self.current_bid + self.min_bid_increment
+            }
+        }
+    }
+
+    /// Bid information
+    #[account]
+    pub struct Bid {
+        pub auction: Pubkey,
+        pub bidder: Pubkey,
+        pub amount: u64,
+        pub timestamp: i64,
+        pub is_winning: bool,
+        pub bump: u8,
+    }
+
+    impl Bid {
+        pub const LEN: usize = 8 + 32 * 2 + 8 + 8 + 1 + 1;
+    }
+
+    /// Royalty management
+    #[account]
+    pub struct Royalty {
+        pub nft_mint: Pubkey,
+        pub creator: Pubkey,
+        pub percentage: u16, // basis points
+        pub total_earned: u64,
+        pub is_active: bool,
+        pub bump: u8,
+    }
+
+    impl Royalty {
+        pub const LEN: usize = 8 + 32 * 2 + 2 + 8 + 1 + 1;
+
+        pub fn calculate_royalty_amount(&self, sale_price: u64) -> u64 {
+            (sale_price * self.percentage as u64) / 10000
+        }
+    }
+
+    /// Fractionalized NFT
+    #[account]
+    pub struct FractionalNft {
+        pub original_nft_mint: Pubkey,
+        pub fraction_mint: Pubkey,
+        pub total_fractions: u64,
+        pub price_per_fraction: u64,
+        pub vault_authority: Pubkey,
+        pub is_redeemable: bool,
+        pub redemption_price: Option<u64>,
+        pub bump: u8,
+    }
+
+    impl FractionalNft {
+        pub const LEN: usize = 8 + 32 * 3 + 8 * 2 + 1 + 1 + 8 + 1;
+
+        pub fn calculate_total_value(&self) -> u64 {
+            self.total_fractions * self.price_per_fraction
+        }
+    }
+}
