@@ -569,3 +569,401 @@ class CryptographicUtils:
         except Exception as e:
             logger.error(f"Decryption error: {e}")
             return ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           4. BLOCKCHAIN DATA ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from collections import defaultdict, Counter
+import sqlite3
+
+class BlockchainAnalyzer:
+    """Blockchain data analysis and visualization"""
+    
+    def __init__(self, ethereum_client: EthereumClient):
+        self.eth_client = ethereum_client
+        self.w3 = ethereum_client.w3
+        
+    def analyze_address_activity(self, address: str, blocks_to_analyze: int = 1000) -> Dict:
+        """Analyze activity for a specific address"""
+        try:
+            address = self.w3.to_checksum_address(address)
+            current_block = self.w3.eth.block_number
+            start_block = max(0, current_block - blocks_to_analyze)
+            
+            transactions = []
+            eth_received = 0
+            eth_sent = 0
+            gas_used = 0
+            
+            logger.info(f"Analyzing {address} from block {start_block} to {current_block}")
+            
+            for block_num in range(start_block, current_block + 1):
+                if block_num % 100 == 0:
+                    logger.info(f"Processing block {block_num}")
+                
+                try:
+                    block = self.w3.eth.get_block(block_num, full_transactions=True)
+                    
+                    for tx in block['transactions']:
+                        if tx['from'] == address or tx['to'] == address:
+                            value_eth = self.w3.from_wei(tx['value'], 'ether')
+                            
+                            # Get transaction receipt for gas info
+                            try:
+                                receipt = self.w3.eth.get_transaction_receipt(tx['hash'])
+                                gas_cost = receipt['gasUsed'] * tx['gasPrice']
+                            except:
+                                gas_cost = 0
+                            
+                            tx_data = {
+                                'hash': tx['hash'].hex(),
+                                'block_number': block_num,
+                                'from': tx['from'],
+                                'to': tx['to'],
+                                'value_eth': float(value_eth),
+                                'gas_used': tx['gas'],
+                                'gas_price_gwei': self.w3.from_wei(tx['gasPrice'], 'gwei'),
+                                'gas_cost_eth': self.w3.from_wei(gas_cost, 'ether'),
+                                'timestamp': datetime.fromtimestamp(block['timestamp'])
+                            }
+                            
+                            transactions.append(tx_data)
+                            
+                            if tx['to'] == address:
+                                eth_received += float(value_eth)
+                            if tx['from'] == address:
+                                eth_sent += float(value_eth)
+                                gas_used += self.w3.from_wei(gas_cost, 'ether')
+                
+                except Exception as e:
+                    logger.warning(f"Error processing block {block_num}: {e}")
+                    continue
+            
+            # Analysis results
+            analysis = {
+                'address': address,
+                'blocks_analyzed': blocks_to_analyze,
+                'total_transactions': len(transactions),
+                'eth_received': eth_received,
+                'eth_sent': eth_sent,
+                'net_eth_flow': eth_received - eth_sent,
+                'total_gas_cost': gas_used,
+                'current_balance': self.eth_client.get_balance(address),
+                'transactions': transactions
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing address: {e}")
+            return {}
+    
+    def create_transaction_graph(self, transactions: List[Dict]) -> None:
+        """Create transaction flow visualization"""
+        if not transactions:
+            logger.warning("No transactions to visualize")
+            return
+        
+        # Create DataFrame
+        df = pd.DataFrame(transactions)
+        
+        # Time series analysis
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        
+        # Create subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        
+        # Transaction volume over time
+        daily_volume = df.resample('D')['value_eth'].sum()
+        axes[0, 0].plot(daily_volume.index, daily_volume.values)
+        axes[0, 0].set_title('Daily Transaction Volume (ETH)')
+        axes[0, 0].set_ylabel('ETH')
+        axes[0, 0].tick_params(axis='x', rotation=45)
+        
+        # Transaction count over time
+        daily_count = df.resample('D').size()
+        axes[0, 1].plot(daily_count.index, daily_count.values)
+        axes[0, 1].set_title('Daily Transaction Count')
+        axes[0, 1].set_ylabel('Transactions')
+        axes[0, 1].tick_params(axis='x', rotation=45)
+        
+        # Gas price distribution
+        axes[1, 0].hist(df['gas_price_gwei'], bins=30, alpha=0.7)
+        axes[1, 0].set_title('Gas Price Distribution')
+        axes[1, 0].set_xlabel('Gas Price (Gwei)')
+        axes[1, 0].set_ylabel('Frequency')
+        
+        # Value distribution
+        axes[1, 1].hist(df[df['value_eth'] > 0]['value_eth'], bins=30, alpha=0.7)
+        axes[1, 1].set_title('Transaction Value Distribution')
+        axes[1, 1].set_xlabel('Value (ETH)')
+        axes[1, 1].set_ylabel('Frequency')
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def analyze_gas_trends(self, blocks_to_analyze: int = 1000) -> Dict:
+        """Analyze gas price trends"""
+        try:
+            current_block = self.w3.eth.block_number
+            start_block = max(0, current_block - blocks_to_analyze)
+            
+            gas_data = []
+            
+            for block_num in range(start_block, current_block + 1, 10):  # Sample every 10 blocks
+                try:
+                    block = self.w3.eth.get_block(block_num, full_transactions=True)
+                    
+                    if block['transactions']:
+                        gas_prices = [self.w3.from_wei(tx['gasPrice'], 'gwei') 
+                                    for tx in block['transactions']]
+                        
+                        gas_data.append({
+                            'block_number': block_num,
+                            'timestamp': datetime.fromtimestamp(block['timestamp']),
+                            'avg_gas_price': np.mean(gas_prices),
+                            'median_gas_price': np.median(gas_prices),
+                            'max_gas_price': np.max(gas_prices),
+                            'min_gas_price': np.min(gas_prices),
+                            'tx_count': len(block['transactions']),
+                            'gas_used': block['gasUsed'],
+                            'gas_limit': block['gasLimit'],
+                            'gas_utilization': block['gasUsed'] / block['gasLimit']
+                        })
+                
+                except Exception as e:
+                    logger.warning(f"Error processing block {block_num}: {e}")
+                    continue
+            
+            return {
+                'gas_data': gas_data,
+                'blocks_analyzed': len(gas_data),
+                'avg_gas_price': np.mean([d['avg_gas_price'] for d in gas_data]),
+                'avg_gas_utilization': np.mean([d['gas_utilization'] for d in gas_data])
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing gas trends: {e}")
+            return {}
+    
+    def token_holder_analysis(self, token_address: str, top_n: int = 100) -> Dict:
+        """Analyze token distribution among holders"""
+        try:
+            token = ERC20Token(self.w3, token_address)
+            
+            # Get transfer events to find all holders
+            transfer_events = token.get_transfer_events()
+            
+            # Track balances
+            balances = defaultdict(float)
+            
+            for event in transfer_events:
+                from_addr = event['from']
+                to_addr = event['to']
+                value = event['value']
+                
+                # Handle minting (from zero address)
+                if from_addr != '0x0000000000000000000000000000000000000000':
+                    balances[from_addr] -= value
+                
+                balances[to_addr] += value
+            
+            # Remove zero balances and get current balances
+            active_holders = {}
+            for address, balance in balances.items():
+                if balance > 0:
+                    # Verify current balance on-chain
+                    current_balance = token.get_balance(address)
+                    if current_balance > 0:
+                        active_holders[address] = current_balance
+            
+            # Sort by balance
+            sorted_holders = sorted(active_holders.items(), key=lambda x: x[1], reverse=True)
+            top_holders = sorted_holders[:top_n]
+            
+            total_supply = token.total_supply / (10 ** token.decimals)
+            total_held = sum(active_holders.values())
+            
+            # Calculate distribution metrics
+            gini_coefficient = self._calculate_gini_coefficient([balance for _, balance in sorted_holders])
+            
+            return {
+                'token_name': token.name,
+                'token_symbol': token.symbol,
+                'total_supply': total_supply,
+                'total_holders': len(active_holders),
+                'top_holders': top_holders,
+                'concentration_ratio': {
+                    'top_10': sum([balance for _, balance in sorted_holders[:10]]) / total_supply * 100,
+                    'top_50': sum([balance for _, balance in sorted_holders[:50]]) / total_supply * 100,
+                    'top_100': sum([balance for _, balance in sorted_holders[:100]]) / total_supply * 100
+                },
+                'gini_coefficient': gini_coefficient
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing token holders: {e}")
+            return {}
+    
+    @staticmethod
+    def _calculate_gini_coefficient(values: List[float]) -> float:
+        """Calculate Gini coefficient for wealth distribution"""
+        if not values:
+            return 0
+        
+        values = sorted(values)
+        n = len(values)
+        cumsum = np.cumsum(values)
+        
+        return (n + 1 - 2 * sum((n + 1 - i) * y for i, y in enumerate(values, 1))) / (n * sum(values))
+
+class BlockchainDatabase:
+    """SQLite database for storing blockchain data"""
+    
+    def __init__(self, db_path: str = "blockchain_data.db"):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path)
+        self.create_tables()
+        
+    def create_tables(self):
+        """Create database tables"""
+        cursor = self.conn.cursor()
+        
+        # Transactions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hash TEXT UNIQUE NOT NULL,
+                block_number INTEGER,
+                from_address TEXT,
+                to_address TEXT,
+                value_eth REAL,
+                gas_used INTEGER,
+                gas_price_gwei REAL,
+                timestamp DATETIME,
+                status INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Blocks table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number INTEGER UNIQUE NOT NULL,
+                hash TEXT UNIQUE NOT NULL,
+                parent_hash TEXT,
+                timestamp DATETIME,
+                gas_limit INTEGER,
+                gas_used INTEGER,
+                miner TEXT,
+                transaction_count INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Token transfers table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS token_transfers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_address TEXT,
+                from_address TEXT,
+                to_address TEXT,
+                value REAL,
+                transaction_hash TEXT,
+                block_number INTEGER,
+                log_index INTEGER,
+                timestamp DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create indexes
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_hash ON transactions(hash)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_block ON transactions(block_number)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(from_address)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(to_address)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_block_number ON blocks(number)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_address ON token_transfers(token_address)')
+        
+        self.conn.commit()
+    
+    def insert_transaction(self, tx_data: Dict):
+        """Insert transaction data"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO transactions 
+            (hash, block_number, from_address, to_address, value_eth, gas_used, gas_price_gwei, timestamp, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            tx_data['hash'],
+            tx_data['block_number'],
+            tx_data['from'],
+            tx_data['to'],
+            tx_data['value'],
+            tx_data['gas_used'],
+            tx_data['gas_price_gwei'],
+            tx_data['timestamp'],
+            tx_data['status']
+        ))
+        self.conn.commit()
+    
+    def insert_block(self, block_data: Dict):
+        """Insert block data"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO blocks 
+            (number, hash, parent_hash, timestamp, gas_limit, gas_used, miner, transaction_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            block_data['number'],
+            block_data['hash'],
+            block_data['parent_hash'],
+            block_data['timestamp'],
+            block_data['gas_limit'],
+            block_data['gas_used'],
+            block_data['miner'],
+            block_data['transactions_count']
+        ))
+        self.conn.commit()
+    
+    def get_address_transactions(self, address: str, limit: int = 100) -> List[Dict]:
+        """Get transactions for an address"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT * FROM transactions 
+            WHERE from_address = ? OR to_address = ?
+            ORDER BY block_number DESC
+            LIMIT ?
+        ''', (address, address, limit))
+        
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def get_gas_statistics(self, hours: int = 24) -> Dict:
+        """Get gas statistics for the last N hours"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT 
+                AVG(gas_price_gwei) as avg_gas_price,
+                MIN(gas_price_gwei) as min_gas_price,
+                MAX(gas_price_gwei) as max_gas_price,
+                COUNT(*) as transaction_count
+            FROM transactions 
+            WHERE timestamp > datetime('now', '-{} hours')
+        '''.format(hours))
+        
+        row = cursor.fetchone()
+        return {
+            'avg_gas_price': row[0] or 0,
+            'min_gas_price': row[1] or 0,
+            'max_gas_price': row[2] or 0,
+            'transaction_count': row[3] or 0
+        }
