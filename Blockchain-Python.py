@@ -2561,3 +2561,169 @@ class SecurityAnalyzer:
         except Exception as e:
             logger.error(f"Error detecting honeypot: {e}")
             return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           15. BLOCKCHAIN DATA SCIENCE AND ML
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class BlockchainDataScience:
+    """Data science and machine learning for blockchain data"""
+    
+    def __init__(self, ethereum_client: EthereumClient):
+        self.eth_client = ethereum_client
+        self.w3 = ethereum_client.w3
+    
+    def predict_gas_prices(self, historical_blocks: int = 1000) -> Dict:
+        """Predict gas prices using simple time series analysis"""
+        try:
+            # Get historical gas price data
+            current_block = self.w3.eth.block_number
+            start_block = max(0, current_block - historical_blocks)
+            
+            gas_data = []
+            for block_num in range(start_block, current_block + 1, 10):
+                try:
+                    block = self.w3.eth.get_block(block_num, full_transactions=True)
+                    if block['transactions']:
+                        avg_gas = np.mean([self.w3.from_wei(tx['gasPrice'], 'gwei') 
+                                         for tx in block['transactions']])
+                        gas_data.append({
+                            'block': block_num,
+                            'timestamp': block['timestamp'],
+                            'gas_price': avg_gas
+                        })
+                except:
+                    continue
+            
+            if len(gas_data) < 10:
+                return {'error': 'Insufficient data'}
+            
+            # Create DataFrame
+            df = pd.DataFrame(gas_data)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+            
+            # Simple moving average prediction
+            window = min(20, len(df) // 2)
+            df['ma'] = df['gas_price'].rolling(window=window).mean()
+            
+            # Predict next value (simple linear extrapolation)
+            recent_trend = df['gas_price'].tail(10).pct_change().mean()
+            current_price = df['gas_price'].iloc[-1]
+            predicted_price = current_price * (1 + recent_trend)
+            
+            return {
+                'current_gas_price': current_price,
+                'predicted_gas_price': predicted_price,
+                'trend': 'increasing' if recent_trend > 0 else 'decreasing',
+                'confidence': 'low',  # Simple model has low confidence
+                'historical_data_points': len(gas_data)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error predicting gas prices: {e}")
+            return {}
+    
+    def analyze_transaction_patterns(self, address: str, blocks_to_analyze: int = 1000) -> Dict:
+        """Analyze transaction patterns using data science techniques"""
+        try:
+            # Get transaction data
+            analyzer = BlockchainAnalyzer(self.eth_client)
+            analysis = analyzer.analyze_address_activity(address, blocks_to_analyze)
+            
+            if not analysis.get('transactions'):
+                return {'error': 'No transactions found'}
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(analysis['transactions'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            
+            # Time-based analysis
+            df['hour'] = df['timestamp'].dt.hour
+            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['is_weekend'] = df['day_of_week'].isin([5, 6])
+            
+            # Pattern analysis
+            patterns = {
+                'most_active_hours': df['hour'].value_counts().head(3).to_dict(),
+                'weekend_vs_weekday': {
+                    'weekend_txs': len(df[df['is_weekend']]),
+                    'weekday_txs': len(df[~df['is_weekend']])
+                },
+                'gas_price_patterns': {
+                    'avg_gas_weekday': df[~df['is_weekend']]['gas_price_gwei'].mean(),
+                    'avg_gas_weekend': df[df['is_weekend']]['gas_price_gwei'].mean()
+                },
+                'value_patterns': {
+                    'avg_value': df['value_eth'].mean(),
+                    'median_value': df['value_eth'].median(),
+                    'large_transactions': len(df[df['value_eth'] > df['value_eth'].quantile(0.9)])
+                }
+            }
+            
+            return {
+                'address': address,
+                'total_transactions': len(df),
+                'analysis_period': f"{df['timestamp'].min()} to {df['timestamp'].max()}",
+                'patterns': patterns
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing transaction patterns: {e}")
+            return {}
+    
+    def detect_anomalies(self, transactions: List[Dict]) -> Dict:
+        """Detect anomalous transactions using statistical methods"""
+        try:
+            if len(transactions) < 10:
+                return {'error': 'Insufficient data for anomaly detection'}
+            
+            df = pd.DataFrame(transactions)
+            
+            anomalies = {
+                'gas_price_anomalies': [],
+                'value_anomalies': [],
+                'timing_anomalies': []
+            }
+            
+            # Gas price anomalies (using IQR method)
+            if 'gas_price_gwei' in df.columns:
+                Q1 = df['gas_price_gwei'].quantile(0.25)
+                Q3 = df['gas_price_gwei'].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                gas_anomalies = df[(df['gas_price_gwei'] < lower_bound) | 
+                                 (df['gas_price_gwei'] > upper_bound)]
+                anomalies['gas_price_anomalies'] = gas_anomalies.to_dict('records')
+            
+            # Value anomalies
+            if 'value_eth' in df.columns and df['value_eth'].sum() > 0:
+                value_threshold = df['value_eth'].quantile(0.95)
+                value_anomalies = df[df['value_eth'] > value_threshold]
+                anomalies['value_anomalies'] = value_anomalies.to_dict('records')
+            
+            # Timing anomalies (transactions very close in time)
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df = df.sort_values('timestamp')
+                df['time_diff'] = df['timestamp'].diff().dt.total_seconds()
+                
+                # Transactions within 10 seconds might be suspicious
+                timing_anomalies = df[df['time_diff'] < 10]
+                anomalies['timing_anomalies'] = timing_anomalies.to_dict('records')
+            
+            return {
+                'total_transactions': len(df),
+                'anomalies_found': {
+                    'gas_price': len(anomalies['gas_price_anomalies']),
+                    'value': len(anomalies['value_anomalies']),
+                    'timing': len(anomalies['timing_anomalies'])
+                },
+                'anomalies': anomalies
+            }
+            
+        except Exception as e:
+            logger.error(f"Error detecting anomalies: {e}")
+            return {}
