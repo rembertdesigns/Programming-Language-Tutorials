@@ -1725,3 +1725,1243 @@ func (cm *ContractManager) CallContract(caller, contractAddress string, input []
 	
 	return result, nil
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           7. TRANSACTION POOL AND MEMPOOL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// TransactionPool manages pending transactions
+type TransactionPool struct {
+	pending      map[string]*Transaction // txID -> transaction
+	queued       map[string][]*Transaction // address -> transactions
+	all          map[string]*Transaction // all transactions
+	priced       *TransactionsByPrice    // price-sorted transactions
+	mutex        sync.RWMutex
+	maxPoolSize  int
+	maxPerSender int
+}
+
+// TransactionsByPrice implements sorting interface for transactions by gas price
+type TransactionsByPrice []*Transaction
+
+func (t TransactionsByPrice) Len() int { return len(t) }
+func (t TransactionsByPrice) Less(i, j int) bool {
+	return t[i].Fee > t[j].Fee // Higher fee first
+}
+func (t TransactionsByPrice) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+// NewTransactionPool creates a new transaction pool
+func NewTransactionPool(maxPoolSize, maxPerSender int) *TransactionPool {
+	return &TransactionPool{
+		pending:      make(map[string]*Transaction),
+		queued:       make(map[string][]*Transaction),
+		all:          make(map[string]*Transaction),
+		priced:       &TransactionsByPrice{},
+		maxPoolSize:  maxPoolSize,
+		maxPerSender: maxPerSender,
+	}
+}
+
+// AddTransaction adds a transaction to the pool
+func (tp *TransactionPool) AddTransaction(tx *Transaction) error {
+	tp.mutex.Lock()
+	defer tp.mutex.Unlock()
+	
+	// Validate transaction
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("invalid transaction: %v", err)
+	}
+	
+	// Check if transaction already exists
+	if _, exists := tp.all[tx.ID]; exists {
+		return fmt.Errorf("transaction already exists")
+	}
+	
+	// Check pool size limit
+	if len(tp.all) >= tp.maxPoolSize {
+		// Remove lowest fee transaction
+		tp.evictTransaction()
+	}
+	
+	// Check per-sender limit
+	senderTxs := len(tp.queued[tx.From])
+	if senderTxs >= tp.maxPerSender {
+		return fmt.Errorf("too many pending transactions for sender")
+	}
+	
+	// Add to pool
+	tp.all[tx.ID] = tx
+	tp.pending[tx.ID] = tx
+	
+	// Add to queued transactions for sender
+	tp.queued[tx.From] = append(tp.queued[tx.From], tx)
+	
+	// Add to price-sorted list
+	*tp.priced = append(*tp.priced, tx)
+	
+	logrus.Debugf("Added transaction %s to pool", tx.ID)
+	return nil
+}
+
+// RemoveTransaction removes a transaction from the pool
+func (tp *TransactionPool) RemoveTransaction(txID string) {
+	tp.mutex.Lock()
+	defer tp.mutex.Unlock()
+	
+	tx, exists := tp.all[txID]
+	if !exists {
+		return
+	}
+	
+	// Remove from all maps
+	delete(tp.all, txID)
+	delete(tp.pending, txID)
+	
+	// Remove from sender's queued transactions
+	senderTxs := tp.queued[tx.From]
+	for i, queuedTx := range senderTxs {
+		if queuedTx.ID == txID {
+			tp.queued[tx.From] = append(senderTxs[:i], senderTxs[i+1:]...)
+			break
+		}
+	}
+	
+	// Remove from price-sorted list
+	for i, pricedTx := range *tp.priced {
+		if pricedTx.ID == txID {
+			*tp.priced = append((*tp.priced)[:i], (*tp.priced)[i+1:]...)
+			break
+		}
+	}
+	
+	logrus.Debugf("Removed transaction %s from pool", txID)
+}
+
+// GetTransactions returns transactions for mining
+func (tp *TransactionPool) GetTransactions(maxTxs int) []*Transaction {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+	
+	var transactions []*Transaction
+	count := 0
+	
+	// Sort by fee (highest first)
+	sort.Sort(*tp.priced)
+	
+	for _, tx := range *tp.priced {
+		if count >= maxTxs {
+			break
+		}
+		transactions = append(transactions, tx)
+		count++
+	}
+	
+	return transactions
+}
+
+// GetPendingCount returns the number of pending transactions
+func (tp *TransactionPool) GetPendingCount() int {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+	return len(tp.pending)
+}
+
+// GetTransaction retrieves a transaction by ID
+func (tp *TransactionPool) GetTransaction(txID string) (*Transaction, bool) {
+	tp.mutex.RLock()
+	defer tp.mutex.RUnlock()
+	
+	tx, exists := tp.all[txID]
+	return tx, exists
+}
+
+// evictTransaction removes the transaction with the lowest fee
+func (tp *TransactionPool) evictTransaction() {
+	if len(*tp.priced) == 0 {
+		return
+	}
+	
+	// Sort by fee (ascending)
+	sort.Slice(*tp.priced, func(i, j int) bool {
+		return (*tp.priced)[i].Fee < (*tp.priced)[j].Fee
+	})
+	
+	// Remove the lowest fee transaction
+	toRemove := (*tp.priced)[0]
+	tp.RemoveTransaction(toRemove.ID)
+}
+
+// CleanExpiredTransactions removes expired transactions
+func (tp *TransactionPool) CleanExpiredTransactions(maxAge time.Duration) {
+	tp.mutex.Lock()
+	defer tp.mutex.Unlock()
+	
+	now := time.Now()
+	var toRemove []string
+	
+	for txID, tx := range tp.all {
+		if now.Sub(tx.Timestamp) > maxAge {
+			toRemove = append(toRemove, txID)
+		}
+	}
+	
+	for _, txID := range toRemove {
+		delete(tp.all, txID)
+		delete(tp.pending, txID)
+		// Also remove from other maps...
+	}
+	
+	logrus.Infof("Cleaned %d expired transactions", len(toRemove))
+}
+
+// Mempool represents a transaction mempool with additional features
+type Mempool struct {
+	*TransactionPool
+	priorityQueue   *PriorityQueue
+	feeEstimator    *FeeEstimator
+	antiSpam        *AntiSpamManager
+	reorgProtection *ReorgProtection
+}
+
+// PriorityQueue manages transaction prioritization
+type PriorityQueue struct {
+	transactions []*Transaction
+	mutex        sync.RWMutex
+}
+
+// FeeEstimator estimates optimal transaction fees
+type FeeEstimator struct {
+	recentBlocks []*Block
+	mutex        sync.RWMutex
+}
+
+// AntiSpamManager prevents spam transactions
+type AntiSpamManager struct {
+	ipLimits     map[string]*RateLimit
+	addressLimits map[string]*RateLimit
+	mutex        sync.RWMutex
+}
+
+// RateLimit tracks rate limiting information
+type RateLimit struct {
+	Count     int
+	LastReset time.Time
+	Limit     int
+	Window    time.Duration
+}
+
+// ReorgProtection protects against blockchain reorganizations
+type ReorgProtection struct {
+	confirmedTxs map[string]int // txID -> confirmation count
+	mutex        sync.RWMutex
+}
+
+// NewMempool creates a new mempool
+func NewMempool(maxSize, maxPerSender int) *Mempool {
+	return &Mempool{
+		TransactionPool: NewTransactionPool(maxSize, maxPerSender),
+		priorityQueue:   &PriorityQueue{},
+		feeEstimator:    &FeeEstimator{},
+		antiSpam:        &AntiSpamManager{
+			ipLimits:      make(map[string]*RateLimit),
+			addressLimits: make(map[string]*RateLimit),
+		},
+		reorgProtection: &ReorgProtection{
+			confirmedTxs: make(map[string]int),
+		},
+	}
+}
+
+// EstimateFee estimates the optimal fee for a transaction
+func (fe *FeeEstimator) EstimateFee(priority string) int64 {
+	fe.mutex.RLock()
+	defer fe.mutex.RUnlock()
+	
+	if len(fe.recentBlocks) == 0 {
+		return 1000 // Default fee
+	}
+	
+	var fees []int64
+	for _, block := range fe.recentBlocks {
+		for _, tx := range block.Transactions {
+			fees = append(fees, tx.Fee)
+		}
+	}
+	
+	if len(fees) == 0 {
+		return 1000
+	}
+	
+	sort.Slice(fees, func(i, j int) bool { return fees[i] < fees[j] })
+	
+	switch priority {
+	case "low":
+		return fees[len(fees)/4] // 25th percentile
+	case "medium":
+		return fees[len(fees)/2] // 50th percentile (median)
+	case "high":
+		return fees[len(fees)*3/4] // 75th percentile
+	default:
+		return fees[len(fees)/2]
+	}
+}
+
+// UpdateFeeEstimation updates fee estimation with new block
+func (fe *FeeEstimator) UpdateFeeEstimation(block *Block) {
+	fe.mutex.Lock()
+	defer fe.mutex.Unlock()
+	
+	fe.recentBlocks = append(fe.recentBlocks, block)
+	
+	// Keep only last 100 blocks
+	if len(fe.recentBlocks) > 100 {
+		fe.recentBlocks = fe.recentBlocks[1:]
+	}
+}
+
+// CheckRateLimit checks if an IP or address is rate limited
+func (asm *AntiSpamManager) CheckRateLimit(ip, address string) error {
+	asm.mutex.Lock()
+	defer asm.mutex.Unlock()
+	
+	now := time.Now()
+	
+	// Check IP rate limit
+	if ipLimit, exists := asm.ipLimits[ip]; exists {
+		if now.Sub(ipLimit.LastReset) > ipLimit.Window {
+			ipLimit.Count = 0
+			ipLimit.LastReset = now
+		}
+		
+		if ipLimit.Count >= ipLimit.Limit {
+			return fmt.Errorf("IP rate limit exceeded")
+		}
+		
+		ipLimit.Count++
+	} else {
+		asm.ipLimits[ip] = &RateLimit{
+			Count:     1,
+			LastReset: now,
+			Limit:     100, // 100 transactions per hour per IP
+			Window:    time.Hour,
+		}
+	}
+	
+	// Check address rate limit
+	if addrLimit, exists := asm.addressLimits[address]; exists {
+		if now.Sub(addrLimit.LastReset) > addrLimit.Window {
+			addrLimit.Count = 0
+			addrLimit.LastReset = now
+		}
+		
+		if addrLimit.Count >= addrLimit.Limit {
+			return fmt.Errorf("address rate limit exceeded")
+		}
+		
+		addrLimit.Count++
+	} else {
+		asm.addressLimits[address] = &RateLimit{
+			Count:     1,
+			LastReset: now,
+			Limit:     1000, // 1000 transactions per hour per address
+			Window:    time.Hour,
+		}
+	}
+	
+	return nil
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. MINING AND BLOCK PRODUCTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Miner represents a blockchain miner
+type Miner struct {
+	id           string
+	blockchain   *Blockchain
+	mempool      *Mempool
+	consensus    ConsensusEngine
+	isActive     bool
+	stopChan     chan bool
+	newBlockChan chan *Block
+	difficulty   int
+	address      string
+	workers      int
+	mutex        sync.RWMutex
+}
+
+// NewMiner creates a new miner
+func NewMiner(id string, blockchain *Blockchain, mempool *Mempool, consensus ConsensusEngine, address string) *Miner {
+	return &Miner{
+		id:           id,
+		blockchain:   blockchain,
+		mempool:      mempool,
+		consensus:    consensus,
+		address:      address,
+		workers:      4, // Number of mining threads
+		stopChan:     make(chan bool),
+		newBlockChan: make(chan *Block, 10),
+		difficulty:   4,
+	}
+}
+
+// Start starts the mining process
+func (m *Miner) Start() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	if m.isActive {
+		return
+	}
+	
+	m.isActive = true
+	
+	// Start mining workers
+	for i := 0; i < m.workers; i++ {
+		go m.miningWorker(i)
+	}
+	
+	// Start block producer
+	go m.blockProducer()
+	
+	logrus.Infof("Miner %s started with %d workers", m.id, m.workers)
+}
+
+// Stop stops the mining process
+func (m *Miner) Stop() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	if !m.isActive {
+		return
+	}
+	
+	m.isActive = false
+	close(m.stopChan)
+	
+	logrus.Infof("Miner %s stopped", m.id)
+}
+
+// miningWorker performs the actual mining work
+func (m *Miner) miningWorker(workerID int) {
+	logrus.Infof("Mining worker %d started", workerID)
+	
+	for {
+		select {
+		case <-m.stopChan:
+			logrus.Infof("Mining worker %d stopped", workerID)
+			return
+		default:
+			m.attemptMining(workerID)
+		}
+	}
+}
+
+// blockProducer creates new blocks to mine
+func (m *Miner) blockProducer() {
+	ticker := time.NewTicker(10 * time.Second) // Create new block template every 10 seconds
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case <-ticker.C:
+			m.createBlockTemplate()
+		}
+	}
+}
+
+// createBlockTemplate creates a new block template for mining
+func (m *Miner) createBlockTemplate() {
+	// Get pending transactions
+	transactions := m.mempool.GetTransactions(1000) // Max 1000 transactions per block
+	
+	if len(transactions) == 0 {
+		return // No transactions to mine
+	}
+	
+	// Get previous block
+	prevBlock := m.blockchain.GetLatestBlock()
+	
+	// Create new block
+	block, err := m.consensus.CreateBlock(transactionSliceToArray(transactions), &prevBlock, m.address)
+	if err != nil {
+		logrus.Errorf("Failed to create block template: %v", err)
+		return
+	}
+	
+	// Send to workers
+	select {
+	case m.newBlockChan <- block:
+	default:
+		// Channel full, skip this template
+	}
+}
+
+// attemptMining attempts to mine a block
+func (m *Miner) attemptMining(workerID int) {
+	select {
+	case block := <-m.newBlockChan:
+		m.mineBlock(block, workerID)
+	case <-time.After(1 * time.Second):
+		// Timeout, continue loop
+	}
+}
+
+// mineBlock performs proof-of-work mining on a block
+func (m *Miner) mineBlock(block *Block, workerID int) {
+	startNonce := int64(workerID * 1000000)
+	block.Nonce = startNonce
+	
+	target := strings.Repeat("0", m.difficulty)
+	attempts := 0
+	maxAttempts := 1000000 // Limit attempts per worker
+	
+	for attempts < maxAttempts {
+		select {
+		case <-m.stopChan:
+			return
+		default:
+			hash := block.CalculateHash()
+			if strings.HasPrefix(hash, target) {
+				// Found valid hash!
+				block.Hash = hash
+				m.submitBlock(block, workerID)
+				return
+			}
+			
+			block.Nonce++
+			attempts++
+		}
+	}
+}
+
+// submitBlock submits a successfully mined block
+func (m *Miner) submitBlock(block *Block, workerID int) {
+	// Validate the block
+	if err := block.Validate(); err != nil {
+		logrus.Errorf("Mined block is invalid: %v", err)
+		return
+	}
+	
+	// Add to blockchain
+	m.blockchain.mutex.Lock()
+	defer m.blockchain.mutex.Unlock()
+	
+	// Double-check that this block is still valid (no competing block)
+	currentLatest := m.blockchain.GetLatestBlock()
+	if block.PrevHash != currentLatest.Hash {
+		logrus.Warnf("Block is stale, discarding")
+		return
+	}
+	
+	// Add block to chain
+	m.blockchain.Blocks = append(m.blockchain.Blocks, *block)
+	
+	// Remove mined transactions from mempool
+	for _, tx := range block.Transactions {
+		m.mempool.RemoveTransaction(tx.ID)
+	}
+	
+	// Update balances
+	for _, tx := range block.Transactions {
+		if tx.From != "system" {
+			m.blockchain.Balances[tx.From] -= (tx.Amount + tx.Fee)
+		}
+		m.blockchain.Balances[tx.To] += tx.Amount
+	}
+	
+	logrus.Infof("Worker %d successfully mined block %d with hash %s", 
+		workerID, block.Index, block.Hash[:16])
+}
+
+// transactionSliceToArray converts transaction pointers to values
+func transactionSliceToArray(txs []*Transaction) []Transaction {
+	result := make([]Transaction, len(txs))
+	for i, tx := range txs {
+		result[i] = *tx
+	}
+	return result
+}
+
+// MiningPool represents a mining pool
+type MiningPool struct {
+	name         string
+	miners       map[string]*PoolMiner
+	rewards      map[string]int64
+	totalShares  int64
+	difficulty   int
+	mutex        sync.RWMutex
+}
+
+// PoolMiner represents a miner in a pool
+type PoolMiner struct {
+	ID          string
+	Address     string
+	HashRate    int64
+	Shares      int64
+	LastActive  time.Time
+	IsConnected bool
+}
+
+// NewMiningPool creates a new mining pool
+func NewMiningPool(name string) *MiningPool {
+	return &MiningPool{
+		name:     name,
+		miners:   make(map[string]*PoolMiner),
+		rewards:  make(map[string]int64),
+		difficulty: 4,
+	}
+}
+
+// AddMiner adds a miner to the pool
+func (mp *MiningPool) AddMiner(minerID, address string) {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	
+	mp.miners[minerID] = &PoolMiner{
+		ID:          minerID,
+		Address:     address,
+		LastActive:  time.Now(),
+		IsConnected: true,
+	}
+	
+	logrus.Infof("Miner %s joined pool %s", minerID, mp.name)
+}
+
+// RemoveMiner removes a miner from the pool
+func (mp *MiningPool) RemoveMiner(minerID string) {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	
+	if miner, exists := mp.miners[minerID]; exists {
+		miner.IsConnected = false
+		logrus.Infof("Miner %s left pool %s", minerID, mp.name)
+	}
+}
+
+// SubmitShare submits a mining share
+func (mp *MiningPool) SubmitShare(minerID string, nonce int64, hash string) bool {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	
+	miner, exists := mp.miners[minerID]
+	if !exists {
+		return false
+	}
+	
+	// Validate share (simplified)
+	if mp.isValidShare(hash) {
+		miner.Shares++
+		miner.LastActive = time.Now()
+		mp.totalShares++
+		return true
+	}
+	
+	return false
+}
+
+// isValidShare validates a mining share
+func (mp *MiningPool) isValidShare(hash string) bool {
+	// Simplified validation - check if hash meets pool difficulty
+	target := strings.Repeat("0", mp.difficulty-1) // Pool difficulty is lower than network
+	return strings.HasPrefix(hash, target)
+}
+
+// DistributeRewards distributes mining rewards to pool members
+func (mp *MiningPool) DistributeRewards(blockReward int64) {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	
+	if mp.totalShares == 0 {
+		return
+	}
+	
+	// Distribute based on shares (PPLNS - Pay Per Last N Shares)
+	for minerID, miner := range mp.miners {
+		if miner.Shares > 0 {
+			reward := (blockReward * miner.Shares) / mp.totalShares
+			mp.rewards[minerID] += reward
+			
+			logrus.Infof("Miner %s earned %d for %d shares", minerID, reward, miner.Shares)
+		}
+	}
+	
+	// Reset shares for next round
+	for _, miner := range mp.miners {
+		miner.Shares = 0
+	}
+	mp.totalShares = 0
+}
+
+// GetMinerReward returns a miner's accumulated reward
+func (mp *MiningPool) GetMinerReward(minerID string) int64 {
+	mp.mutex.RLock()
+	defer mp.mutex.RUnlock()
+	
+	return mp.rewards[minerID]
+}
+
+// PayoutReward pays out a miner's reward
+func (mp *MiningPool) PayoutReward(minerID string) int64 {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	
+	reward := mp.rewards[minerID]
+	mp.rewards[minerID] = 0
+	
+	logrus.Infof("Paid out %d to miner %s", reward, minerID)
+	return reward
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. API AND RPC SERVICES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	
+	"github.com/gorilla/mux"
+)
+
+// APIServer provides HTTP API for the blockchain
+type APIServer struct {
+	blockchain *Blockchain
+	mempool    *Mempool
+	miner      *Miner
+	node       *Node
+	port       int
+	server     *http.Server
+}
+
+// NewAPIServer creates a new API server
+func NewAPIServer(blockchain *Blockchain, mempool *Mempool, miner *Miner, node *Node, port int) *APIServer {
+	return &APIServer{
+		blockchain: blockchain,
+		mempool:    mempool,
+		miner:      miner,
+		node:       node,
+		port:       port,
+	}
+}
+
+// Start starts the API server
+func (api *APIServer) Start() error {
+	router := mux.NewRouter()
+	
+	// Blockchain endpoints
+	router.HandleFunc("/api/blockchain", api.getBlockchain).Methods("GET")
+	router.HandleFunc("/api/blocks", api.getBlocks).Methods("GET")
+	router.HandleFunc("/api/blocks/{index}", api.getBlock).Methods("GET")
+	router.HandleFunc("/api/blocks/latest", api.getLatestBlock).Methods("GET")
+	
+	// Transaction endpoints
+	router.HandleFunc("/api/transactions", api.getTransactions).Methods("GET")
+	router.HandleFunc("/api/transactions", api.submitTransaction).Methods("POST")
+	router.HandleFunc("/api/transactions/{id}", api.getTransaction).Methods("GET")
+	router.HandleFunc("/api/transactions/pending", api.getPendingTransactions).Methods("GET")
+	
+	// Balance endpoints
+	router.HandleFunc("/api/balance/{address}", api.getBalance).Methods("GET")
+	
+	// Mining endpoints
+	router.HandleFunc("/api/mining/start", api.startMining).Methods("POST")
+	router.HandleFunc("/api/mining/stop", api.stopMining).Methods("POST")
+	router.HandleFunc("/api/mining/status", api.getMiningStatus).Methods("GET")
+	
+	// Network endpoints
+	router.HandleFunc("/api/network/peers", api.getPeers).Methods("GET")
+	router.HandleFunc("/api/network/status", api.getNetworkStatus).Methods("GET")
+	
+	// Health check
+	router.HandleFunc("/health", api.healthCheck).Methods("GET")
+	
+	// Enable CORS
+	router.Use(api.corsMiddleware)
+	
+	api.server = &http.Server{
+		Addr:    fmt.Sprintf(":%d", api.port),
+		Handler: router,
+	}
+	
+	logrus.Infof("API server starting on port %d", api.port)
+	return api.server.ListenAndServe()
+}
+
+// Stop stops the API server
+func (api *APIServer) Stop() error {
+	if api.server != nil {
+		return api.server.Shutdown(context.Background())
+	}
+	return nil
+}
+
+// corsMiddleware adds CORS headers
+func (api *APIServer) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
+}
+
+// getBlockchain returns the entire blockchain
+func (api *APIServer) getBlockchain(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(api.blockchain)
+}
+
+// getBlocks returns blocks with pagination
+func (api *APIServer) getBlocks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Parse query parameters
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	
+	limit := 10 // default
+	offset := 0 // default
+	
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+	
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			offset = o
+		}
+	}
+	
+	api.blockchain.mutex.RLock()
+	defer api.blockchain.mutex.RUnlock()
+	
+	blocks := api.blockchain.Blocks
+	total := len(blocks)
+	
+	// Calculate slice bounds
+	start := offset
+	end := offset + limit
+	
+	if start >= total {
+		start = total
+		end = total
+	} else if end > total {
+		end = total
+	}
+	
+	result := map[string]interface{}{
+		"blocks": blocks[start:end],
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getBlock returns a specific block by index
+func (api *APIServer) getBlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	vars := mux.Vars(r)
+	indexStr := vars["index"]
+	
+	index, err := strconv.ParseInt(indexStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid block index", http.StatusBadRequest)
+		return
+	}
+	
+	api.blockchain.mutex.RLock()
+	defer api.blockchain.mutex.RUnlock()
+	
+	if index < 0 || int(index) >= len(api.blockchain.Blocks) {
+		http.Error(w, "Block not found", http.StatusNotFound)
+		return
+	}
+	
+	block := api.blockchain.Blocks[index]
+	json.NewEncoder(w).Encode(block)
+}
+
+// getLatestBlock returns the latest block
+func (api *APIServer) getLatestBlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	latestBlock := api.blockchain.GetLatestBlock()
+	json.NewEncoder(w).Encode(latestBlock)
+}
+
+// submitTransaction submits a new transaction
+func (api *APIServer) submitTransaction(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	var tx Transaction
+	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
+		http.Error(w, "Invalid transaction format", http.StatusBadRequest)
+		return
+	}
+	
+	if err := api.mempool.AddTransaction(&tx); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to add transaction: %v", err), http.StatusBadRequest)
+		return
+	}
+	
+	result := map[string]interface{}{
+		"success": true,
+		"tx_id":   tx.ID,
+		"message": "Transaction added to mempool",
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getTransaction returns a specific transaction
+func (api *APIServer) getTransaction(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	vars := mux.Vars(r)
+	txID := vars["id"]
+	
+	// First check mempool
+	if tx, exists := api.mempool.GetTransaction(txID); exists {
+		json.NewEncoder(w).Encode(tx)
+		return
+	}
+	
+	// Then check blockchain
+	api.blockchain.mutex.RLock()
+	defer api.blockchain.mutex.RUnlock()
+	
+	for _, block := range api.blockchain.Blocks {
+		for _, tx := range block.Transactions {
+			if tx.ID == txID {
+				json.NewEncoder(w).Encode(tx)
+				return
+			}
+		}
+	}
+	
+	http.Error(w, "Transaction not found", http.StatusNotFound)
+}
+
+// getPendingTransactions returns pending transactions
+func (api *APIServer) getPendingTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	transactions := api.mempool.GetTransactions(100)
+	
+	result := map[string]interface{}{
+		"transactions": transactions,
+		"count":        len(transactions),
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getBalance returns the balance for an address
+func (api *APIServer) getBalance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	vars := mux.Vars(r)
+	address := vars["address"]
+	
+	balance := api.blockchain.GetBalance(address)
+	
+	result := map[string]interface{}{
+		"address": address,
+		"balance": balance,
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// startMining starts the mining process
+func (api *APIServer) startMining(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	api.miner.Start()
+	
+	result := map[string]interface{}{
+		"success": true,
+		"message": "Mining started",
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// stopMining stops the mining process
+func (api *APIServer) stopMining(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	api.miner.Stop()
+	
+	result := map[string]interface{}{
+		"success": true,
+		"message": "Mining stopped",
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getMiningStatus returns mining status
+func (api *APIServer) getMiningStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	api.miner.mutex.RLock()
+	defer api.miner.mutex.RUnlock()
+	
+	result := map[string]interface{}{
+		"is_mining":     api.miner.isActive,
+		"miner_id":      api.miner.id,
+		"miner_address": api.miner.address,
+		"workers":       api.miner.workers,
+		"difficulty":    api.miner.difficulty,
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getPeers returns connected peers
+func (api *APIServer) getPeers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	api.node.PeersMutex.RLock()
+	defer api.node.PeersMutex.RUnlock()
+	
+	var peers []map[string]interface{}
+	for _, peer := range api.node.Peers {
+		peers = append(peers, map[string]interface{}{
+			"id":        peer.ID,
+			"address":   peer.Address,
+			"port":      peer.Port,
+			"last_seen": peer.LastSeen,
+		})
+	}
+	
+	result := map[string]interface{}{
+		"peers": peers,
+		"count": len(peers),
+	}
+	
+	json.NewEncoder(w).Encode(result)
+}
+
+// getNetworkStatus returns network status
+func (api *APIServer) getNetworkStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	api.node.PeersMutex.RLock()
+	peerCount := len(api.node.Peers)
+	api.node.PeersMutex.RUnlock()
+	
+	api.blockchain.mutex.RLock()
+	blockCount := len(api.blockchain.Blocks)
+	api.blockchain.mutex.RUnlock()
+	
+	result := map[string]interface{}{
+		"node_id":     api.node.ID,
+		"peers":       peerCount,
+		"blocks":      blockCount,
+		"pending_txs":// handleBlock handles block messages
+func (n *Node) handleBlock(msg Message) {
+	blockData := msg.Data.(map[string]interface{})
+	
+	// Convert to Block struct (simplified)
+	var block Block
+	if err := json.Unmarshal([]byte(fmt.Sprintf("%v", blockData)), &block); err != nil {
+		logrus.Errorf("Failed to unmarshal block: %v", err)
+		return
+	}
+	
+	// Validate the block
+	if len(n.Blockchain.Blocks) > 0 {
+		latestBlock := n.Blockchain.GetLatestBlock()
+		if err := block.Validate(); err != nil {
+			logrus.Errorf("Invalid block received: %v", err)
+			return
+		}
+		
+		if block.PrevHash != latestBlock.Hash {
+			logrus.Errorf("Block has invalid previous hash")
+			return
+		}
+	}
+	
+	// Add block to blockchain
+	n.Blockchain.mutex.Lock()
+	n.Blockchain.Blocks = append(n.Blockchain.Blocks, block)
+	n.Blockchain.mutex.Unlock()
+	
+	// Broadcast to other peers
+	n.broadcastMessage(msg, msg.From)
+	
+	logrus.Infof("Added new block %d to blockchain", block.Index)
+}
+
+// handleTransaction handles transaction messages
+func (n *Node) handleTransaction(msg Message) {
+	txData := msg.Data.(map[string]interface{})
+	
+	// Convert to Transaction struct (simplified)
+	var tx Transaction
+	if err := json.Unmarshal([]byte(fmt.Sprintf("%v", txData)), &tx); err != nil {
+		logrus.Errorf("Failed to unmarshal transaction: %v", err)
+		return
+	}
+	
+	// Add to pending transactions
+	if err := n.Blockchain.AddTransaction(tx); err != nil {
+		logrus.Errorf("Failed to add transaction: %v", err)
+		return
+	}
+	
+	// Broadcast to other peers
+	n.broadcastMessage(msg, msg.From)
+	
+	logrus.Infof("Added transaction %s to pending pool", tx.ID)
+}
+
+// handlePeerList handles peer list messages
+func (n *Node) handlePeerList(msg Message) {
+	peers := msg.Data.([]interface{})
+	
+	for _, peerData := range peers {
+		peer := peerData.(map[string]interface{})
+		address := peer["address"].(string)
+		port := int(peer["port"].(float64))
+		
+		// Try to connect to new peers
+		addr := fmt.Sprintf("%s:%d", address, port)
+		if _, exists := n.Peers[addr]; !exists {
+			go func() {
+				if err := n.ConnectToPeer(address, port); err != nil {
+					logrus.Debugf("Failed to connect to peer %s: %v", addr, err)
+				}
+			}()
+		}
+	}
+}
+
+// handleHeartbeat handles heartbeat messages
+func (n *Node) handleHeartbeat(msg Message) {
+	// Update peer last seen time
+	n.PeersMutex.Lock()
+	for _, peer := range n.Peers {
+		if peer.ID == msg.From {
+			peer.LastSeen = time.Now()
+			break
+		}
+	}
+	n.PeersMutex.Unlock()
+}
+
+// handleSync handles blockchain sync requests
+func (n *Node) handleSync(msg Message) {
+	// Send our blockchain to the requesting peer
+	syncResponse := Message{
+		Type:      "sync_response",
+		From:      n.ID,
+		To:        msg.From,
+		Timestamp: time.Now(),
+		Data:      n.Blockchain.Blocks,
+	}
+	
+	n.sendMessageToPeer(msg.From, syncResponse)
+}
+
+// broadcastMessage broadcasts a message to all peers except the sender
+func (n *Node) broadcastMessage(msg Message, excludePeer string) {
+	n.PeersMutex.RLock()
+	defer n.PeersMutex.RUnlock()
+	
+	for _, peer := range n.Peers {
+		if peer.ID != excludePeer {
+			go n.sendMessageToPeer(peer.ID, msg)
+		}
+	}
+}
+
+// sendMessageToPeer sends a message to a specific peer
+func (n *Node) sendMessageToPeer(peerID string, msg Message) {
+	n.PeersMutex.RLock()
+	defer n.PeersMutex.RUnlock()
+	
+	for _, peer := range n.Peers {
+		if peer.ID == peerID {
+			if err := n.sendMessage(peer.Conn, msg); err != nil {
+				logrus.Errorf("Failed to send message to peer %s: %v", peerID, err)
+			}
+			break
+		}
+	}
+}
+
+// maintainPeers maintains peer connections
+func (n *Node) maintainPeers() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-ticker.C:
+			n.cleanupDeadPeers()
+			n.sendHeartbeats()
+		}
+	}
+}
+
+// cleanupDeadPeers removes peers that haven't been seen recently
+func (n *Node) cleanupDeadPeers() {
+	n.PeersMutex.Lock()
+	defer n.PeersMutex.Unlock()
+	
+	now := time.Now()
+	for addr, peer := range n.Peers {
+		if now.Sub(peer.LastSeen) > 5*time.Minute {
+			peer.Conn.Close()
+			delete(n.Peers, addr)
+			logrus.Infof("Removed dead peer %s", addr)
+		}
+	}
+}
+
+// sendHeartbeats sends heartbeat messages to all peers
+func (n *Node) sendHeartbeats() {
+	heartbeat := Message{
+		Type:      MessageTypeHeartbeat,
+		From:      n.ID,
+		Timestamp: time.Now(),
+		Data:      map[string]interface{}{"status": "alive"},
+	}
+	
+	n.broadcastMessage(heartbeat, "")
+}
+
+// SyncWithNetwork syncs the blockchain with the network
+func (n *Node) SyncWithNetwork() {
+	syncRequest := Message{
+		Type:      MessageTypeSync,
+		From:      n.ID,
+		Timestamp: time.Now(),
+		Data:      map[string]interface{}{"request": "blockchain"},
+	}
+	
+	n.broadcastMessage(syncRequest, "")
+}
