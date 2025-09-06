@@ -1647,3 +1647,122 @@ pub mod nft_protocols {
         }
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. CROSS-CHAIN AND INTEROPERABILITY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Cross-chain protocols and bridges
+pub mod cross_chain {
+    use super::*;
+
+    /// Bridge for cross-chain asset transfers
+    #[account]
+    pub struct Bridge {
+        pub admin: Pubkey,
+        pub source_chain: String,
+        pub destination_chain: String,
+        pub supported_tokens: Vec<Pubkey>,
+        pub fee_percentage: u16,
+        pub min_transfer_amount: u64,
+        pub max_transfer_amount: u64,
+        pub total_locked: u64,
+        pub is_active: bool,
+        pub bump: u8,
+    }
+
+    impl Bridge {
+        pub const MAX_CHAIN_NAME_LENGTH: usize = 32;
+        pub const MAX_SUPPORTED_TOKENS: usize = 50;
+        
+        pub const LEN: usize = 8 + 32 + 4 + Self::MAX_CHAIN_NAME_LENGTH * 2 + 
+            4 + 32 * Self::MAX_SUPPORTED_TOKENS + 2 + 8 * 3 + 1 + 1;
+    }
+
+    /// Bridge transfer record
+    #[account]
+    pub struct BridgeTransfer {
+        pub bridge: Pubkey,
+        pub sender: Pubkey,
+        pub recipient: String, // Address on destination chain
+        pub token_mint: Pubkey,
+        pub amount: u64,
+        pub fee: u64,
+        pub source_tx_hash: Option<String>,
+        pub destination_tx_hash: Option<String>,
+        pub status: TransferStatus,
+        pub initiated_at: i64,
+        pub completed_at: Option<i64>,
+        pub bump: u8,
+    }
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+    pub enum TransferStatus {
+        Initiated,
+        Locked,
+        InTransit,
+        Completed,
+        Failed,
+        Refunded,
+    }
+
+    impl BridgeTransfer {
+        pub const MAX_ADDRESS_LENGTH: usize = 64;
+        pub const MAX_HASH_LENGTH: usize = 64;
+        
+        pub const LEN: usize = 8 + 32 * 3 + 4 + Self::MAX_ADDRESS_LENGTH + 8 * 2 + 
+            1 + 4 + Self::MAX_HASH_LENGTH + 1 + 4 + Self::MAX_HASH_LENGTH + 
+            1 + 8 + 1 + 8 + 1;
+    }
+
+    /// Oracle for price feeds and external data
+    #[account]
+    pub struct Oracle {
+        pub authority: Pubkey,
+        pub name: String,
+        pub description: String,
+        pub data_sources: Vec<DataSource>,
+        pub update_frequency: u64, // seconds
+        pub last_update: i64,
+        pub is_active: bool,
+        pub bump: u8,
+    }
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+    pub struct DataSource {
+        pub name: String,
+        pub url: String,
+        pub weight: u16, // percentage
+    }
+
+    impl Oracle {
+        pub const MAX_NAME_LENGTH: usize = 32;
+        pub const MAX_DESCRIPTION_LENGTH: usize = 200;
+        pub const MAX_DATA_SOURCES: usize = 10;
+    }
+
+    /// Price feed data
+    #[account]
+    pub struct PriceFeed {
+        pub oracle: Pubkey,
+        pub symbol: String,
+        pub price: u64, // Price in lamports or smallest unit
+        pub confidence: u64,
+        pub last_update: i64,
+        pub historical_prices: Vec<HistoricalPrice>,
+        pub bump: u8,
+    }
+
+    #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+    pub struct HistoricalPrice {
+        pub price: u64,
+        pub timestamp: i64,
+    }
+
+    impl PriceFeed {
+        pub const MAX_SYMBOL_LENGTH: usize = 16;
+        pub const MAX_HISTORICAL_ENTRIES: usize = 100;
+        
+        pub fn calculate_average_price(&self, duration: i64) -> Option<u64> {
+            let current_time = Clock::
