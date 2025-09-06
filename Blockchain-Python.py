@@ -1757,3 +1757,83 @@ class NFTAnalyzer:
         except Exception as e:
             logger.error(f"Error checking NFT rarity: {e}")
             return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           8. LAYER 2 AND SCALING SOLUTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Layer2Client:
+    """Layer 2 scaling solutions client"""
+    
+    def __init__(self, network: str = 'polygon'):
+        """
+        Initialize Layer 2 client
+        
+        Args:
+            network: Layer 2 network (polygon, arbitrum, optimism, etc.)
+        """
+        self.network = network
+        self.rpc_urls = {
+            'polygon': 'https://polygon-rpc.com',
+            'arbitrum': 'https://arb1.arbitrum.io/rpc',
+            'optimism': 'https://mainnet.optimism.io',
+            'base': 'https://mainnet.base.org',
+            'avalanche': 'https://api.avax.network/ext/bc/C/rpc'
+        }
+        
+        if network not in self.rpc_urls:
+            raise ValueError(f"Unsupported network: {network}")
+        
+        self.w3 = Web3(HTTPProvider(self.rpc_urls[network]))
+        
+        if not self.w3.is_connected():
+            raise ConnectionError(f"Failed to connect to {network}")
+        
+        logger.info(f"Connected to {network} network")
+    
+    def get_gas_price(self) -> Dict:
+        """Get current gas price for Layer 2"""
+        try:
+            gas_price = self.w3.eth.gas_price
+            return {
+                'network': self.network,
+                'gas_price_wei': gas_price,
+                'gas_price_gwei': self.w3.from_wei(gas_price, 'gwei')
+            }
+        except Exception as e:
+            logger.error(f"Error getting gas price: {e}")
+            return {}
+    
+    def bridge_cost_estimate(self, amount_eth: float, destination: str = 'ethereum') -> Dict:
+        """Estimate bridging costs (simplified)"""
+        try:
+            # This is a simplified estimation
+            # Real bridging costs depend on many factors
+            
+            base_costs = {
+                'polygon': {'to_ethereum': 0.001, 'from_ethereum': 0.01},
+                'arbitrum': {'to_ethereum': 0.002, 'from_ethereum': 0.005},
+                'optimism': {'to_ethereum': 0.002, 'from_ethereum': 0.005}
+            }
+            
+            if self.network not in base_costs:
+                return {}
+            
+            direction = f"to_{destination}" if destination != 'ethereum' else 'to_ethereum'
+            base_cost = base_costs[self.network].get(direction, 0.001)
+            
+            # Estimate based on amount (simplified)
+            estimated_cost = base_cost + (amount_eth * 0.001)
+            
+            return {
+                'network': self.network,
+                'destination': destination,
+                'amount': amount_eth,
+                'estimated_cost_eth': estimated_cost,
+                'cost_percentage': (estimated_cost / amount_eth) * 100 if amount_eth > 0 else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error estimating bridge cost: {e}")
+            return {}
