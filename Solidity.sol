@@ -294,3 +294,94 @@ contract Functions {
         deposit();
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           5. CONTROL STRUCTURES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+contract ControlStructures {
+    mapping(address => uint256) public scores;
+    uint256[] public numbers;
+    
+    // If-else statements
+    function checkScore(address _user) public view returns (string memory) {
+        uint256 score = scores[_user];
+        
+        if (score >= 90) {
+            return "Excellent";
+        } else if (score >= 80) {
+            return "Good";
+        } else if (score >= 70) {
+            return "Average";
+        } else {
+            return "Needs Improvement";
+        }
+    }
+    
+    // Ternary operator
+    function getStatus(bool _condition) public pure returns (string memory) {
+        return _condition ? "Active" : "Inactive";
+    }
+    
+    // For loops
+    function calculateSum() public view returns (uint256) {
+        uint256 sum = 0;
+        for (uint256 i = 0; i < numbers.length; i++) {
+            sum += numbers[i];
+        }
+        return sum;
+    }
+    
+    // While loops (use carefully - can consume lots of gas!)
+    function findFirstEven() public view returns (uint256) {
+        uint256 i = 0;
+        while (i < numbers.length) {
+            if (numbers[i] % 2 == 0) {
+                return numbers[i];
+            }
+            i++;
+        }
+        return 0; // Not found
+    }
+    
+    // Do-while loops
+    function doWhileExample() public pure returns (uint256) {
+        uint256 i = 0;
+        uint256 sum = 0;
+        do {
+            sum += i;
+            i++;
+        } while (i < 10);
+        return sum;
+    }
+    
+    // Break and continue in loops
+    function processNumbers() public {
+        for (uint256 i = 0; i < 100; i++) {
+            if (i % 2 == 0) {
+                continue; // Skip even numbers
+            }
+            
+            if (i > 50) {
+                break; // Exit loop when i > 50
+            }
+            
+            numbers.push(i);
+        }
+    }
+    
+    // Try-catch (for external calls)
+    function safeDivision(uint256 a, uint256 b) public pure returns (uint256, bool) {
+        try this.divide(a, b) returns (uint256 result) {
+            return (result, true);
+        } catch {
+            return (0, false);
+        }
+    }
+    
+    function divide(uint256 a, uint256 b) public pure returns (uint256) {
+        require(b != 0, "Division by zero");
+        return a / b;
+    }
+}
