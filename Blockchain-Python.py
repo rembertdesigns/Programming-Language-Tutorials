@@ -2080,3 +2080,136 @@ def run_blockchain_tests():
     """Run all blockchain tests"""
     test_suite = unittest.TestLoader().loadTestsFromTestCase(BlockchainTestCase)
     unittest.TextTestRunner(verbosity=2).run(test_suite)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           11. EXAMPLE USAGE AND AUTOMATION SCRIPTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def example_basic_usage():
+    """Example of basic blockchain operations"""
+    
+    # 1. Connect to Ethereum
+    eth_client = EthereumClient(
+        node_url=os.getenv('ETHEREUM_RPC_URL', 'https://mainnet.infura.io/v3/YOUR_KEY'),
+        private_key=os.getenv('PRIVATE_KEY')  # Optional
+    )
+    
+    # 2. Get network information
+    network_info = eth_client.get_network_info()
+    print(f"Connected to chain ID: {network_info['chain_id']}")
+    print(f"Latest block: {network_info['latest_block']}")
+    print(f"Gas price: {network_info['gas_price_gwei']} Gwei")
+    
+    # 3. Check balance
+    address = "0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A"  # Example address
+    balance = eth_client.get_balance(address)
+    print(f"Balance: {balance} ETH")
+    
+    # 4. Analyze address activity
+    analyzer = BlockchainAnalyzer(eth_client)
+    analysis = analyzer.analyze_address_activity(address, blocks_to_analyze=100)
+    print(f"Transactions: {analysis['total_transactions']}")
+    print(f"ETH received: {analysis['eth_received']}")
+    print(f"ETH sent: {analysis['eth_sent']}")
+
+def example_trading_bot():
+    """Example of a simple trading bot"""
+    
+    # Initialize trader
+    trader = CryptocurrencyTrader(
+        exchange_name='binance',
+        api_key=os.getenv('BINANCE_API_KEY'),
+        api_secret=os.getenv('BINANCE_SECRET'),
+        sandbox=True  # Use testnet
+    )
+    
+    # Get price data
+    symbol = 'BTC/USDT'
+    df = trader.get_ohlcv(symbol, timeframe='1h', limit=100)
+    
+    if df is not None:
+        # Add technical indicators
+        df_with_indicators = TechnicalAnalysis.add_indicators(df)
+        df_with_signals = TechnicalAnalysis.detect_signals(df_with_indicators)
+        
+        # Check latest signals
+        latest = df_with_signals.iloc[-1]
+        
+        if latest['golden_cross']:
+            print(f"Golden Cross detected for {symbol}!")
+            # Place buy order (in sandbox mode)
+            # order = trader.place_order(symbol, 'buy', 0.001)
+        
+        if latest['death_cross']:
+            print(f"Death Cross detected for {symbol}!")
+            # Place sell order (in sandbox mode)
+            # order = trader.place_order(symbol, 'sell', 0.001)
+
+def example_defi_analysis():
+    """Example of DeFi analysis"""
+    
+    eth_client = EthereumClient(os.getenv('ETHEREUM_RPC_URL'))
+    defi = DeFiProtocol(eth_client.w3)
+    
+    # Analyze a Uniswap pair
+    usdc_address = "0xA0b86a33E6eA0dcdeA23e5B4a73c36e9c5b8a22F"  # Example USDC
+    weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # WETH
+    
+    price = defi.get_uniswap_pair_price(usdc_address, weth_address)
+    if price:
+        print(f"USDC/WETH price: {price}")
+        
+        # Calculate impermanent loss
+        initial_price = 1800  # Example initial price
+        current_price = price
+        
+        il_analysis = defi.calculate_impermanent_loss(initial_price, current_price)
+        print(f"Impermanent loss: {il_analysis['impermanent_loss_pct']:.2f}%")
+
+def example_nft_analysis():
+    """Example of NFT analysis"""
+    
+    eth_client = EthereumClient(os.getenv('ETHEREUM_RPC_URL'))
+    nft_analyzer = NFTAnalyzer(eth_client.w3, os.getenv('OPENSEA_API_KEY'))
+    
+    # Analyze an NFT collection
+    collection_address = "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D"  # BAYC example
+    
+    # Get transfer analysis
+    transfer_analysis = nft_analyzer.analyze_nft_transfers(collection_address)
+    print(f"Total transfers: {transfer_analysis['total_transfers']}")
+    print(f"Unique holders: {transfer_analysis['unique_holders']}")
+    
+    # Check specific NFT
+    token_id = 1
+    metadata = nft_analyzer.get_nft_metadata(collection_address, token_id)
+    if metadata:
+        print(f"NFT #{token_id} owner: {metadata['owner']}")
+
+def automated_portfolio_tracker():
+    """Example automated portfolio tracking"""
+    
+    # Your wallet addresses
+    addresses = [
+        "0x742d35Cc6634C0532925a3b8D0C9E785E1B85F3A",
+        "0x8ba1f109551bD432803012645Hac136c5a8d3De8"
+    ]
+    
+    eth_client = EthereumClient(os.getenv('ETHEREUM_RPC_URL'))
+    
+    total_value = 0
+    portfolio = {}
+    
+    for address in addresses:
+        # ETH balance
+        eth_balance = eth_client.get_balance(address)
+        portfolio[f"{address}_ETH"] = eth_balance
+        
+        # Get current ETH price (you'd use a real price API)
+        eth_price = 3500  # Example price
+        total_value += eth_balance * eth_price
+        
+        print(f"Address {address}: {eth_balance:.4f} ETH")
+    
+    print(f"Total portfolio value: ${total_value:,.2f}")
