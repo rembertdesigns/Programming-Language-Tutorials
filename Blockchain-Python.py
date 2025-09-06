@@ -407,3 +407,165 @@ class ERC20Token(ContractInteractor):
             })
         
         return processed_events
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           3. BITCOIN AND CRYPTOCURRENCY UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import hashlib
+import hmac
+import base64
+from bitcoin import *
+from Crypto.Hash import SHA256, RIPEMD160
+from Crypto.Cipher import AES
+import secrets
+
+class BitcoinWallet:
+    """Bitcoin wallet utilities"""
+    
+    def __init__(self, private_key: Optional[str] = None):
+        """Initialize Bitcoin wallet"""
+        if private_key:
+            self.private_key = private_key
+        else:
+            self.private_key = self.generate_private_key()
+        
+        self.public_key = self.private_key_to_public_key(self.private_key)
+        self.address = self.public_key_to_address(self.public_key)
+        
+        logger.info(f"Bitcoin wallet initialized: {self.address}")
+    
+    @staticmethod
+    def generate_private_key() -> str:
+        """Generate a random private key"""
+        return secrets.token_hex(32)
+    
+    @staticmethod
+    def private_key_to_public_key(private_key: str) -> str:
+        """Convert private key to public key"""
+        return privkey_to_pubkey(private_key)
+    
+    @staticmethod
+    def public_key_to_address(public_key: str) -> str:
+        """Convert public key to Bitcoin address"""
+        return pubkey_to_address(public_key)
+    
+    @staticmethod
+    def validate_address(address: str) -> bool:
+        """Validate Bitcoin address"""
+        try:
+            # Simple validation - in production use more robust validation
+            if len(address) < 26 or len(address) > 35:
+                return False
+            
+            # Check if address starts with valid prefixes
+            valid_prefixes = ['1', '3', 'bc1']
+            return any(address.startswith(prefix) for prefix in valid_prefixes)
+        except:
+            return False
+    
+    def sign_message(self, message: str) -> str:
+        """Sign a message with the private key"""
+        try:
+            signature = ecdsa_sign(message, self.private_key)
+            return signature
+        except Exception as e:
+            logger.error(f"Error signing message: {e}")
+            return ""
+    
+    @staticmethod
+    def verify_signature(message: str, signature: str, public_key: str) -> bool:
+        """Verify a message signature"""
+        try:
+            return ecdsa_verify(message, signature, public_key)
+        except Exception as e:
+            logger.error(f"Error verifying signature: {e}")
+            return False
+
+class CryptographicUtils:
+    """Cryptographic utilities for blockchain development"""
+    
+    @staticmethod
+    def hash_sha256(data: Union[str, bytes]) -> str:
+        """SHA-256 hash"""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        return hashlib.sha256(data).hexdigest()
+    
+    @staticmethod
+    def hash_keccak256(data: Union[str, bytes]) -> str:
+        """Keccak-256 hash (used by Ethereum)"""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        
+        import sha3
+        return sha3.keccak_256(data).hexdigest()
+    
+    @staticmethod
+    def hash_ripemd160(data: Union[str, bytes]) -> str:
+        """RIPEMD-160 hash"""
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        
+        ripemd160 = RIPEMD160.new()
+        ripemd160.update(data)
+        return ripemd160.hexdigest()
+    
+    @staticmethod
+    def generate_mnemonic(strength: int = 128) -> str:
+        """Generate BIP39 mnemonic phrase"""
+        from mnemonic import Mnemonic
+        mnemo = Mnemonic("english")
+        return mnemo.generate(strength=strength)
+    
+    @staticmethod
+    def mnemonic_to_seed(mnemonic: str, passphrase: str = "") -> bytes:
+        """Convert mnemonic to seed"""
+        from mnemonic import Mnemonic
+        mnemo = Mnemonic("english")
+        return mnemo.to_seed(mnemonic, passphrase)
+    
+    @staticmethod
+    def encrypt_data(data: str, password: str) -> str:
+        """Encrypt data with AES"""
+        try:
+            # Generate salt and key
+            salt = secrets.token_bytes(16)
+            key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+            
+            # Encrypt data
+            cipher = AES.new(key, AES.MODE_GCM)
+            ciphertext, tag = cipher.encrypt_and_digest(data.encode())
+            
+            # Combine salt, nonce, tag, and ciphertext
+            encrypted = salt + cipher.nonce + tag + ciphertext
+            return base64.b64encode(encrypted).decode()
+            
+        except Exception as e:
+            logger.error(f"Encryption error: {e}")
+            return ""
+    
+    @staticmethod
+    def decrypt_data(encrypted_data: str, password: str) -> str:
+        """Decrypt AES encrypted data"""
+        try:
+            # Decode and extract components
+            encrypted = base64.b64decode(encrypted_data.encode())
+            salt = encrypted[:16]
+            nonce = encrypted[16:32]
+            tag = encrypted[32:48]
+            ciphertext = encrypted[48:]
+            
+            # Derive key
+            key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+            
+            # Decrypt
+            cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+            data = cipher.decrypt_and_verify(ciphertext, tag)
+            
+            return data.decode()
+            
+        except Exception as e:
+            logger.error(f"Decryption error: {e}")
+            return ""
