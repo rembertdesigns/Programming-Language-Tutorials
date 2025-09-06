@@ -2445,3 +2445,119 @@ contract SimpleToken {
     }
 }
 '''
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           14. BLOCKCHAIN SECURITY UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SecurityAnalyzer:
+    """Blockchain security analysis tools"""
+    
+    def __init__(self, w3: Web3):
+        self.w3 = w3
+    
+    def analyze_contract_security(self, contract_address: str) -> Dict:
+        """Analyze contract for common security issues"""
+        try:
+            contract_address = self.w3.to_checksum_address(contract_address)
+            
+            # Get contract code
+            code = self.w3.eth.get_code(contract_address)
+            
+            if not code or code == b'\x00':
+                return {'error': 'No contract code found'}
+            
+            analysis = {
+                'contract_address': contract_address,
+                'code_size': len(code),
+                'is_verified': False,  # Would need Etherscan API
+                'security_checks': {}
+            }
+            
+            # Basic security checks
+            analysis['security_checks'] = {
+                'has_code': len(code) > 0,
+                'code_size_reasonable': len(code) < 50000,  # Arbitrary limit
+                'not_empty_contract': code != b'\x00'
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing contract security: {e}")
+            return {}
+    
+    def check_transaction_security(self, tx_hash: str) -> Dict:
+        """Analyze transaction for security issues"""
+        try:
+            tx = self.w3.eth.get_transaction(tx_hash)
+            receipt = self.w3.eth.get_transaction_receipt(tx_hash)
+            
+            analysis = {
+                'transaction_hash': tx_hash,
+                'security_flags': {}
+            }
+            
+            # Security checks
+            flags = analysis['security_flags']
+            
+            # Check gas price (potential front-running)
+            gas_price_gwei = self.w3.from_wei(tx['gasPrice'], 'gwei')
+            flags['high_gas_price'] = gas_price_gwei > 100  # Arbitrary threshold
+            
+            # Check if transaction failed
+            flags['transaction_failed'] = receipt['status'] == 0
+            
+            # Check for unusual gas usage
+            gas_ratio = receipt['gasUsed'] / tx['gas']
+            flags['unusual_gas_usage'] = gas_ratio < 0.1 or gas_ratio > 0.95
+            
+            # Check for contract interaction
+            flags['contract_interaction'] = tx['to'] is not None and len(self.w3.eth.get_code(tx['to'])) > 0
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing transaction security: {e}")
+            return {}
+    
+    def detect_honeypot(self, token_address: str) -> Dict:
+        """Basic honeypot detection for tokens"""
+        try:
+            token = ERC20Token(self.w3, token_address)
+            
+            analysis = {
+                'token_address': token_address,
+                'token_name': token.name,
+                'token_symbol': token.symbol,
+                'honeypot_indicators': {}
+            }
+            
+            indicators = analysis['honeypot_indicators']
+            
+            # Check if we can get basic token info
+            indicators['basic_info_accessible'] = bool(token.name and token.symbol)
+            
+            # Check total supply
+            indicators['has_total_supply'] = token.total_supply > 0
+            
+            # Get transfer events to check liquidity
+            transfers = token.get_transfer_events()
+            indicators['has_transfer_activity'] = len(transfers) > 0
+            
+            # Check for unusual patterns
+            if transfers:
+                unique_addresses = set()
+                for transfer in transfers:
+                    unique_addresses.add(transfer['from'])
+                    unique_addresses.add(transfer['to'])
+                
+                indicators['address_diversity'] = len(unique_addresses)
+                indicators['low_address_diversity'] = len(unique_addresses) < 10
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error detecting honeypot: {e}")
+            return {}
