@@ -2838,3 +2838,241 @@ class OptimizedEthereumClient(EthereumClient):
             if hasattr(method, '__wrapped__'):
                 # This is a simplified approach - in practice you'd need more sophisticated cache injection
                 pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           17. CLI APPLICATION FRAMEWORK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import click
+
+@click.group()
+@click.option('--config', default='.env', help='Configuration file path')
+@click.pass_context
+def cli(ctx, config):
+    """Blockchain Python CLI Tool"""
+    ctx.ensure_object(dict)
+    
+    # Load configuration
+    if Path(config).exists():
+        load_dotenv(config)
+    
+    ctx.obj['config'] = BlockchainConfig.from_env()
+
+@cli.command()
+@click.argument('address')
+@click.option('--blocks', default=100, help='Number of blocks to analyze')
+@click.pass_context
+def analyze_address(ctx, address, blocks):
+    """Analyze blockchain address activity"""
+    config = ctx.obj['config']
+    
+    try:
+        eth_client = EthereumClient(config.ethereum_rpc_url)
+        analyzer = BlockchainAnalyzer(eth_client)
+        
+        click.echo(f"Analyzing address: {address}")
+        analysis = analyzer.analyze_address_activity(address, blocks)
+        
+        click.echo(f"Total transactions: {analysis['total_transactions']}")
+        click.echo(f"ETH received: {analysis['eth_received']:.4f}")
+        click.echo(f"ETH sent: {analysis['eth_sent']:.4f}")
+        click.echo(f"Current balance: {analysis['current_balance']:.4f}")
+        
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+
+@cli.command()
+@click.argument('symbol')
+@click.option('--exchange', default='binance', help='Exchange name')
+@click.pass_context
+def get_price(ctx, symbol, exchange):
+    """Get cryptocurrency price"""
+    config = ctx.obj['config']
+    
+    try:
+        trader = CryptocurrencyTrader(
+            exchange_name=exchange,
+            api_key=config.binance_api_key,
+            api_secret=config.binance_secret,
+            sandbox=True
+        )
+        
+        ticker = trader.get_ticker(symbol)
+        if ticker:
+            click.echo(f"{ticker['symbol']}: ${ticker['last_price']:.2f}")
+            click.echo(f"24h change: {ticker['percentage_change_24h']:.2f}%")
+        else:
+            click.echo("Could not fetch price data", err=True)
+            
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+
+@cli.command()
+@click.argument('contract_address')
+@click.argument('token_id', type=int)
+@click.pass_context
+def nft_info(ctx, contract_address, token_id):
+    """Get NFT information"""
+    config = ctx.obj['config']
+    
+    try:
+        eth_client = EthereumClient(config.ethereum_rpc_url)
+        nft_analyzer = NFTAnalyzer(eth_client.w3, config.opensea_api_key)
+        
+        metadata = nft_analyzer.get_nft_metadata(contract_address, token_id)
+        if metadata:
+            click.echo(f"Collection: {metadata['collection_name']}")
+            click.echo(f"Token ID: {metadata['token_id']}")
+            click.echo(f"Owner: {metadata['owner']}")
+            if metadata['metadata']:
+                click.echo(f"Name: {metadata['metadata'].get('name', 'N/A')}")
+        else:
+            click.echo("Could not fetch NFT data", err=True)
+            
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+
+@cli.command()
+@click.pass_context
+def setup(ctx):
+    """Set up development environment"""
+    setup_environment()
+    click.echo("Environment setup complete!")
+
+@cli.command()
+@click.pass_context
+def test(ctx):
+    """Run blockchain tests"""
+    run_blockchain_tests()
+
+if __name__ == '__main__':
+    cli()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           18. CONCLUSION AND BEST PRACTICES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+"""
+BLOCKCHAIN PYTHON BEST PRACTICES:
+
+1. SECURITY:
+   - Never hardcode private keys in source code
+   - Use environment variables for sensitive data
+   - Validate all inputs, especially addresses and amounts
+   - Use checksummed addresses
+   - Test on testnets before mainnet
+   - Implement proper error handling
+   - Use timeouts for network requests
+
+2. PERFORMANCE:
+   - Cache frequently accessed data
+   - Use connection pooling for multiple requests
+   - Implement rate limiting to avoid API restrictions
+   - Use async/await for concurrent operations
+   - Batch requests when possible
+
+3. RELIABILITY:
+   - Implement retry logic for network failures
+   - Use multiple RPC endpoints for redundancy
+   - Monitor gas prices and network congestion
+   - Implement circuit breakers for external services
+   - Log all important operations
+
+4. TESTING:
+   - Write comprehensive unit tests
+   - Use mock data for testing
+   - Test edge cases and error conditions
+   - Use local test networks (Ganache, Hardhat)
+   - Implement integration tests
+
+5. CODE ORGANIZATION:
+   - Use type hints and dataclasses
+   - Follow PEP 8 style guidelines
+   - Implement proper logging
+   - Use configuration management
+   - Document your code thoroughly
+
+6. MONITORING:
+   - Implement health checks
+   - Monitor transaction confirmations
+   - Set up alerts for failures
+   - Track performance metrics
+   - Log all blockchain interactions
+
+7. DATA MANAGEMENT:
+   - Use proper database design
+   - Implement data validation
+   - Handle large datasets efficiently
+   - Backup important data
+   - Consider data privacy requirements
+
+EXAMPLE PRODUCTION SETUP:
+
+1. Environment Variables (.env):
+   ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_KEY
+   PRIVATE_KEY=your_private_key_here
+   DATABASE_URL=postgresql://user:pass@localhost/db
+   REDIS_URL=redis://localhost:6379
+   LOG_LEVEL=INFO
+
+2. Main Application (main.py):
+   from blockchain_python import *
+   
+   def main():
+       config = BlockchainConfig.from_env()
+       eth_client = EthereumClient(config.ethereum_rpc_url, config.private_key)
+       
+       # Your application logic here
+       
+   if __name__ == '__main__':
+       main()
+
+3. Requirements (requirements.txt):
+   web3==6.0.0
+   pandas==2.0.0
+   numpy==1.24.0
+   requests==2.28.0
+   python-dotenv==1.0.0
+   redis==4.5.0
+   click==8.1.0
+   # ... other dependencies
+
+4. Docker Configuration (Dockerfile):
+   FROM python:3.11-slim
+   WORKDIR /app
+   COPY requirements.txt .
+   RUN pip install -r requirements.txt
+   COPY . .
+   CMD ["python", "main.py"]
+
+RESOURCES FOR FURTHER LEARNING:
+
+1. Documentation:
+   - Web3.py: https://web3py.readthedocs.io/
+   - Ethereum: https://ethereum.org/developers/
+   - Solidity: https://docs.soliditylang.org/
+
+2. Tools:
+   - Brownie Framework: https://eth-brownie.readthedocs.io/
+   - Hardhat: https://hardhat.org/
+   - Remix IDE: https://remix.ethereum.org/
+
+3. APIs:
+   - Infura: https://infura.io/
+   - Alchemy: https://www.alchemy.com/
+   - Etherscan: https://etherscan.io/apis
+
+4. Testing Networks:
+   - Goerli Testnet
+   - Sepolia Testnet
+   - Local Networks (Ganache, Hardhat)
+
+Remember: Blockchain development involves real financial value. Always test thoroughly,
+use best security practices, and consider getting security audits for production systems.
+
+This reference provides a comprehensive foundation for blockchain development with Python.
+Adapt and extend these utilities based on your specific needs and use cases.
+"""
+
+# End of Blockchain Python Reference        
