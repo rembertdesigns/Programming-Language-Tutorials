@@ -1308,3 +1308,452 @@ class PriceAlert:
         """Stop price monitoring"""
         self.running = False
         logger.info("Price monitoring stopped")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           6. DEFI AND YIELD FARMING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class DeFiProtocol:
+    """DeFi protocol interaction utilities"""
+    
+    def __init__(self, w3: Web3):
+        self.w3 = w3
+        
+        # Common DeFi protocol addresses (Ethereum mainnet)
+        self.protocols = {
+            'uniswap_v2_router': '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',
+            'uniswap_v2_factory': '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
+            'sushiswap_router': '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F',
+            'compound_comptroller': '0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B',
+            'aave_lending_pool': '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9'
+        }
+    
+    def get_uniswap_pair_price(self, token0_address: str, token1_address: str) -> Optional[float]:
+        """Get price from Uniswap V2 pair"""
+        try:
+            # Uniswap V2 Factory ABI (simplified)
+            factory_abi = [
+                {
+                    "constant": True,
+                    "inputs": [
+                        {"name": "", "type": "address"},
+                        {"name": "", "type": "address"}
+                    ],
+                    "name": "getPair",
+                    "outputs": [{"name": "", "type": "address"}],
+                    "type": "function"
+                }
+            ]
+            
+            # Uniswap V2 Pair ABI (simplified)
+            pair_abi = [
+                {
+                    "constant": True,
+                    "inputs": [],
+                    "name": "getReserves",
+                    "outputs": [
+                        {"name": "_reserve0", "type": "uint112"},
+                        {"name": "_reserve1", "type": "uint112"},
+                        {"name": "_blockTimestampLast", "type": "uint32"}
+                    ],
+                    "type": "function"
+                },
+                {
+                    "constant": True,
+                    "inputs": [],
+                    "name": "token0",
+                    "outputs": [{"name": "", "type": "address"}],
+                    "type": "function"
+                },
+                {
+                    "constant": True,
+                    "inputs": [],
+                    "name": "token1",
+                    "outputs": [{"name": "", "type": "address"}],
+                    "type": "function"
+                }
+            ]
+            
+            # Get factory contract
+            factory_contract = self.w3.eth.contract(
+                address=self.protocols['uniswap_v2_factory'],
+                abi=factory_abi
+            )
+            
+            # Get pair address
+            pair_address = factory_contract.functions.getPair(
+                self.w3.to_checksum_address(token0_address),
+                self.w3.to_checksum_address(token1_address)
+            ).call()
+            
+            if pair_address == '0x0000000000000000000000000000000000000000':
+                logger.warning("Pair not found")
+                return None
+            
+            # Get pair contract
+            pair_contract = self.w3.eth.contract(
+                address=pair_address,
+                abi=pair_abi
+            )
+            
+            # Get reserves
+            reserves = pair_contract.functions.getReserves().call()
+            reserve0, reserve1, _ = reserves
+            
+            # Get token order
+            pair_token0 = pair_contract.functions.token0().call()
+            
+            # Calculate price (token1/token0)
+            if pair_token0.lower() == token0_address.lower():
+                price = reserve1 / reserve0
+            else:
+                price = reserve0 / reserve1
+            
+            return price
+            
+        except Exception as e:
+            logger.error(f"Error getting Uniswap price: {e}")
+            return None
+    
+    def calculate_impermanent_loss(self, initial_price: float, current_price: float) -> Dict:
+        """Calculate impermanent loss for LP position"""
+        try:
+            price_ratio = current_price / initial_price
+            
+            # IL formula: IL = 2 * sqrt(price_ratio) / (1 + price_ratio) - 1
+            il_multiplier = 2 * (price_ratio ** 0.5) / (1 + price_ratio)
+            impermanent_loss = (il_multiplier - 1) * 100
+            
+            # Value if held vs LP
+            hold_value = (1 + price_ratio) / 2  # Average of both tokens
+            lp_value = il_multiplier
+            
+            return {
+                'price_change_pct': (price_ratio - 1) * 100,
+                'impermanent_loss_pct': impermanent_loss,
+                'hold_value_ratio': hold_value,
+                'lp_value_ratio': lp_value,
+                'hold_vs_lp_pct': (hold_value - lp_value) * 100
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating impermanent loss: {e}")
+            return {}
+    
+    def estimate_yield_farming_returns(self, principal: float, apr: float, 
+                                     days: int = 365, compound_frequency: int = 365) -> Dict:
+        """Estimate yield farming returns with compounding"""
+        try:
+            # Simple interest
+            simple_interest = principal * (apr / 100) * (days / 365)
+            
+            # Compound interest
+            periods = compound_frequency * (days / 365)
+            compound_interest = principal * ((1 + (apr / 100) / compound_frequency) ** periods) - principal
+            
+            return {
+                'principal': principal,
+                'days': days,
+                'apr_pct': apr,
+                'simple_interest': simple_interest,
+                'compound_interest': compound_interest,
+                'simple_total': principal + simple_interest,
+                'compound_total': principal + compound_interest,
+                'compound_advantage': compound_interest - simple_interest
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating yield farming returns: {e}")
+            return {}
+
+class LiquidityPoolAnalyzer:
+    """Analyze liquidity pools and farming opportunities"""
+    
+    def __init__(self, w3: Web3):
+        self.w3 = w3
+        self.defi = DeFiProtocol(w3)
+    
+    def analyze_pool(self, token0_address: str, token1_address: str, 
+                    pool_address: str = None) -> Dict:
+        """Analyze a liquidity pool"""
+        try:
+            analysis = {}
+            
+            # Get current price
+            current_price = self.defi.get_uniswap_pair_price(token0_address, token1_address)
+            if current_price:
+                analysis['current_price'] = current_price
+            
+            # Get token information
+            token0 = ERC20Token(self.w3, token0_address)
+            token1 = ERC20Token(self.w3, token1_address)
+            
+            analysis['token0'] = {
+                'address': token0_address,
+                'name': token0.name,
+                'symbol': token0.symbol,
+                'decimals': token0.decimals
+            }
+            
+            analysis['token1'] = {
+                'address': token1_address,
+                'name': token1.name,
+                'symbol': token1.symbol,
+                'decimals': token1.decimals
+            }
+            
+            # Historical price analysis would require additional data sources
+            # This is a simplified version
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing pool: {e}")
+            return {}
+    
+    def find_arbitrage_opportunities(self, token_pairs: List[Tuple[str, str]], 
+                                   exchanges: List[str] = None) -> List[Dict]:
+        """Find arbitrage opportunities between exchanges"""
+        # This would require implementing multiple exchange price feeds
+        # Simplified placeholder implementation
+        opportunities = []
+        
+        for token0, token1 in token_pairs:
+            try:
+                # Get prices from different sources
+                uniswap_price = self.defi.get_uniswap_pair_price(token0, token1)
+                
+                # In a real implementation, you would compare prices across
+                # multiple exchanges and identify profitable arbitrage opportunities
+                
+                if uniswap_price:
+                    opportunities.append({
+                        'pair': f"{token0}/{token1}",
+                        'uniswap_price': uniswap_price,
+                        'potential_profit': 0  # Placeholder
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Error checking arbitrage for {token0}/{token1}: {e}")
+                continue
+        
+        return opportunities
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           7. NFT AND MARKETPLACE INTERACTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class NFTAnalyzer:
+    """NFT analysis and marketplace interaction"""
+    
+    def __init__(self, w3: Web3, opensea_api_key: str = None):
+        self.w3 = w3
+        self.opensea_api_key = opensea_api_key
+        self.opensea_base_url = "https://api.opensea.io/api/v1"
+        
+        # ERC-721 ABI (simplified)
+        self.erc721_abi = [
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "name",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "symbol",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [{"name": "_tokenId", "type": "uint256"}],
+                "name": "tokenURI",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [{"name": "_tokenId", "type": "uint256"}],
+                "name": "ownerOf",
+                "outputs": [{"name": "", "type": "address"}],
+                "type": "function"
+            },
+            {
+                "anonymous": False,
+                "inputs": [
+                    {"indexed": True, "name": "from", "type": "address"},
+                    {"indexed": True, "name": "to", "type": "address"},
+                    {"indexed": True, "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "Transfer",
+                "type": "event"
+            }
+        ]
+    
+    def get_nft_metadata(self, contract_address: str, token_id: int) -> Optional[Dict]:
+        """Get NFT metadata from contract"""
+        try:
+            contract = self.w3.eth.contract(
+                address=self.w3.to_checksum_address(contract_address),
+                abi=self.erc721_abi
+            )
+            
+            # Get basic info
+            name = contract.functions.name().call()
+            symbol = contract.functions.symbol().call()
+            owner = contract.functions.ownerOf(token_id).call()
+            token_uri = contract.functions.tokenURI(token_id).call()
+            
+            # Fetch metadata from URI
+            metadata = {}
+            if token_uri:
+                try:
+                    # Handle IPFS URIs
+                    if token_uri.startswith('ipfs://'):
+                        token_uri = token_uri.replace('ipfs://', 'https://ipfs.io/ipfs/')
+                    
+                    response = requests.get(token_uri, timeout=10)
+                    if response.status_code == 200:
+                        metadata = response.json()
+                except Exception as e:
+                    logger.warning(f"Could not fetch metadata from {token_uri}: {e}")
+            
+            return {
+                'contract_address': contract_address,
+                'token_id': token_id,
+                'collection_name': name,
+                'collection_symbol': symbol,
+                'owner': owner,
+                'token_uri': token_uri,
+                'metadata': metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting NFT metadata: {e}")
+            return None
+    
+    def get_collection_stats(self, contract_address: str) -> Optional[Dict]:
+        """Get collection statistics from OpenSea"""
+        if not self.opensea_api_key:
+            logger.warning("OpenSea API key required for collection stats")
+            return None
+        
+        try:
+            headers = {"X-API-KEY": self.opensea_api_key}
+            url = f"{self.opensea_base_url}/collection/{contract_address}/stats"
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"OpenSea API error: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting collection stats: {e}")
+            return None
+    
+    def analyze_nft_transfers(self, contract_address: str, from_block: int = 0) -> Dict:
+        """Analyze NFT transfer activity"""
+        try:
+            contract = self.w3.eth.contract(
+                address=self.w3.to_checksum_address(contract_address),
+                abi=self.erc721_abi
+            )
+            
+            # Get transfer events
+            transfer_filter = contract.events.Transfer.create_filter(
+                fromBlock=from_block,
+                toBlock='latest'
+            )
+            events = transfer_filter.get_all_entries()
+            
+            # Analyze transfers
+            transfers = []
+            holders = set()
+            mint_count = 0
+            
+            for event in events:
+                from_addr = event['args']['from']
+                to_addr = event['args']['to']
+                token_id = event['args']['tokenId']
+                
+                # Check if it's a mint (from zero address)
+                if from_addr == '0x0000000000000000000000000000000000000000':
+                    mint_count += 1
+                
+                holders.add(to_addr)
+                
+                transfers.append({
+                    'from': from_addr,
+                    'to': to_addr,
+                    'token_id': token_id,
+                    'transaction_hash': event['transactionHash'].hex(),
+                    'block_number': event['blockNumber']
+                })
+            
+            return {
+                'contract_address': contract_address,
+                'total_transfers': len(transfers),
+                'total_mints': mint_count,
+                'unique_holders': len(holders),
+                'transfers': transfers
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing NFT transfers: {e}")
+            return {}
+    
+    def check_nft_rarity(self, contract_address: str, token_id: int) -> Dict:
+        """Check NFT rarity based on traits (simplified implementation)"""
+        try:
+            metadata = self.get_nft_metadata(contract_address, token_id)
+            if not metadata or 'metadata' not in metadata:
+                return {}
+            
+            traits = metadata['metadata'].get('attributes', [])
+            if not traits:
+                return {}
+            
+            # This is a simplified rarity calculation
+            # In practice, you'd need to analyze the entire collection
+            rarity_score = 0
+            trait_rarities = []
+            
+            for trait in traits:
+                trait_type = trait.get('trait_type', '')
+                trait_value = trait.get('value', '')
+                
+                # Placeholder rarity calculation
+                # In reality, you'd calculate based on frequency across collection
+                estimated_rarity = 1.0 / (len(str(trait_value)) + 1)  # Simple estimation
+                rarity_score += estimated_rarity
+                
+                trait_rarities.append({
+                    'trait_type': trait_type,
+                    'value': trait_value,
+                    'estimated_rarity': estimated_rarity
+                })
+            
+            return {
+                'token_id': token_id,
+                'total_traits': len(traits),
+                'rarity_score': rarity_score,
+                'trait_rarities': trait_rarities
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking NFT rarity: {e}")
+            return {}
