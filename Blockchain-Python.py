@@ -2213,3 +2213,109 @@ def automated_portfolio_tracker():
         print(f"Address {address}: {eth_balance:.4f} ETH")
     
     print(f"Total portfolio value: ${total_value:,.2f}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           12. CONFIGURATION AND ENVIRONMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class BlockchainConfig:
+    """Configuration for blockchain applications"""
+    
+    # Network settings
+    ethereum_rpc_url: str = "https://mainnet.infura.io/v3/YOUR_KEY"
+    polygon_rpc_url: str = "https://polygon-rpc.com"
+    arbitrum_rpc_url: str = "https://arb1.arbitrum.io/rpc"
+    
+    # API keys
+    infura_key: str = ""
+    alchemy_key: str = ""
+    opensea_api_key: str = ""
+    coinmarketcap_key: str = ""
+    
+    # Exchange API credentials
+    binance_api_key: str = ""
+    binance_secret: str = ""
+    coinbase_api_key: str = ""
+    coinbase_secret: str = ""
+    
+    # Private keys (use environment variables!)
+    private_key: str = ""
+    
+    # Database settings
+    database_url: str = "sqlite:///blockchain_data.db"
+    
+    # Monitoring settings
+    alert_email: str = ""
+    slack_webhook: str = ""
+    
+    @classmethod
+    def from_env(cls) -> 'BlockchainConfig':
+        """Load configuration from environment variables"""
+        return cls(
+            ethereum_rpc_url=os.getenv('ETHEREUM_RPC_URL', cls.ethereum_rpc_url),
+            polygon_rpc_url=os.getenv('POLYGON_RPC_URL', cls.polygon_rpc_url),
+            arbitrum_rpc_url=os.getenv('ARBITRUM_RPC_URL', cls.arbitrum_rpc_url),
+            infura_key=os.getenv('INFURA_KEY', ''),
+            alchemy_key=os.getenv('ALCHEMY_KEY', ''),
+            opensea_api_key=os.getenv('OPENSEA_API_KEY', ''),
+            coinmarketcap_key=os.getenv('COINMARKETCAP_KEY', ''),
+            binance_api_key=os.getenv('BINANCE_API_KEY', ''),
+            binance_secret=os.getenv('BINANCE_SECRET', ''),
+            coinbase_api_key=os.getenv('COINBASE_API_KEY', ''),
+            coinbase_secret=os.getenv('COINBASE_SECRET', ''),
+            private_key=os.getenv('PRIVATE_KEY', ''),
+            database_url=os.getenv('DATABASE_URL', cls.database_url),
+            alert_email=os.getenv('ALERT_EMAIL', ''),
+            slack_webhook=os.getenv('SLACK_WEBHOOK', '')
+        )
+
+# Example .env file template
+ENV_TEMPLATE = """
+# Blockchain RPC URLs
+ETHEREUM_RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_KEY
+POLYGON_RPC_URL=https://polygon-rpc.com
+ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
+
+# API Keys
+INFURA_KEY=your_infura_key_here
+ALCHEMY_KEY=your_alchemy_key_here
+OPENSEA_API_KEY=your_opensea_key_here
+COINMARKETCAP_KEY=your_cmc_key_here
+
+# Exchange APIs
+BINANCE_API_KEY=your_binance_key_here
+BINANCE_SECRET=your_binance_secret_here
+COINBASE_API_KEY=your_coinbase_key_here
+COINBASE_SECRET=your_coinbase_secret_here
+
+# Wallet (NEVER commit real private keys!)
+PRIVATE_KEY=your_private_key_here
+
+# Database
+DATABASE_URL=postgresql://user:pass@localhost/blockchain_db
+
+# Alerts
+ALERT_EMAIL=your_email@example.com
+SLACK_WEBHOOK=your_slack_webhook_url
+"""
+
+def setup_environment():
+    """Set up development environment"""
+    env_file = Path('.env')
+    
+    if not env_file.exists():
+        print("Creating .env template file...")
+        with open('.env', 'w') as f:
+            f.write(ENV_TEMPLATE)
+        print("Please edit .env file with your API keys and settings")
+    else:
+        print(".env file already exists")
+    
+    # Create directories
+    directories = ['data', 'logs', 'contracts', 'tests']
+    for directory in directories:
+        Path(directory).mkdir(exist_ok=True)
+    
+    print("Environment setup complete!")
