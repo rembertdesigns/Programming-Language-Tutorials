@@ -799,3 +799,990 @@ class Converters {
         }
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           7. NETWORK LAYER (RETROFIT)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.data.remote
+
+import com.example.myapp.data.model.*
+import retrofit2.Response
+import retrofit2.http.*
+
+interface ApiService {
+    
+    // Authentication
+    @POST("auth/login")
+    suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
+    
+    @POST("auth/register")
+    suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
+    
+    @POST("auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<AuthResponse>
+    
+    @POST("auth/logout")
+    suspend fun logout(): Response<Unit>
+    
+    // Users
+    @GET("users/{id}")
+    suspend fun getUserById(@Path("id") id: String): Response<ApiResponse<UserDto>>
+    
+    @GET("users")
+    suspend fun getUsers(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("search") search: String? = null
+    ): Response<PaginatedResponse<UserDto>>
+    
+    @PUT("users/{id}")
+    suspend fun updateUser(
+        @Path("id") id: String,
+        @Body request: UpdateUserRequest
+    ): Response<ApiResponse<UserDto>>
+    
+    @DELETE("users/{id}")
+    suspend fun deleteUser(@Path("id") id: String): Response<Unit>
+    
+    // Posts
+    @GET("posts")
+    suspend fun getPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20,
+        @Query("category") category: String? = null,
+        @Query("author") author: String? = null,
+        @Query("search") search: String? = null,
+        @Query("published") published: Boolean? = null
+    ): Response<PaginatedResponse<PostDto>>
+    
+    @GET("posts/{id}")
+    suspend fun getPostById(@Path("id") id: String): Response<ApiResponse<PostDto>>
+    
+    @POST("posts")
+    suspend fun createPost(@Body request: CreatePostRequest): Response<ApiResponse<PostDto>>
+    
+    @PUT("posts/{id}")
+    suspend fun updatePost(
+        @Path("id") id: String,
+        @Body request: UpdatePostRequest
+    ): Response<ApiResponse<PostDto>>
+    
+    @DELETE("posts/{id}")
+    suspend fun deletePost(@Path("id") id: String): Response<Unit>
+    
+    @POST("posts/{id}/like")
+    suspend fun likePost(@Path("id") id: String): Response<Unit>
+    
+    @DELETE("posts/{id}/like")
+    suspend fun unlikePost(@Path("id") id: String): Response<Unit>
+    
+    @POST("posts/{id}/view")
+    suspend fun incrementPostView(@Path("id") id: String): Response<Unit>
+    
+    // Categories
+    @GET("categories")
+    suspend fun getCategories(): Response<ApiResponse<List<CategoryDto>>>
+    
+    @GET("categories/{id}")
+    suspend fun getCategoryById(@Path("id") id: String): Response<ApiResponse<CategoryDto>>
+    
+    // Comments
+    @GET("posts/{postId}/comments")
+    suspend fun getComments(
+        @Path("postId") postId: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<PaginatedResponse<CommentDto>>
+    
+    @POST("posts/{postId}/comments")
+    suspend fun createComment(
+        @Path("postId") postId: String,
+        @Body request: CreateCommentRequest
+    ): Response<ApiResponse<CommentDto>>
+    
+    @PUT("comments/{id}")
+    suspend fun updateComment(
+        @Path("id") id: String,
+        @Body request: UpdateCommentRequest
+    ): Response<ApiResponse<CommentDto>>
+    
+    @DELETE("comments/{id}")
+    suspend fun deleteComment(@Path("id") id: String): Response<Unit>
+}
+
+// API Request/Response Models
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
+
+data class RegisterRequest(
+    val email: String,
+    val username: String,
+    val firstName: String,
+    val lastName: String,
+    val password: String
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+data class AuthResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresIn: Long,
+    val user: UserDto
+)
+
+data class UpdateUserRequest(
+    val firstName: String?,
+    val lastName: String?,
+    val username: String?,
+    val bio: String?
+)
+
+data class CreatePostRequest(
+    val title: String,
+    val content: String,
+    val excerpt: String?,
+    val categoryId: String,
+    val tags: List<String>,
+    val isPublished: Boolean = false
+)
+
+data class UpdatePostRequest(
+    val title: String?,
+    val content: String?,
+    val excerpt: String?,
+    val categoryId: String?,
+    val tags: List<String>?,
+    val isPublished: Boolean?
+)
+
+data class CreateCommentRequest(
+    val content: String,
+    val parentId: String? = null
+)
+
+data class UpdateCommentRequest(
+    val content: String
+)
+
+// Generic API Response Wrappers
+data class ApiResponse<T>(
+    val success: Boolean,
+    val data: T?,
+    val message: String?,
+    val errors: List<String>?
+)
+
+data class PaginatedResponse<T>(
+    val success: Boolean,
+    val data: List<T>,
+    val pagination: PaginationInfo,
+    val message: String?,
+    val errors: List<String>?
+)
+
+data class PaginationInfo(
+    val currentPage: Int,
+    val totalPages: Int,
+    val totalItems: Int,
+    val itemsPerPage: Int,
+    val hasNext: Boolean,
+    val hasPrevious: Boolean
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. REPOSITORY LAYER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.domain.repository
+
+import com.example.myapp.domain.model.*
+import com.example.myapp.utils.Resource
+import kotlinx.coroutines.flow.Flow
+
+interface UserRepository {
+    suspend fun login(email: String, password: String): Resource<User>
+    suspend fun register(
+        email: String,
+        username: String,
+        firstName: String,
+        lastName: String,
+        password: String
+    ): Resource<User>
+    suspend fun refreshToken(): Resource<String>
+    suspend fun logout(): Resource<Unit>
+    suspend fun getCurrentUser(): Flow<User?>
+    suspend fun getUserById(id: String): Resource<User>
+    suspend fun updateUser(user: User): Resource<User>
+    suspend fun searchUsers(query: String): Flow<List<User>>
+    suspend fun clearUserData()
+}
+
+interface PostRepository {
+    suspend fun getPosts(
+        page: Int = 1,
+        limit: Int = 20,
+        categoryId: String? = null,
+        authorId: String? = null,
+        search: String? = null
+    ): Resource<List<Post>>
+    
+    suspend fun getPostById(id: String): Resource<Post>
+    suspend fun createPost(post: CreatePostRequest): Resource<Post>
+    suspend fun updatePost(id: String, post: UpdatePostRequest): Resource<Post>
+    suspend fun deletePost(id: String): Resource<Unit>
+    suspend fun likePost(id: String): Resource<Unit>
+    suspend fun unlikePost(id: String): Resource<Unit>
+    suspend fun incrementPostView(id: String): Resource<Unit>
+    
+    // Local caching
+    fun getLocalPosts(): Flow<List<Post>>
+    fun getPostsByCategory(categoryId: String): Flow<List<Post>>
+    fun getPostsByAuthor(authorId: String): Flow<List<Post>>
+    fun searchLocalPosts(query: String): Flow<List<Post>>
+    suspend fun cachePost(post: Post)
+    suspend fun cachePosts(posts: List<Post>)
+}
+
+interface CategoryRepository {
+    suspend fun getCategories(): Resource<List<Category>>
+    suspend fun getCategoryById(id: String): Resource<Category>
+    fun getLocalCategories(): Flow<List<Category>>
+    suspend fun cacheCategories(categories: List<Category>)
+}
+
+// Repository Implementation
+package com.example.myapp.data.repository
+
+import com.example.myapp.data.local.UserDao
+import com.example.myapp.data.mapper.UserMapper
+import com.example.myapp.data.remote.ApiService
+import com.example.myapp.domain.model.User
+import com.example.myapp.domain.repository.UserRepository
+import com.example.myapp.utils.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class UserRepositoryImpl @Inject constructor(
+    private val apiService: ApiService,
+    private val userDao: UserDao,
+    private val tokenManager: TokenManager
+) : UserRepository {
+    
+    override suspend fun login(email: String, password: String): Resource<User> {
+        return try {
+            val response = apiService.login(LoginRequest(email, password))
+            if (response.isSuccessful && response.body() != null) {
+                val authResponse = response.body()!!
+                
+                // Save tokens
+                tokenManager.saveTokens(
+                    accessToken = authResponse.accessToken,
+                    refreshToken = authResponse.refreshToken
+                )
+                
+                // Cache user
+                val user = UserMapper.dtoToDomain(authResponse.user)
+                userDao.insertUser(UserMapper.domainToEntity(user))
+                
+                Resource.Success(user)
+            } else {
+                Resource.Error("Login failed: ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Network error: ${e.message}")
+        }
+    }
+    
+    override suspend fun register(
+        email: String,
+        username: String,
+        firstName: String,
+        lastName: String,
+        password: String
+    ): Resource<User> {
+        return try {
+            val request = RegisterRequest(email, username, firstName, lastName, password)
+            val response = apiService.register(request)
+            
+            if (response.isSuccessful && response.body() != null) {
+                val authResponse = response.body()!!
+                
+                // Save tokens
+                tokenManager.saveTokens(
+                    accessToken = authResponse.accessToken,
+                    refreshToken = authResponse.refreshToken
+                )
+                
+                // Cache user
+                val user = UserMapper.dtoToDomain(authResponse.user)
+                userDao.insertUser(UserMapper.domainToEntity(user))
+                
+                Resource.Success(user)
+            } else {
+                Resource.Error("Registration failed: ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Network error: ${e.message}")
+        }
+    }
+    
+    override suspend fun refreshToken(): Resource<String> {
+        return try {
+            val refreshToken = tokenManager.getRefreshToken()
+            if (refreshToken.isNullOrEmpty()) {
+                return Resource.Error("No refresh token available")
+            }
+            
+            val response = apiService.refreshToken(RefreshTokenRequest(refreshToken))
+            if (response.isSuccessful && response.body() != null) {
+                val authResponse = response.body()!!
+                tokenManager.saveTokens(
+                    accessToken = authResponse.accessToken,
+                    refreshToken = authResponse.refreshToken
+                )
+                Resource.Success(authResponse.accessToken)
+            } else {
+                Resource.Error("Token refresh failed")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Token refresh error: ${e.message}")
+        }
+    }
+    
+    override suspend fun logout(): Resource<Unit> {
+        return try {
+            // Call API to invalidate token on server
+            apiService.logout()
+            
+            // Clear local data
+            clearUserData()
+            
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            // Even if API call fails, clear local data
+            clearUserData()
+            Resource.Success(Unit)
+        }
+    }
+    
+    override suspend fun getCurrentUser(): Flow<User?> {
+        return userDao.getAllUsers().map { entities ->
+            entities.firstOrNull()?.let { UserMapper.entityToDomain(it) }
+        }
+    }
+    
+    override suspend fun getUserById(id: String): Resource<User> {
+        return try {
+            // Try local first
+            val localUser = userDao.getUserById(id)
+            if (localUser != null) {
+                return Resource.Success(UserMapper.entityToDomain(localUser))
+            }
+            
+            // Fetch from API
+            val response = apiService.getUserById(id)
+            if (response.isSuccessful && response.body()?.data != null) {
+                val user = UserMapper.dtoToDomain(response.body()!!.data!!)
+                userDao.insertUser(UserMapper.domainToEntity(user))
+                Resource.Success(user)
+            } else {
+                Resource.Error("User not found")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Error fetching user: ${e.message}")
+        }
+    }
+    
+    override suspend fun updateUser(user: User): Resource<User> {
+        return try {
+            val request = UpdateUserRequest(
+                firstName = user.firstName,
+                lastName = user.lastName,
+                username = user.username,
+                bio = null // Add bio field if needed
+            )
+            
+            val response = apiService.updateUser(user.id, request)
+            if (response.isSuccessful && response.body()?.data != null) {
+                val updatedUser = UserMapper.dtoToDomain(response.body()!!.data!!)
+                userDao.updateUser(UserMapper.domainToEntity(updatedUser))
+                Resource.Success(updatedUser)
+            } else {
+                Resource.Error("Update failed: ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Resource.Error("Update error: ${e.message}")
+        }
+    }
+    
+    override suspend fun searchUsers(query: String): Flow<List<User>> {
+        return userDao.searchUsers(query).map { entities ->
+            entities.map { UserMapper.entityToDomain(it) }
+        }
+    }
+    
+    override suspend fun clearUserData() {
+        tokenManager.clearTokens()
+        userDao.deleteAllUsers()
+    }
+}
+
+// Similar implementation for PostRepositoryImpl and CategoryRepositoryImpl...
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. USE CASES (DOMAIN LAYER)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.domain.usecase
+
+import com.example.myapp.domain.model.User
+import com.example.myapp.domain.repository.UserRepository
+import com.example.myapp.utils.Resource
+import javax.inject.Inject
+
+class LoginUseCase @Inject constructor(
+    private val userRepository: UserRepository
+) {
+    suspend operator fun invoke(email: String, password: String): Resource<User> {
+        // Add business logic validation here if needed
+        if (email.isBlank()) {
+            return Resource.Error("Email cannot be empty")
+        }
+        
+        if (password.isBlank()) {
+            return Resource.Error("Password cannot be empty")
+        }
+        
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            return Resource.Error("Invalid email format")
+        }
+        
+        return userRepository.login(email, password)
+    }
+}
+
+class RegisterUseCase @Inject constructor(
+    private val userRepository: UserRepository
+) {
+    suspend operator fun invoke(
+        email: String,
+        username: String,
+        firstName: String,
+        lastName: String,
+        password: String
+    ): Resource<User> {
+        // Validation
+        when {
+            email.isBlank() -> return Resource.Error("Email is required")
+            username.isBlank() -> return Resource.Error("Username is required")
+            firstName.isBlank() -> return Resource.Error("First name is required")
+            lastName.isBlank() -> return Resource.Error("Last name is required")
+            password.length < 8 -> return Resource.Error("Password must be at least 8 characters")
+            !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
+                return Resource.Error("Invalid email format")
+            }
+            !isValidUsername(username) -> {
+                return Resource.Error("Username can only contain letters, numbers, and underscores")
+            }
+        }
+        
+        return userRepository.register(email, username, firstName, lastName, password)
+    }
+    
+    private fun isValidUsername(username: String): Boolean {
+        return username.matches(Regex("^[a-zA-Z0-9_]{3,20}$"))
+    }
+}
+
+class GetCurrentUserUseCase @Inject constructor(
+    private val userRepository: UserRepository
+) {
+    suspend operator fun invoke() = userRepository.getCurrentUser()
+}
+
+class LogoutUseCase @Inject constructor(
+    private val userRepository: UserRepository
+) {
+    suspend operator fun invoke() = userRepository.logout()
+}
+
+class GetPostsUseCase @Inject constructor(
+    private val postRepository: PostRepository
+) {
+    suspend operator fun invoke(
+        page: Int = 1,
+        limit: Int = 20,
+        categoryId: String? = null,
+        authorId: String? = null,
+        search: String? = null
+    ) = postRepository.getPosts(page, limit, categoryId, authorId, search)
+}
+
+class GetPostByIdUseCase @Inject constructor(
+    private val postRepository: PostRepository
+) {
+    suspend operator fun invoke(id: String): Resource<Post> {
+        if (id.isBlank()) {
+            return Resource.Error("Post ID cannot be empty")
+        }
+        
+        return postRepository.getPostById(id)
+    }
+}
+
+class CreatePostUseCase @Inject constructor(
+    private val postRepository: PostRepository
+) {
+    suspend operator fun invoke(
+        title: String,
+        content: String,
+        excerpt: String?,
+        categoryId: String,
+        tags: List<String>,
+        isPublished: Boolean = false
+    ): Resource<Post> {
+        when {
+            title.isBlank() -> return Resource.Error("Title is required")
+            content.isBlank() -> return Resource.Error("Content is required")
+            categoryId.isBlank() -> return Resource.Error("Category is required")
+        }
+        
+        val request = CreatePostRequest(
+            title = title.trim(),
+            content = content.trim(),
+            excerpt = excerpt?.trim(),
+            categoryId = categoryId,
+            tags = tags.map { it.trim() }.filter { it.isNotBlank() },
+            isPublished = isPublished
+        )
+        
+        return postRepository.createPost(request)
+    }
+}
+
+class LikePostUseCase @Inject constructor(
+    private val postRepository: PostRepository
+) {
+    suspend operator fun invoke(postId: String, isLiked: Boolean): Resource<Unit> {
+        return if (isLiked) {
+            postRepository.unlikePost(postId)
+        } else {
+            postRepository.likePost(postId)
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. VIEWMODELS AND STATE MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.presentation.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.myapp.domain.model.User
+import com.example.myapp.domain.usecase.*
+import com.example.myapp.utils.Resource
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class AuthViewModel @Inject constructor(
+    private val loginUseCase: LoginUseCase,
+    private val registerUseCase: RegisterUseCase,
+    private val getCurrentUserUseCase: GetCurrentUserUseCase,
+    private val logoutUseCase: LogoutUseCase
+) : ViewModel() {
+    
+    private val _authState = MutableStateFlow(AuthState())
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+    
+    private val _isLoggedIn = MutableStateFlow(false)
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+    
+    init {
+        checkAuthStatus()
+    }
+    
+    fun login(email: String, password: String) {
+        viewModelScope.launch {
+            _authState.value = _authState.value.copy(isLoading = true, error = null)
+            
+            when (val result = loginUseCase(email, password)) {
+                is Resource.Success -> {
+                    _authState.value = _authState.value.copy(
+                        isLoading = false,
+                        user = result.data,
+                        error = null
+                    )
+                    _isLoggedIn.value = true
+                }
+                is Resource.Error -> {
+                    _authState.value = _authState.value.copy(
+                        isLoading = false,
+                        error = result.message
+                    )
+                }
+                is Resource.Loading -> {
+                    _authState.value = _authState.value.copy(isLoading = true)
+                }
+            }
+        }
+    }
+    
+    fun register(
+        email: String,
+        username: String,
+        firstName: String,
+        lastName: String,
+        password: String
+    ) {
+        viewModelScope.launch {
+            _authState.value = _authState.value.copy(isLoading = true, error = null)
+            
+            when (val result = registerUseCase(email, username, firstName, lastName, password)) {
+                is Resource.Success -> {
+                    _authState.value = _authState.value.copy(
+                        isLoading = false,
+                        user = result.data,
+                        error = null
+                    )
+                    _isLoggedIn.value = true
+                }
+                is Resource.Error -> {
+                    _authState.value = _authState.value.copy(
+                        isLoading = false,
+                        error = result.message
+                    )
+                }
+                is Resource.Loading -> {
+                    _authState.value = _authState.value.copy(isLoading = true)
+                }
+            }
+        }
+    }
+    
+    fun logout() {
+        viewModelScope.launch {
+            logoutUseCase()
+            _authState.value = AuthState()
+            _isLoggedIn.value = false
+        }
+    }
+    
+    fun clearError() {
+        _authState.value = _authState.value.copy(error = null)
+    }
+    
+    private fun checkAuthStatus() {
+        viewModelScope.launch {
+            getCurrentUserUseCase().collect { user ->
+                _isLoggedIn.value = user != null
+                _authState.value = _authState.value.copy(user = user)
+            }
+        }
+    }
+}
+
+data class AuthState(
+    val isLoading: Boolean = false,
+    val user: User? = null,
+    val error: String? = null
+)
+
+@HiltViewModel
+class PostsViewModel @Inject constructor(
+    private val getPostsUseCase: GetPostsUseCase,
+    private val getPostByIdUseCase: GetPostByIdUseCase,
+    private val likePostUseCase: LikePostUseCase,
+    private val postRepository: PostRepository
+) : ViewModel() {
+    
+    private val _postsState = MutableStateFlow(PostsState())
+    val postsState: StateFlow<PostsState> = _postsState.asStateFlow()
+    
+    private val _selectedPost = MutableStateFlow<Post?>(null)
+    val selectedPost: StateFlow<Post?> = _selectedPost.asStateFlow()
+    
+    private var currentPage = 1
+    private var isLastPage = false
+    
+    init {
+        loadPosts()
+    }
+    
+    fun loadPosts(
+        refresh: Boolean = false,
+        categoryId: String? = null,
+        search: String? = null
+    ) {
+        if (refresh) {
+            currentPage = 1
+            isLastPage = false
+            _postsState.value = _postsState.value.copy(posts = emptyList())
+        }
+        
+        if (_postsState.value.isLoading || isLastPage) return
+        
+        viewModelScope.launch {
+            _postsState.value = _postsState.value.copy(isLoading = true, error = null)
+            
+            when (val result = getPostsUseCase(
+                page = currentPage,
+                categoryId = categoryId,
+                search = search
+            )) {
+                is Resource.Success -> {
+                    val newPosts = result.data ?: emptyList()
+                    val currentPosts = if (refresh) emptyList() else _postsState.value.posts
+                    
+                    _postsState.value = _postsState.value.copy(
+                        isLoading = false,
+                        posts = currentPosts + newPosts,
+                        error = null
+                    )
+                    
+                    if (newPosts.isEmpty() || newPosts.size < 20) {
+                        isLastPage = true
+                    } else {
+                        currentPage++
+                    }
+                }
+                is Resource.Error -> {
+                    _postsState.value = _postsState.value.copy(
+                        isLoading = false,
+                        error = result.message
+                    )
+                }
+                is Resource.Loading -> {
+                    _postsState.value = _postsState.value.copy(isLoading = true)
+                }
+            }
+        }
+    }
+    
+    fun getPostById(id: String) {
+        viewModelScope.launch {
+            when (val result = getPostByIdUseCase(id)) {
+                is Resource.Success -> {
+                    _selectedPost.value = result.data
+                }
+                is Resource.Error -> {
+                    _postsState.value = _postsState.value.copy(error = result.message)
+                }
+                is Resource.Loading -> {
+                    // Handle loading if needed
+                }
+            }
+        }
+    }
+    
+    fun toggleLike(post: Post) {
+        viewModelScope.launch {
+            when (likePostUseCase(post.id, post.isLiked)) {
+                is Resource.Success -> {
+                    // Update local state
+                    val updatedPosts = _postsState.value.posts.map { p ->
+                        if (p.id == post.id) {
+                            p.copy(
+                                isLiked = !p.isLiked,
+                                likeCount = if (p.isLiked) p.likeCount - 1 else p.likeCount + 1
+                            )
+                        } else p
+                    }
+                    _postsState.value = _postsState.value.copy(posts = updatedPosts)
+                    
+                    // Update selected post if it's the same
+                    if (_selectedPost.value?.id == post.id) {
+                        _selectedPost.value = _selectedPost.value?.copy(
+                            isLiked = !post.isLiked,
+                            likeCount = if (post.isLiked) post.likeCount - 1 else post.likeCount + 1
+                        )
+                    }
+                }
+                is Resource.Error -> {
+                    _postsState.value = _postsState.value.copy(error = result.message)
+                }
+                is Resource.Loading -> {
+                    // Handle loading if needed
+                }
+            }
+        }
+    }
+    
+    fun clearError() {
+        _postsState.value = _postsState.value.copy(error = null)
+    }
+    
+    fun searchPosts(query: String) {
+        loadPosts(refresh = true, search = query)
+    }
+}
+
+data class PostsState(
+    val isLoading: Boolean = false,
+    val posts: List<Post> = emptyList(),
+    val error: String? = null
+)
+
+// Add extension property to Post model for like state
+val Post.isLiked: Boolean
+    get() = false // This would be determined by checking if current user liked the post
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. JETPACK COMPOSE UI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.presentation.ui.screens
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LoginScreen(
+    onNavigateToRegister: () -> Unit,
+    onLoginSuccess: () -> Unit,
+    viewModel: AuthViewModel = hiltViewModel()
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
+    
+    // Navigate on successful login
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            onLoginSuccess()
+        }
+    }
+    
+    // Show error snackbar
+    authState.error?.let { error ->
+        LaunchedEffect(error) {
+            // Show snackbar with error
+            viewModel.clearError()
+        }
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Logo or App Title
+        Text(
+            text = "Welcome Back",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+        
+        // Email Field
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            leadingIcon = {
+                Icon(Icons.Default.Email, contentDescription = null)
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        )
+        
+        // Password Field
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            leadingIcon = {
+                Icon(Icons.Default.Lock, contentDescription = null)
+            },
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                    )
+                }
+            },
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp)
+        )
+        
+        // Login Button
+        Button(
+            onClick = { viewModel.login(email, password) },
+            enabled = !authState.isLoading && email.isNotBlank() && password.isNotBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        ) {
+            if (authState.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text("Login")
+            }
+        }
+        
+        // Register Link
+        TextButton(
+            onClick = onNavigateToRegister,
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text("Don't have an account? Register")
+        }
+        
+        // Error Display
+        authState.error?.let { error ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
