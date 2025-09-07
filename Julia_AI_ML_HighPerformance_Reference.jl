@@ -860,4 +860,860 @@ mutable struct PCA{T<:Real}
     end
 end
 
-PCA(n_components::Int) = PCA{Float64}(n
+PCA(n_components::Int) = PCA{Float64}(n_components)
+
+function fit!(model::PCA{T}, X::AbstractMatrix{T}) where T
+    n, p = size(X)
+    
+    # Center the data
+    model.mean = mean(X, dims=1)[:]
+    X_centered = X .- model.mean'
+    
+    # Perform SVD
+    U, S, V = svd(X_centered)
+    
+    # Store components and explained variance
+    n_comp = min(model.n_components, p, n-1)
+    model.components = V[:, 1:n_comp]'
+    
+    # Calculate explained variance
+    total_var = sum(S .^ 2) / (n - 1)
+    model.explained_variance = (S[1:n_comp] .^ 2) ./ (n - 1)
+    model.explained_variance_ratio = model.explained_variance ./ total_var
+    
+    model.fitted = true
+    
+    println("PCA fitted: $(sum(model.explained_variance_ratio) * 100)% variance explained by $n_comp components")
+    return model
+end
+
+function transform(model::PCA{T}, X::AbstractMatrix{T}) where T
+    @assert model.fitted "Model must be fitted before transformation"
+    X_centered = X .- model.mean'
+    return X_centered * model.components'
+end
+
+function fit_transform!(model::PCA{T}, X::AbstractMatrix{T}) where T
+    fit!(model, X)
+    return transform(model, X)
+end
+
+"""
+Cross-validation with multiple performance metrics.
+"""
+function cross_validate(model_constructor, X::AbstractMatrix{T}, y::AbstractVector, 
+                       cv_folds::Int=5; metrics=[:accuracy], random_state::Int=42) where T
+    
+    Random.seed!(random_state)
+    n = size(X, 1)
+    fold_size = n ÷ cv_folds
+    indices = shuffle(1:n)
+    
+    results = Dict(metric => Float64[] for metric in metrics)
+    
+    @showprogress "Cross-validation..." for fold in 1:cv_folds
+        # Create train/test split for this fold
+        test_start = (fold - 1) * fold_size + 1
+        test_end = fold == cv_folds ? n : fold * fold_size
+        
+        test_indices = indices[test_start:test_end]
+        train_indices = setdiff(indices, test_indices)
+        
+        X_train, X_test = X[train_indices, :], X[test_indices, :]
+        y_train, y_test = y[train_indices], y[test_indices]
+        
+        # Train model
+        model = model_constructor()
+        fit!(model, X_train, y_train)
+        
+        # Make predictions
+        if hasmethod(predict_proba, (typeof(model), typeof(X_test)))
+            y_pred_proba = predict_proba(model, X_test)
+            y_pred = Int.(y_pred_proba .> 0.5)
+        else
+            y_pred = predict(model, X_test)
+        end
+        
+        # Calculate metrics
+        for metric in metrics
+            if metric == :accuracy
+                score = mean(y_pred .== y_test)
+            elseif metric == :mse
+                score = mean((y_pred .- y_test) .^ 2)
+            elseif metric == :mae
+                score = mean(abs.(y_pred .- y_test))
+            elseif metric == :r2
+                ss_res = sum((y_test .- y_pred) .^ 2)
+                ss_tot = sum((y_test .- mean(y_test)) .^ 2)
+                score = 1 - ss_res / ss_tot
+            end
+            
+            push!(results[metric], score)
+        end
+    end
+    
+    # Print results
+    println("\nCross-validation results:")
+    for metric in metrics
+        scores = results[metric]
+        println("  $(metric): $(round(mean(scores), digits=4)) ± $(round(std(scores), digits=4))")
+    end
+    
+    return results
+end
+
+end # module MachineLearning
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           5. DEEP LEARNING WITH FLUX.jl
+# ═══════════════════════════════════════════════════════════════════════════════
+
+"""
+High-performance deep learning implementations using Flux.jl.
+"""
+module DeepLearning
+
+using Flux, MLUtils
+using CUDA
+using Statistics, Random
+using ProgressMeter
+using Plots
+
+export NeuralNetwork, ConvolutionalNetwork, RecurrentNetwork, Autoencoder
+export train_model!, evaluate_model, create_optimizer, plot_training_history
+
+"""
+Flexible neural network architecture builder.
+"""
+struct NeuralNetwork
+    model::Chain
+    optimizer
+    loss_function
+    metrics::Vector{Function}
+    training_history::Dict{String, Vector{Float64}}
+    
+    function NeuralNetwork(input_dim::Int, hidden_dims::Vector{Int}, output_dim::Int;
+                          activation=relu, output_activation=identity,
+                          dropout_rate::Float64=0.0, use_batch_norm::Bool=false)
+        
+        layers = []
+        
+        # Input to first hidden layer
+        push!(layers, Dense(input_dim, hidden_dims[1], activation))
+        if use_batch_norm
+            push!(layers, BatchNorm(hidden_dims[1]))
+        end
+        if dropout_rate > 0
+            push!(layers, Dropout(dropout_rate))
+        end
+        
+        # Hidden layers
+        for i in 1:length(hidden_dims)-1
+            push!(layers, Dense(hidden_dims[i], hidden_dims[i+1], activation))
+            if use_batch_norm
+                push!(layers, BatchNorm(hidden_dims[i+1]))
+            end
+            if dropout_rate > 0
+                push!(layers, Dropout(dropout_rate))
+            end
+        end
+        
+        # Output layer
+        push!(layers, Dense(hidden_dims[end], output_dim, output_activation))
+        
+        model = Chain(layers...)
+        optimizer = Adam(0.001)
+        loss_function = Flux.mse
+        metrics = [mse_metric]
+        training_history = Dict("train_loss" => Float64[], "val_loss" => Float64[])
+        
+        new(model, optimizer, loss_function, metrics, training_history)
+    end
+end
+
+# Metric functions
+mse_metric(ŷ, y) = mean((ŷ .- y) .^ 2)
+mae_metric(ŷ, y) = mean(abs.(ŷ .- y))
+accuracy_metric(ŷ, y) = mean(Flux.onecold(ŷ) .== Flux.onecold(y))
+
+"""
+Convolutional Neural Network for image data.
+"""
+struct ConvolutionalNetwork
+    model::Chain
+    optimizer
+    loss_function
+    training_history::Dict{String, Vector{Float64}}
+    
+    function ConvolutionalNetwork(input_shape::Tuple, num_classes::Int;
+                                conv_layers::Vector{Tuple{Int,Int}}=[(32,3), (64,3), (128,3)],
+                                dense_layers::Vector{Int}=[128, 64])
+        
+        layers = []
+        
+        # Convolutional layers
+        in_channels = input_shape[3]  # Assuming (height, width, channels, batch)
+        
+        for (out_channels, kernel_size) in conv_layers
+            push!(layers, Conv((kernel_size, kernel_size), in_channels => out_channels, relu))
+            push!(layers, BatchNorm(out_channels))
+            push!(layers, MaxPool((2, 2)))
+            in_channels = out_channels
+        end
+        
+        # Flatten
+        push!(layers, Flux.flatten)
+        
+        # Calculate flattened size (approximate)
+        flattened_size = div(input_shape[1], 2^length(conv_layers)) * 
+                        div(input_shape[2], 2^length(conv_layers)) * in_channels
+        
+        # Dense layers
+        prev_size = flattened_size
+        for hidden_size in dense_layers
+            push!(layers, Dense(prev_size, hidden_size, relu))
+            push!(layers, Dropout(0.5))
+            prev_size = hidden_size
+        end
+        
+        # Output layer
+        if num_classes == 1
+            push!(layers, Dense(prev_size, 1, sigmoid))  # Binary classification
+        else
+            push!(layers, Dense(prev_size, num_classes))  # Multi-class
+        end
+        
+        model = Chain(layers...)
+        optimizer = Adam(0.001)
+        loss_function = num_classes == 1 ? Flux.binarycrossentropy : Flux.crossentropy
+        training_history = Dict("train_loss" => Float64[], "val_loss" => Float64[], 
+                               "train_acc" => Float64[], "val_acc" => Float64[])
+        
+        new(model, optimizer, loss_function, training_history)
+    end
+end
+
+"""
+Recurrent Neural Network for sequence data.
+"""
+struct RecurrentNetwork
+    model::Chain
+    optimizer
+    loss_function
+    training_history::Dict{String, Vector{Float64}}
+    
+    function RecurrentNetwork(input_size::Int, hidden_size::Int, output_size::Int, seq_length::Int;
+                            cell_type::Symbol=:LSTM, num_layers::Int=2, dropout_rate::Float64=0.2)
+        
+        layers = []
+        
+        # Recurrent layers
+        for i in 1:num_layers
+            in_size = i == 1 ? input_size : hidden_size
+            
+            if cell_type == :LSTM
+                push!(layers, LSTM(in_size, hidden_size))
+            elseif cell_type == :GRU
+                push!(layers, GRU(in_size, hidden_size))
+            else
+                push!(layers, RNN(in_size, hidden_size))
+            end
+            
+            if dropout_rate > 0 && i < num_layers
+                push!(layers, Dropout(dropout_rate))
+            end
+        end
+        
+        # Output layer
+        push!(layers, Dense(hidden_size, output_size))
+        
+        model = Chain(layers...)
+        optimizer = Adam(0.001)
+        loss_function = Flux.mse
+        training_history = Dict("train_loss" => Float64[], "val_loss" => Float64[])
+        
+        new(model, optimizer, loss_function, training_history)
+    end
+end
+
+"""
+Autoencoder for dimensionality reduction and feature learning.
+"""
+struct Autoencoder
+    encoder::Chain
+    decoder::Chain
+    optimizer
+    loss_function
+    training_history::Dict{String, Vector{Float64}}
+    
+    function Autoencoder(input_dim::Int, encoding_dims::Vector{Int};
+                        activation=relu, final_activation=sigmoid)
+        
+        # Encoder
+        encoder_layers = []
+        prev_dim = input_dim
+        for dim in encoding_dims
+            push!(encoder_layers, Dense(prev_dim, dim, activation))
+            prev_dim = dim
+        end
+        encoder = Chain(encoder_layers...)
+        
+        # Decoder (reverse of encoder)
+        decoder_layers = []
+        for i in length(encoding_dims):-1:2
+            push!(decoder_layers, Dense(encoding_dims[i], encoding_dims[i-1], activation))
+        end
+        push!(decoder_layers, Dense(encoding_dims[1], input_dim, final_activation))
+        decoder = Chain(decoder_layers...)
+        
+        optimizer = Adam(0.001)
+        loss_function = Flux.mse
+        training_history = Dict("train_loss" => Float64[], "val_loss" => Float64[])
+        
+        new(encoder, decoder, optimizer, loss_function, training_history)
+    end
+end
+
+# Forward pass for autoencoder
+(ae::Autoencoder)(x) = ae.decoder(ae.encoder(x))
+
+"""
+Generic training function for all network types.
+"""
+function train_model!(network, train_data, val_data=nothing; 
+                     epochs::Int=100, batch_size::Int=32, 
+                     verbose::Bool=true, early_stopping::Bool=true,
+                     patience::Int=10, min_delta::Float64=1e-4)
+    
+    # Setup for GPU if available
+    device = gpu_available ? gpu : cpu
+    
+    if isa(network, NeuralNetwork)
+        model = network.model |> device
+    elseif isa(network, Union{ConvolutionalNetwork, RecurrentNetwork})
+        model = network.model |> device
+    elseif isa(network, Autoencoder)
+        encoder = network.encoder |> device
+        decoder = network.decoder |> device
+        model = Chain(encoder, decoder) |> device
+    end
+    
+    # Create data loaders
+    train_loader = DataLoader(train_data, batchsize=batch_size, shuffle=true)
+    val_loader = val_data !== nothing ? DataLoader(val_data, batchsize=batch_size) : nothing
+    
+    # Training state
+    best_val_loss = Inf
+    patience_counter = 0
+    
+    # Training loop
+    progress = Progress(epochs, desc="Training epochs...")
+    
+    for epoch in 1:epochs
+        # Training phase
+        train_losses = Float64[]
+        
+        for (x_batch, y_batch) in train_loader
+            x_batch, y_batch = x_batch |> device, y_batch |> device
+            
+            # Forward and backward pass
+            loss, grads = Flux.withgradient(model) do m
+                ŷ = m(x_batch)
+                network.loss_function(ŷ, y_batch)
+            end
+            
+            # Update parameters
+            Flux.update!(network.optimizer, model, grads[1])
+            
+            push!(train_losses, loss)
+        end
+        
+        train_loss = mean(train_losses)
+        push!(network.training_history["train_loss"], train_loss)
+        
+        # Validation phase
+        if val_loader !== nothing
+            val_losses = Float64[]
+            
+            for (x_batch, y_batch) in val_loader
+                x_batch, y_batch = x_batch |> device, y_batch |> device
+                ŷ = model(x_batch)
+                loss = network.loss_function(ŷ, y_batch)
+                push!(val_losses, loss)
+            end
+            
+            val_loss = mean(val_losses)
+            push!(network.training_history["val_loss"], val_loss)
+            
+            # Early stopping check
+            if early_stopping
+                if val_loss < best_val_loss - min_delta
+                    best_val_loss = val_loss
+                    patience_counter = 0
+                else
+                    patience_counter += 1
+                    if patience_counter >= patience
+                        println("\nEarly stopping at epoch $epoch")
+                        break
+                    end
+                end
+            end
+            
+            if verbose && epoch % 10 == 0
+                println("Epoch $epoch: Train Loss = $(round(train_loss, digits=4)), Val Loss = $(round(val_loss, digits=4))")
+            end
+        else
+            if verbose && epoch % 10 == 0
+                println("Epoch $epoch: Train Loss = $(round(train_loss, digits=4))")
+            end
+        end
+        
+        next!(progress)
+    end
+    
+    # Move model back to CPU for compatibility
+    if isa(network, NeuralNetwork)
+        network.model = network.model |> cpu
+    elseif isa(network, Union{ConvolutionalNetwork, RecurrentNetwork})
+        network.model = network.model |> cpu
+    elseif isa(network, Autoencoder)
+        network.encoder = network.encoder |> cpu
+        network.decoder = network.decoder |> cpu
+    end
+    
+    return network
+end
+
+"""
+Evaluate model performance on test data.
+"""
+function evaluate_model(network, test_data; batch_size::Int=32)
+    device = gpu_available ? gpu : cpu
+    
+    if isa(network, NeuralNetwork)
+        model = network.model |> device
+    elseif isa(network, Union{ConvolutionalNetwork, RecurrentNetwork})
+        model = network.model |> device
+    elseif isa(network, Autoencoder)
+        encoder = network.encoder |> device
+        decoder = network.decoder |> device
+        model = Chain(encoder, decoder) |> device
+    end
+    
+    test_loader = DataLoader(test_data, batchsize=batch_size)
+    
+    total_loss = 0.0
+    total_samples = 0
+    predictions = []
+    targets = []
+    
+    for (x_batch, y_batch) in test_loader
+        x_batch, y_batch = x_batch |> device, y_batch |> device
+        
+        ŷ = model(x_batch)
+        loss = network.loss_function(ŷ, y_batch)
+        
+        batch_size_actual = size(x_batch)[end]
+        total_loss += loss * batch_size_actual
+        total_samples += batch_size_actual
+        
+        # Store predictions and targets for additional metrics
+        push!(predictions, ŷ |> cpu)
+        push!(targets, y_batch |> cpu)
+    end
+    
+    avg_loss = total_loss / total_samples
+    
+    # Concatenate all predictions and targets
+    all_predictions = vcat(predictions...)
+    all_targets = vcat(targets...)
+    
+    # Calculate additional metrics
+    metrics = Dict("loss" => avg_loss)
+    
+    # For regression tasks
+    if size(all_predictions, 1) == 1 || length(size(all_predictions)) == 1
+        mse = mean((all_predictions .- all_targets) .^ 2)
+        mae = mean(abs.(all_predictions .- all_targets))
+        
+        # R-squared
+        ss_res = sum((all_targets .- all_predictions) .^ 2)
+        ss_tot = sum((all_targets .- mean(all_targets)) .^ 2)
+        r2 = 1 - ss_res / ss_tot
+        
+        metrics["mse"] = mse
+        metrics["mae"] = mae
+        metrics["r2"] = r2
+    else
+        # For classification tasks
+        predicted_classes = Flux.onecold(all_predictions)
+        true_classes = Flux.onecold(all_targets)
+        accuracy = mean(predicted_classes .== true_classes)
+        metrics["accuracy"] = accuracy
+    end
+    
+    return metrics
+end
+
+"""
+Plot training history for visualization.
+"""
+function plot_training_history(network; save_path::String="")
+    history = network.training_history
+    
+    if haskey(history, "val_loss")
+        # Plot training and validation loss
+        p1 = plot(history["train_loss"], label="Training Loss", 
+                 title="Model Loss", xlabel="Epoch", ylabel="Loss")
+        plot!(p1, history["val_loss"], label="Validation Loss")
+        
+        if haskey(history, "train_acc")
+            # Plot training and validation accuracy
+            p2 = plot(history["train_acc"], label="Training Accuracy",
+                     title="Model Accuracy", xlabel="Epoch", ylabel="Accuracy")
+            plot!(p2, history["val_acc"], label="Validation Accuracy")
+            
+            final_plot = plot(p1, p2, layout=(2,1), size=(800, 600))
+        else
+            final_plot = p1
+        end
+    else
+        # Plot only training loss
+        final_plot = plot(history["train_loss"], label="Training Loss",
+                         title="Training Loss", xlabel="Epoch", ylabel="Loss")
+    end
+    
+    if !isempty(save_path)
+        savefig(final_plot, save_path)
+        println("Training history plot saved to: $save_path")
+    end
+    
+    return final_plot
+end
+
+"""
+Create optimizers with different configurations.
+"""
+function create_optimizer(optimizer_type::Symbol; learning_rate::Float64=0.001, kwargs...)
+    if optimizer_type == :adam
+        return Adam(learning_rate)
+    elseif optimizer_type == :sgd
+        momentum = get(kwargs, :momentum, 0.9)
+        return Momentum(learning_rate, momentum)
+    elseif optimizer_type == :rmsprop
+        return RMSProp(learning_rate)
+    elseif optimizer_type == :adagrad
+        return AdaGrad(learning_rate)
+    else
+        throw(ArgumentError("Unknown optimizer type: $optimizer_type"))
+    end
+end
+
+end # module DeepLearning
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           6. PARALLEL AND DISTRIBUTED COMPUTING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+"""
+Parallel computing utilities for scaling ML algorithms.
+"""
+module ParallelComputing
+
+using Distributed, SharedArrays, ThreadsX
+using Statistics, Random
+using ProgressMeter
+
+export parallel_cross_validation, distributed_grid_search, parallel_bootstrap
+export threaded_matrix_operations, distributed_kmeans
+
+"""
+Parallel cross-validation with distributed computing.
+"""
+function parallel_cross_validation(model_func, X, y, cv_folds::Int=5; 
+                                 metrics=[:accuracy], random_state::Int=42)
+    
+    Random.seed!(random_state)
+    n = size(X, 1)
+    fold_size = n ÷ cv_folds
+    indices = shuffle(1:n)
+    
+    # Create fold indices
+    fold_ranges = [(i-1)*fold_size+1 : (i==cv_folds ? n : i*fold_size) for i in 1:cv_folds]
+    
+    # Distribute data to workers
+    @everywhere X_shared = $X
+    @everywhere y_shared = $y
+    @everywhere model_func_shared = $model_func
+    @everywhere indices_shared = $indices
+    
+    # Parallel execution of CV folds
+    results = @distributed (append!) for fold in 1:cv_folds
+        # Get test indices for this fold
+        test_indices = indices_shared[fold_ranges[fold]]
+        train_indices = setdiff(indices_shared, test_indices)
+        
+        # Split data
+        X_train = X_shared[train_indices, :]
+        X_test = X_shared[test_indices, :]
+        y_train = y_shared[train_indices]
+        y_test = y_shared[test_indices]
+        
+        # Train model
+        model = model_func_shared()
+        fit!(model, X_train, y_train)
+        
+        # Make predictions and calculate metrics
+        y_pred = predict(model, X_test)
+        
+        fold_results = Dict()
+        for metric in metrics
+            if metric == :accuracy
+                score = mean(y_pred .== y_test)
+            elseif metric == :mse
+                score = mean((y_pred .- y_test) .^ 2)
+            elseif metric == :mae
+                score = mean(abs.(y_pred .- y_test))
+            end
+            fold_results[metric] = score
+        end
+        
+        [fold_results]
+    end
+    
+    # Aggregate results
+    aggregated = Dict()
+    for metric in metrics
+        scores = [result[metric] for result in results]
+        aggregated[metric] = (mean=mean(scores), std=std(scores), scores=scores)
+    end
+    
+    return aggregated
+end
+
+"""
+Distributed grid search for hyperparameter optimization.
+"""
+function distributed_grid_search(model_func, param_grid::Dict, X, y; 
+                                cv_folds::Int=3, scoring::Symbol=:accuracy,
+                                verbose::Bool=true)
+    
+    # Generate parameter combinations
+    param_names = collect(keys(param_grid))
+    param_values = collect(values(param_grid))
+    param_combinations = vec(collect(Iterators.product(param_values...)))
+    
+    n_combinations = length(param_combinations)
+    println("Grid search with $n_combinations parameter combinations")
+    
+    # Distribute data and functions
+    @everywhere X_grid = $X
+    @everywhere y_grid = $y
+    @everywhere model_func_grid = $model_func
+    @everywhere param_names_grid = $param_names
+    
+    # Parallel grid search
+    results = @distributed (append!) for i in 1:n_combinations
+        params = param_combinations[i]
+        param_dict = Dict(zip(param_names_grid, params))
+        
+        # Create model with current parameters
+        model = model_func_grid(; param_dict...)
+        
+        # Perform cross-validation
+        cv_results = parallel_cross_validation(() -> model_func_grid(; param_dict...),
+                                             X_grid, y_grid, cv_folds, 
+                                             metrics=[scoring])
+        
+        score = cv_results[scoring].mean
+        
+        [(params=param_dict, score=score, cv_std=cv_results[scoring].std)]
+    end
+    
+    # Find best parameters
+    best_idx = argmax([r.score for r in results])
+    best_result = results[best_idx]
+    
+    if verbose
+        println("Best parameters: $(best_result.params)")
+        println("Best cross-validation score: $(round(best_result.score, digits=4)) ± $(round(best_result.cv_std, digits=4))")
+    end
+    
+    return (best_params=best_result.params, best_score=best_result.score, all_results=results)
+end
+
+"""
+Parallel bootstrap sampling for statistical inference.
+"""
+function parallel_bootstrap(statistic_func, data, n_bootstrap::Int=1000; 
+                          confidence_level::Float64=0.95, random_state::Int=42)
+    
+    Random.seed!(random_state)
+    n_samples = size(data, 1)
+    
+    # Generate bootstrap sample indices
+    bootstrap_indices = [rand(1:n_samples, n_samples) for _ in 1:n_bootstrap]
+    
+    @everywhere data_bootstrap = $data
+    @everywhere statistic_func_bootstrap = $statistic_func
+    
+    # Parallel bootstrap computation
+    bootstrap_stats = @distributed (append!) for indices in bootstrap_indices
+        bootstrap_sample = data_bootstrap[indices, :]
+        stat = statistic_func_bootstrap(bootstrap_sample)
+        [stat]
+    end
+    
+    # Calculate confidence intervals
+    α = 1 - confidence_level
+    lower_percentile = (α/2) * 100
+    upper_percentile = (1 - α/2) * 100
+    
+    ci_lower = percentile(bootstrap_stats, lower_percentile)
+    ci_upper = percentile(bootstrap_stats, upper_percentile)
+    
+    return (
+        statistic=mean(bootstrap_stats),
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
+        bootstrap_distribution=bootstrap_stats
+    )
+end
+
+"""
+Threaded matrix operations for improved performance.
+"""
+function threaded_matrix_multiply(A::AbstractMatrix{T}, B::AbstractMatrix{T}) where T
+    m, k = size(A)
+    k2, n = size(B)
+    @assert k == k2 "Matrix dimensions must match"
+    
+    C = zeros(T, m, n)
+    
+    ThreadsX.foreach(1:m) do i
+        for j in 1:n
+            for l in 1:k
+                C[i, j] += A[i, l] * B[l, j]
+            end
+        end
+    end
+    
+    return C
+end
+
+"""
+Threaded element-wise operations.
+"""
+function threaded_map(f, arrays...)
+    result = similar(arrays[1])
+    ThreadsX.map!(f, result, arrays...)
+    return result
+end
+
+"""
+Distributed K-means clustering for large datasets.
+"""
+function distributed_kmeans(X::AbstractMatrix{T}, k::Int; 
+                          max_iterations::Int=300, tolerance::T=T(1e-4),
+                          n_init::Int=10) where T
+    
+    n, d = size(X)
+    best_centroids = nothing
+    best_inertia = Inf
+    
+    # Try multiple initializations in parallel
+    @everywhere X_kmeans = $X
+    @everywhere k_kmeans = $k
+    @everywhere max_iterations_kmeans = $max_iterations
+    @everywhere tolerance_kmeans = $tolerance
+    
+    results = @distributed (append!) for init in 1:n_init
+        # K-means++ initialization
+        centroids = kmeans_plus_plus_init(X_kmeans, k_kmeans)
+        
+        # Lloyd's algorithm
+        for iter in 1:max_iterations_kmeans
+            old_centroids = copy(centroids)
+            
+            # Assign points to nearest centroids (parallel)
+            labels = ThreadsX.map(1:size(X_kmeans, 1)) do i
+                min_dist = Inf
+                best_cluster = 1
+                
+                for j in 1:k_kmeans
+                    dist = sum((X_kmeans[i, :] .- centroids[j, :]) .^ 2)
+                    if dist < min_dist
+                        min_dist = dist
+                        best_cluster = j
+                    end
+                end
+                
+                best_cluster
+            end
+            
+            # Update centroids
+            for j in 1:k_kmeans
+                cluster_points = X_kmeans[labels .== j, :]
+                if size(cluster_points, 1) > 0
+                    centroids[j, :] = mean(cluster_points, dims=1)[:]
+                end
+            end
+            
+            # Check convergence
+            if norm(centroids - old_centroids) < tolerance_kmeans
+                break
+            end
+        end
+        
+        # Calculate inertia
+        inertia = 0.0
+        for i in 1:size(X_kmeans, 1)
+            min_dist = Inf
+            for j in 1:k_kmeans
+                dist = sum((X_kmeans[i, :] .- centroids[j, :]) .^ 2)
+                min_dist = min(min_dist, dist)
+            end
+            inertia += min_dist
+        end
+        
+        [(centroids=centroids, inertia=inertia)]
+    end
+    
+    # Select best result
+    best_idx = argmin([r.inertia for r in results])
+    best_result = results[best_idx]
+    
+    return (centroids=best_result.centroids, inertia=best_result.inertia)
+end
+
+end # module ParallelComputing
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           7. TIME SERIES ANALYSIS AND FORECASTING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+"""
+Advanced time series analysis with Julia's performance advantages.
+"""
+module TimeSeriesAnalysis
+
+using Statistics, LinearAlgebra, Random
+using DSP, Distributions
+using Plots
+using ProgressMeter
+
+export TimeSeriesModel, ARIMA, ExponentialSmoothing, StateSpaceModel
+export seasonal_decompose, detect_changepoints, forecast_accuracy
+
+"""
+Time series decomposition using STL (Seasonal and Trend decomposition using Loess).
+"""
+function seasonal_decompose(y::Vector{T}, period::Int; 
+                          trend_window::Union{Int,Nothing}=nothing,
+                          seasonal_window::Union{Int,Nothing}=nothing) where T<:Real
+    
+    n = length(y)
+    
+    # Default parameters
+    if trend_window === nothing
+        trend_window = ceil(Int, 1.5 * period / (1 - 1
