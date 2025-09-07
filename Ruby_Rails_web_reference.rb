@@ -1627,3 +1627,823 @@ class Api::V1::BaseController < ActionController::API
       user&.admin? && user != record
     end
   end
+
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+#                           9. BACKGROUND JOBS AND MAILERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# app/jobs/application_job.rb
+class ApplicationJob < ActiveJob::Base
+    # Automatically retry jobs that encountered a deadlock
+    retry_on ActiveRecord::Deadlocked
+  
+    # Most jobs are safe to ignore if the underlying records are no longer available
+    discard_on ActiveJob::DeserializationError
+  end
+  
+  # app/jobs/notify_subscribers_job.rb
+  class NotifySubscribersJob < ApplicationJob
+    queue_as :default
+  
+    def perform(post)
+      # Get all subscribers (this would be a real model in your app)
+      subscribers = User.where(subscribed: true)
+      
+      subscribers.find_each do |subscriber|
+        PostMailer.new_post_notification(subscriber, post).deliver_now
+      end
+    end
+  end
+  
+  # app/jobs/comment_notification_job.rb
+  class CommentNotificationJob < ApplicationJob
+    queue_as :default
+  
+    def perform(comment)
+      return unless comment.post.user.email_notifications?
+      
+      CommentMailer.new_comment_notification(comment).deliver_now
+    end
+  end
+  
+  # app/jobs/cleanup_old_posts_job.rb
+  class CleanupOldPostsJob < ApplicationJob
+    queue_as :low_priority
+  
+    def perform
+      # Archive posts older than 2 years
+      Post.where('created_at < ?', 2.years.ago)
+          .where(status: :published)
+          .update_all(status: :archived)
+    end
+  end
+  
+  # app/mailers/application_mailer.rb
+  class ApplicationMailer < ActionMailer::Base
+    default from: 'noreply@mywebapp.com'
+    layout 'mailer'
+    
+    private
+    
+    def mail_with_name(to_user, subject)
+      mail(
+        to: "#{to_user.full_name} <#{to_user.email}>",
+        subject: subject
+      )
+    end
+  end
+  
+  # app/mailers/user_mailer.rb
+  class UserMailer < ApplicationMailer
+    def welcome(user)
+      @user = user
+      @login_url = new_user_session_url
+      
+      mail_with_name(@user, 'Welcome to My Web App!')
+    end
+    
+    def password_reset(user)
+      @user = user
+      @reset_url = edit_user_password_url(@user, reset_password_token: @user.reset_password_token)
+      
+      mail_with_name(@user, 'Password Reset Instructions')
+    end
+  end
+  
+  # app/mailers/post_mailer.rb
+  class PostMailer < ApplicationMailer
+    def new_post_notification(subscriber, post)
+      @subscriber = subscriber
+      @post = post
+      @post_url = post_url(@post)
+      @unsubscribe_url = unsubscribe_url(token: @subscriber.unsubscribe_token)
+      
+      mail_with_name(@subscriber, "New post: #{@post.title}")
+    end
+  end
+  
+  # app/mailers/comment_mailer.rb
+  class CommentMailer < ApplicationMailer
+    def new_comment_notification(comment)
+      @comment = comment
+      @post = comment.post
+      @author = @post.user
+      @post_url = post_url(@post, anchor: "comment-#{@comment.id}")
+      
+      mail_with_name(@author, "New comment on your post: #{@post.title}")
+    end
+  end
+  
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           10. TESTING WITH RSPEC
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# spec/rails_helper.rb
+=begin
+require 'spec_helper'
+ENV['RAILS_ENV'] ||= 'test'
+require_relative '../config/environment'
+abort("The Rails environment is running in production mode!") if Rails.env.production?
+require 'rspec/rails'
+
+# Add additional requires below this line. Rails is not loaded until this point!
+require 'factory_bot_rails'
+require 'faker'
+
+# Checks for pending migrations and applies them before tests are run.
+begin
+  ActiveRecord::Migration.maintain_test_schema!
+rescue ActiveRecord::PendingMigrationError => e
+  abort e.to_s.strip
+end
+
+RSpec.configure do |config|
+  # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
+  config.fixture_path = "#{::Rails.root}/spec/fixtures"
+  
+  # If you're not using ActiveRecord, or you'd prefer not to run each of your
+  # examples within a transaction, remove the following line or assign false
+  # instead of true
+  config.use_transactional_fixtures = true
+  
+  # You can uncomment this line to turn off ActiveRecord support entirely.
+  # config.use_active_record = false
+  
+  # RSpec Rails can automatically mix in different behaviours to your tests
+  # based on their file location, for example enabling you to call `get` and
+  # `post` in specs under `spec/controllers`.
+  config.infer_spec_type_from_file_location!
+  
+  # Filter lines from Rails gems in backtraces.
+  config.filter_rails_from_backtrace!
+  
+  # Include FactoryBot methods
+  config.include FactoryBot::Syntax::Methods
+  
+  # Include Devise test helpers
+  config.include Devise::Test::ControllerHelpers, type: :controller
+  config.include Devise::Test::IntegrationHelpers, type: :request
+  
+  # Database cleaner
+  config.before(:suite) do
+    DatabaseCleaner.strategy = :transaction
+    DatabaseCleaner.clean_with(:truncation)
+  end
+  
+  config.around(:each) do |example|
+    DatabaseCleaner.cleaning do
+      example.run
+    end
+  end
+end
+=end
+
+# spec/factories/users.rb
+FactoryBot.define do
+    factory :user do
+      first_name { Faker::Name.first_name }
+      last_name { Faker::Name.last_name }
+      username { Faker::Internet.unique.username(specifier: 5..15) }
+      email { Faker::Internet.unique.email }
+      password { 'password123' }
+      password_confirmation { 'password123' }
+      bio { Faker::Lorem.paragraph }
+      website { Faker::Internet.url }
+      location { Faker::Address.city }
+      confirmed_at { Time.current }
+      
+      trait :admin do
+        role { :admin }
+      end
+      
+      trait :moderator do
+        role { :moderator }
+      end
+      
+      trait :with_avatar do
+        after(:build) do |user|
+          user.avatar.attach(
+            io: File.open(Rails.root.join('spec', 'fixtures', 'files', 'avatar.jpg')),
+            filename: 'avatar.jpg',
+            content_type: 'image/jpeg'
+          )
+        end
+      end
+    end
+  end
+  
+  # spec/factories/categories.rb
+  FactoryBot.define do
+    factory :category do
+      name { Faker::Book.genre }
+      slug { name.parameterize }
+      description { Faker::Lorem.paragraph }
+      color { %w[#3B82F6 #EF4444 #10B981 #F59E0B #8B5CF6].sample }
+      active { true }
+    end
+  end
+  
+  # spec/factories/posts.rb
+  FactoryBot.define do
+    factory :post do
+      title { Faker::Lorem.sentence(word_count: 4) }
+      slug { title.parameterize }
+      excerpt { Faker::Lorem.paragraph }
+      content { Faker::Lorem.paragraphs(number: 5).join("\n\n") }
+      status { :published }
+      visibility { :public }
+      published_at { Time.current }
+      association :user
+      association :category
+      
+      trait :draft do
+        status { :draft }
+        published_at { nil }
+      end
+      
+      trait :featured do
+        featured { true }
+      end
+      
+      trait :with_image do
+        after(:build) do |post|
+          post.featured_image.attach(
+            io: File.open(Rails.root.join('spec', 'fixtures', 'files', 'featured_image.jpg')),
+            filename: 'featured_image.jpg',
+            content_type: 'image/jpeg'
+          )
+        end
+      end
+    end
+  end
+  
+  # spec/factories/comments.rb
+  FactoryBot.define do
+    factory :comment do
+      content { Faker::Lorem.paragraph }
+      status { :approved }
+      association :post
+      association :user
+      
+      trait :pending do
+        status { :pending }
+      end
+      
+      trait :reply do
+        association :parent, factory: :comment
+      end
+    end
+  end
+  
+  # spec/models/user_spec.rb
+  require 'rails_helper'
+  
+  RSpec.describe User, type: :model do
+    describe 'validations' do
+      subject { build(:user) }
+      
+      it { should validate_presence_of(:first_name) }
+      it { should validate_presence_of(:last_name) }
+      it { should validate_presence_of(:username) }
+      it { should validate_presence_of(:email) }
+      it { should validate_uniqueness_of(:username).case_insensitive }
+      it { should validate_uniqueness_of(:email).case_insensitive }
+    end
+    
+    describe 'associations' do
+      it { should have_many(:posts).dependent(:destroy) }
+      it { should have_many(:comments).dependent(:destroy) }
+      it { should have_one_attached(:avatar) }
+    end
+    
+    describe 'enums' do
+      it { should define_enum_for(:role).with_values(user: 0, moderator: 1, admin: 2) }
+      it { should define_enum_for(:status).with_values(inactive: 0, active: 1, suspended: 2) }
+    end
+    
+    describe 'scopes' do
+      let!(:active_user) { create(:user, status: :active) }
+      let!(:inactive_user) { create(:user, status: :inactive) }
+      
+      it 'returns only active users' do
+        expect(User.active).to include(active_user)
+        expect(User.active).not_to include(inactive_user)
+      end
+    end
+    
+    describe 'instance methods' do
+      let(:user) { create(:user, first_name: 'John', last_name: 'Doe') }
+      
+      describe '#full_name' do
+        it 'returns the full name' do
+          expect(user.full_name).to eq('John Doe')
+        end
+      end
+      
+      describe '#admin?' do
+        it 'returns true for admin users' do
+          admin = create(:user, :admin)
+          expect(admin.admin?).to be true
+        end
+        
+        it 'returns false for non-admin users' do
+          expect(user.admin?).to be false
+        end
+      end
+      
+      describe '#can_moderate?' do
+        it 'returns true for admin users' do
+          admin = create(:user, :admin)
+          expect(admin.can_moderate?).to be true
+        end
+        
+        it 'returns true for moderator users' do
+          moderator = create(:user, :moderator)
+          expect(moderator.can_moderate?).to be true
+        end
+        
+        it 'returns false for regular users' do
+          expect(user.can_moderate?).to be false
+        end
+      end
+    end
+    
+    describe 'callbacks' do
+      it 'normalizes username before save' do
+        user = build(:user, username: 'TestUser123')
+        user.save
+        expect(user.username).to eq('testuser123')
+      end
+      
+      it 'sends welcome email after create' do
+        expect {
+          create(:user)
+        }.to have_enqueued_job(ActionMailer::MailDeliveryJob)
+      end
+    end
+  end
+  
+  # spec/models/post_spec.rb
+  require 'rails_helper'
+  
+  RSpec.describe Post, type: :model do
+    describe 'validations' do
+      subject { build(:post) }
+      
+      it { should validate_presence_of(:title) }
+      it { should validate_presence_of(:content) }
+      it { should validate_presence_of(:slug) }
+      it { should validate_uniqueness_of(:slug) }
+      it { should validate_length_of(:title).is_at_most(255) }
+      it { should validate_length_of(:excerpt).is_at_most(500) }
+    end
+    
+    describe 'associations' do
+      it { should belong_to(:user) }
+      it { should belong_to(:category) }
+      it { should have_many(:comments).dependent(:destroy) }
+      it { should have_many(:post_tags).dependent(:destroy) }
+      it { should have_many(:tags).through(:post_tags) }
+    end
+    
+    describe 'enums' do
+      it { should define_enum_for(:status).with_values(draft: 0, published: 1, archived: 2) }
+      it { should define_enum_for(:visibility).with_values(public: 0, private: 1, protected: 2) }
+    end
+    
+    describe 'scopes' do
+      let!(:published_post) { create(:post, status: :published) }
+      let!(:draft_post) { create(:post, :draft) }
+      let!(:featured_post) { create(:post, featured: true) }
+      
+      it 'returns only published posts' do
+        expect(Post.published).to include(published_post)
+        expect(Post.published).not_to include(draft_post)
+      end
+      
+      it 'returns only draft posts' do
+        expect(Post.drafts).to include(draft_post)
+        expect(Post.drafts).not_to include(published_post)
+      end
+      
+      it 'returns only featured posts' do
+        expect(Post.featured).to include(featured_post)
+      end
+    end
+    
+    describe 'instance methods' do
+      let(:post) { create(:post) }
+      
+      describe '#published?' do
+        it 'returns true for published posts' do
+          expect(post.published?).to be true
+        end
+        
+        it 'returns false for draft posts' do
+          draft_post = create(:post, :draft)
+          expect(draft_post.published?).to be false
+        end
+      end
+      
+      describe '#reading_time' do
+        it 'calculates reading time based on content' do
+          # Create post with 400 words (should be 2 minutes at 200 words/minute)
+          content = (1..400).map { 'word' }.join(' ')
+          post = create(:post, content: content)
+          expect(post.reading_time).to eq(2)
+        end
+      end
+      
+      describe '#publish!' do
+        let(:draft_post) { create(:post, :draft) }
+        
+        it 'publishes a draft post' do
+          expect {
+            draft_post.publish!
+          }.to change(draft_post, :status).from('draft').to('published')
+            .and change(draft_post, :published_at).from(nil)
+        end
+      end
+      
+      describe '#unpublish!' do
+        it 'unpublishes a published post' do
+          expect {
+            post.unpublish!
+          }.to change(post, :status).from('published').to('draft')
+            .and change(post, :published_at).to(nil)
+        end
+      end
+    end
+    
+    describe 'callbacks' do
+      it 'generates slug before validation' do
+        post = build(:post, title: 'Test Post Title', slug: nil)
+        post.valid?
+        expect(post.slug).to eq('test-post-title')
+      end
+      
+      it 'generates unique slug if title already exists' do
+        create(:post, title: 'Test Title', slug: 'test-title')
+        post = build(:post, title: 'Test Title')
+        post.valid?
+        expect(post.slug).to eq('test-title-1')
+      end
+      
+      it 'generates excerpt if not provided' do
+        content = 'This is a very long content that should be truncated' * 10
+        post = build(:post, content: content, excerpt: nil)
+        post.save
+        expect(post.excerpt).to be_present
+        expect(post.excerpt.length).to be <= 200
+      end
+    end
+  end
+  
+  # spec/controllers/posts_controller_spec.rb
+  require 'rails_helper'
+  
+  RSpec.describe PostsController, type: :controller do
+    let(:user) { create(:user) }
+    let(:admin) { create(:user, :admin) }
+    let(:category) { create(:category) }
+    let(:post_instance) { create(:post, user: user, category: category) }
+    let(:draft_post) { create(:post, :draft, user: user, category: category) }
+    
+    describe 'GET #index' do
+      before do
+        create_list(:post, 3, category: category)
+        create_list(:post, 2, :draft, category: category)
+      end
+      
+      it 'returns published posts only' do
+        get :index
+        expect(assigns(:posts).map(&:status).uniq).to eq(['published'])
+      end
+      
+      it 'filters by category when specified' do
+        other_category = create(:category)
+        other_post = create(:post, category: other_category)
+        
+        get :index, params: { category: category.slug }
+        expect(assigns(:posts)).not_to include(other_post)
+      end
+      
+      it 'searches posts when search term provided' do
+        searchable_post = create(:post, title: 'Unique Searchable Title')
+        
+        get :index, params: { search: 'Unique Searchable' }
+        expect(assigns(:posts)).to include(searchable_post)
+      end
+    end
+    
+    describe 'GET #show' do
+      context 'when post is published' do
+        it 'shows the post to anyone' do
+          get :show, params: { id: post_instance.slug }
+          expect(response).to have_http_status(:success)
+          expect(assigns(:post)).to eq(post_instance)
+        end
+        
+        it 'increments views count' do
+          expect {
+            get :show, params: { id: post_instance.slug }
+          }.to change { post_instance.reload.views_count }.by(1)
+        end
+      end
+      
+      context 'when post is draft' do
+        it 'shows the post to the author' do
+          sign_in user
+          get :show, params: { id: draft_post.slug }
+          expect(response).to have_http_status(:success)
+        end
+        
+        it 'denies access to other users' do
+          other_user = create(:user)
+          sign_in other_user
+          expect {
+            get :show, params: { id: draft_post.slug }
+          }.to raise_error(Pundit::NotAuthorizedError)
+        end
+      end
+    end
+    
+    describe 'POST #create' do
+      let(:valid_attributes) do
+        {
+          title: 'New Post',
+          content: 'Post content',
+          category_id: category.id
+        }
+      end
+      
+      context 'when user is signed in' do
+        before { sign_in user }
+        
+        it 'creates a new post' do
+          expect {
+            post :create, params: { post: valid_attributes }
+          }.to change(Post, :count).by(1)
+        end
+        
+        it 'assigns the post to current user' do
+          post :create, params: { post: valid_attributes }
+          expect(assigns(:post).user).to eq(user)
+        end
+        
+        it 'redirects to the post on success' do
+          post :create, params: { post: valid_attributes }
+          expect(response).to redirect_to(assigns(:post))
+        end
+      end
+      
+      context 'when user is not signed in' do
+        it 'redirects to sign in' do
+          post :create, params: { post: valid_attributes }
+          expect(response).to redirect_to(new_user_session_path)
+        end
+      end
+    end
+    
+    describe 'PATCH #update' do
+      context 'when user owns the post' do
+        before { sign_in user }
+        
+        it 'updates the post' do
+          patch :update, params: { 
+            id: post_instance.slug, 
+            post: { title: 'Updated Title' } 
+          }
+          expect(post_instance.reload.title).to eq('Updated Title')
+        end
+        
+        it 'redirects to the post on success' do
+          patch :update, params: { 
+            id: post_instance.slug, 
+            post: { title: 'Updated Title' } 
+          }
+          expect(response).to redirect_to(post_instance)
+        end
+      end
+      
+      context 'when user does not own the post' do
+        let(:other_user) { create(:user) }
+        
+        before { sign_in other_user }
+        
+        it 'denies access' do
+          expect {
+            patch :update, params: { 
+              id: post_instance.slug, 
+              post: { title: 'Updated Title' } 
+            }
+          }.to raise_error(Pundit::NotAuthorizedError)
+        end
+      end
+    end
+    
+    describe 'DELETE #destroy' do
+      context 'when user owns the post' do
+        before { sign_in user }
+        
+        it 'deletes the post' do
+          post_to_delete = create(:post, user: user)
+          expect {
+            delete :destroy, params: { id: post_to_delete.slug }
+          }.to change(Post, :count).by(-1)
+        end
+        
+        it 'redirects to posts index' do
+          delete :destroy, params: { id: post_instance.slug }
+          expect(response).to redirect_to(posts_path)
+        end
+      end
+      
+      context 'when admin user' do
+        before { sign_in admin }
+        
+        it 'allows deletion of any post' do
+          expect {
+            delete :destroy, params: { id: post_instance.slug }
+          }.to change(Post, :count).by(-1)
+        end
+      end
+    end
+    
+    describe 'PATCH #publish' do
+      before { sign_in user }
+      
+      it 'publishes a draft post' do
+        patch :publish, params: { id: draft_post.slug }
+        expect(draft_post.reload.status).to eq('published')
+      end
+      
+      it 'redirects with success notice' do
+        patch :publish, params: { id: draft_post.slug }
+        expect(response).to redirect_to(draft_post)
+        expect(flash[:notice]).to eq('Post was successfully published.')
+      end
+    end
+  end
+  
+  # spec/requests/api/v1/posts_spec.rb
+  require 'rails_helper'
+  
+  RSpec.describe 'Api::V1::Posts', type: :request do
+    let(:user) { create(:user) }
+    let(:admin) { create(:user, :admin) }
+    let(:category) { create(:category) }
+    let!(:published_posts) { create_list(:post, 3, category: category) }
+    let!(:draft_posts) { create_list(:post, 2, :draft, category: category) }
+    
+    describe 'GET /api/v1/posts' do
+      it 'returns published posts' do
+        get '/api/v1/posts'
+        
+        expect(response).to have_http_status(:success)
+        json_response = JSON.parse(response.body)
+        expect(json_response['posts']['data'].length).to eq(3)
+      end
+      
+      it 'includes pagination metadata' do
+        get '/api/v1/posts'
+        
+        json_response = JSON.parse(response.body)
+        expect(json_response['meta']).to include(
+          'current_page',
+          'total_pages',
+          'total_count'
+        )
+      end
+      
+      it 'filters by category' do
+        other_category = create(:category)
+        create(:post, category: other_category)
+        
+        get "/api/v1/posts?category=#{category.slug}"
+        
+        json_response = JSON.parse(response.body)
+        expect(json_response['posts']['data'].length).to eq(3)
+      end
+      
+      it 'searches posts' do
+        searchable_post = create(:post, title: 'Unique Search Term')
+        
+        get '/api/v1/posts?search=Unique Search'
+        
+        json_response = JSON.parse(response.body)
+        expect(json_response['posts']['data'].length).to eq(1)
+      end
+    end
+    
+    describe 'GET /api/v1/posts/:id' do
+      let(:post_instance) { published_posts.first }
+      
+      it 'returns the post' do
+        get "/api/v1/posts/#{post_instance.slug}"
+        
+        expect(response).to have_http_status(:success)
+        json_response = JSON.parse(response.body)
+        expect(json_response['data']['attributes']['title']).to eq(post_instance.title)
+      end
+      
+      it 'returns 404 for non-existent post' do
+        get '/api/v1/posts/non-existent'
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+    
+    describe 'POST /api/v1/posts' do
+      let(:valid_attributes) do
+        {
+          title: 'New API Post',
+          content: 'Post content via API',
+          category_id: category.id
+        }
+      end
+      
+      context 'with valid authentication' do
+        before { authenticate_api_user(user) }
+        
+        it 'creates a new post' do
+          expect {
+            post '/api/v1/posts', params: { post: valid_attributes }
+          }.to change(Post, :count).by(1)
+          
+          expect(response).to have_http_status(:created)
+        end
+        
+        it 'returns the created post' do
+          post '/api/v1/posts', params: { post: valid_attributes }
+          
+          json_response = JSON.parse(response.body)
+          expect(json_response['data']['attributes']['title']).to eq('New API Post')
+        end
+      end
+      
+      context 'without authentication' do
+        it 'returns unauthorized' do
+          post '/api/v1/posts', params: { post: valid_attributes }
+          expect(response).to have_http_status(:unauthorized)
+        end
+      end
+      
+      context 'with invalid attributes' do
+        before { authenticate_api_user(user) }
+        
+        it 'returns validation errors' do
+          post '/api/v1/posts', params: { post: { title: '' } }
+          
+          expect(response).to have_http_status(:unprocessable_entity)
+          json_response = JSON.parse(response.body)
+          expect(json_response['errors']).to be_present
+        end
+      end
+    end
+    
+    describe 'PUT /api/v1/posts/:id' do
+      let(:post_instance) { create(:post, user: user) }
+      
+      before { authenticate_api_user(user) }
+      
+      it 'updates the post' do
+        put "/api/v1/posts/#{post_instance.slug}", 
+            params: { post: { title: 'Updated Title' } }
+        
+        expect(response).to have_http_status(:success)
+        expect(post_instance.reload.title).to eq('Updated Title')
+      end
+      
+      it 'returns the updated post' do
+        put "/api/v1/posts/#{post_instance.slug}", 
+            params: { post: { title: 'Updated Title' } }
+        
+        json_response = JSON.parse(response.body)
+        expect(json_response['data']['attributes']['title']).to eq('Updated Title')
+      end
+    end
+    
+    describe 'DELETE /api/v1/posts/:id' do
+      let(:post_instance) { create(:post, user: user) }
+      
+      before { authenticate_api_user(user) }
+      
+      it 'deletes the post' do
+        delete "/api/v1/posts/#{post_instance.slug}"
+        
+        expect(response).to have_http_status(:no_content)
+        expect(Post.exists?(post_instance.id)).to be false
+      end
+    end
+  end
+  
+  # Helper method for API authentication in tests
+  def authenticate_api_user(user)
+    token = JWT.encode(
+      { user_id: user.id, exp: 24.hours.from_now.to_i },
+      Rails.application.secrets.secret_key_base,
+      'HS256'
+    )
+    request.headers['Authorization'] = "Bearer #{token}"
+  end
