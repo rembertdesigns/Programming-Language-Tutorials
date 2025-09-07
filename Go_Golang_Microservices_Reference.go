@@ -2853,3 +2853,1239 @@ type PostFilters struct {
 	OrderBy    string
 	Order      string
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. TESTING AND BENCHMARKING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+// Test Suite
+type APITestSuite struct {
+	suite.Suite
+	app        *gin.Engine
+	db         *Database
+	container  testcontainers.Container
+	userService *UserService
+	userHandler *UserHandler
+}
+
+// SetupSuite runs before all tests
+func (suite *APITestSuite) SetupSuite() {
+	// Setup test database using testcontainers
+	ctx := context.Background()
+	
+	postgresContainer, err := postgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+	)
+	suite.Require().NoError(err)
+	suite.container = postgresContainer
+	
+	// Get connection details
+	host, err := postgresContainer.Host(ctx)
+	suite.Require().NoError(err)
+	
+	port, err := postgresContainer.MappedPort(ctx, "5432")
+	suite.Require().NoError(err)
+	
+	// Setup database
+	dbConfig := DatabaseConfig{
+		Host:         host,
+		Port:         port.Int(),
+		User:         "testuser",
+		Password:     "testpass",
+		Name:         "testdb",
+		SSLMode:      "disable",
+		MaxOpenConns: 10,
+		MaxIdleConns: 5,
+		MaxLifetime:  time.Minute,
+	}
+	
+	redisConfig := RedisConfig{
+		Host:     "localhost",
+		Port:     6379,
+		Password: "",
+		DB:       1, // Use test database
+		PoolSize: 5,
+	}
+	
+	db, err := NewDatabase(dbConfig, redisConfig)
+	suite.Require().NoError(err)
+	suite.db = db
+	
+	// Run migrations
+	err = MigrateModels(db.DB)
+	suite.Require().NoError(err)
+	
+	// Setup services
+	userRepo := NewUserRepository(db.DB, db.Redis)
+	suite.userService = NewUserService(userRepo, "test-secret", time.Hour, "test-issuer")
+	
+	// Setup handlers
+	logger, err := NewLogger("debug", "json", "stdout")
+	suite.Require().NoError(err)
+	
+	suite.userHandler = NewUserHandler(suite.userService, logger)
+	
+	// Setup Gin app
+	gin.SetMode(gin.TestMode)
+	suite.app = gin.New()
+	
+	// Setup routes
+	api := suite.app.Group("/api/v1")
+	api.POST("/register", suite.userHandler.Register)
+	api.POST("/login", suite.userHandler.Login)
+	
+	auth := api.Group("/")
+	auth.Use(AuthMiddleware(suite.userService))
+	auth.GET("/profile", suite.userHandler.GetProfile)
+	auth.PUT("/profile", suite.userHandler.UpdateProfile)
+}
+
+// TearDownSuite runs after all tests
+func (suite *APITestSuite) TearDownSuite() {
+	if suite.db != nil {
+		suite.db.Close()
+	}
+	if suite.container != nil {
+		suite.container.Terminate(context.Background())
+	}
+}
+
+// SetupTest runs before each test
+func (suite *APITestSuite) SetupTest() {
+	// Clean database before each test
+	suite.db.DB.Exec("TRUNCATE users CASCADE")
+}
+
+// Test user registration
+func (suite *APITestSuite) TestUserRegistration() {
+	payload := CreateUserRequest{
+		Email:     "test@example.com",
+		Username:  "testuser",
+		Password:  "password123",
+		FirstName: "Test",
+		LastName:  "User",
+	}
+	
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/register", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	
+	w := httptest.NewRecorder()
+	suite.app.ServeHTTP(w, req)
+	
+	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+	
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "User created successfully", response["message"])
+	assert.NotNil(suite.T(), response["user"])
+}
+
+// Test user registration with invalid data
+func (suite *APITestSuite) TestUserRegistrationInvalidData() {
+	payload := CreateUserRequest{
+		Email:    "invalid-email",
+		Username: "",
+		Password: "123", // Too short
+	}
+	
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/register", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	
+	w := httptest.NewRecorder()
+	suite.app.ServeHTTP(w, req)
+	
+	assert.Equal(suite.T(), http.StatusInternalServerError, w.Code)
+}
+
+// Test user login
+func (suite *APITestSuite) TestUserLogin() {
+	// First, create a user
+	user := &User{
+		Email:     "test@example.com",
+		Username:  "testuser",
+		FirstName: "Test",
+		LastName:  "User",
+		Role:      UserRoleUser,
+		Status:    UserStatusActive,
+	}
+	user.SetPassword("password123")
+	
+	err := suite.userService.userRepo.Create(context.Background(), user)
+	suite.Require().NoError(err)
+	
+	// Now test login
+	payload := map[string]string{
+		"email":    "test@example.com",
+		"password": "password123",
+	}
+	
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	
+	w := httptest.NewRecorder()
+	suite.app.ServeHTTP(w, req)
+	
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	
+	var response AuthResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), response.Token)
+	assert.Equal(suite.T(), user.Email, response.User.Email)
+}
+
+// Test protected endpoint
+func (suite *APITestSuite) TestProtectedEndpoint() {
+	// Create and login user to get token
+	user := &User{
+		Email:     "test@example.com",
+		Username:  "testuser",
+		FirstName: "Test",
+		LastName:  "User",
+		Role:      UserRoleUser,
+		Status:    UserStatusActive,
+	}
+	user.SetPassword("password123")
+	
+	err := suite.userService.userRepo.Create(context.Background(), user)
+	suite.Require().NoError(err)
+	
+	authResp, err := suite.userService.Authenticate(context.Background(), "test@example.com", "password123")
+	suite.Require().NoError(err)
+	
+	// Test protected endpoint with valid token
+	req := httptest.NewRequest("GET", "/api/v1/profile", nil)
+	req.Header.Set("Authorization", "Bearer "+authResp.Token)
+	
+	w := httptest.NewRecorder()
+	suite.app.ServeHTTP(w, req)
+	
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+}
+
+// Test protected endpoint without token
+func (suite *APITestSuite) TestProtectedEndpointWithoutToken() {
+	req := httptest.NewRequest("GET", "/api/v1/profile", nil)
+	
+	w := httptest.NewRecorder()
+	suite.app.ServeHTTP(w, req)
+	
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+}
+
+// Run the test suite
+func TestAPITestSuite(t *testing.T) {
+	suite.Run(t, new(APITestSuite))
+}
+
+// Unit Tests
+func TestUserService_CreateUser(t *testing.T) {
+	// Mock repository
+	mockRepo := &MockUserRepository{}
+	userService := NewUserService(mockRepo, "secret", time.Hour, "issuer")
+	
+	req := CreateUserRequest{
+		Email:     "test@example.com",
+		Username:  "testuser",
+		Password:  "password123",
+		FirstName: "Test",
+		LastName:  "User",
+	}
+	
+	// Setup mock expectations
+	mockRepo.On("GetByEmail", mock.Anything, req.Email).Return(nil, fmt.Errorf("not found"))
+	mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*User")).Return(nil)
+	
+	user, err := userService.CreateUser(context.Background(), req)
+	
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+	assert.Equal(t, req.Email, user.Email)
+	assert.Equal(t, req.Username, user.Username)
+	
+	mockRepo.AssertExpectations(t)
+}
+
+// Mock Repository
+type MockUserRepository struct {
+	mock.Mock
+}
+
+func (m *MockUserRepository) Create(ctx context.Context, user *User) error {
+	args := m.Called(ctx, user)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(*User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	args := m.Called(ctx, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*User), args.Error(1)
+}
+
+func (m *MockUserRepository) Update(ctx context.Context, user *User) error {
+	args := m.Called(ctx, user)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) List(ctx context.Context, offset, limit int) ([]User, int64, error) {
+	args := m.Called(ctx, offset, limit)
+	return args.Get(0).([]User), args.Get(1).(int64), args.Error(2)
+}
+
+// Benchmark Tests
+func BenchmarkUserService_CreateUser(b *testing.B) {
+	// Setup
+	mockRepo := &MockUserRepository{}
+	userService := NewUserService(mockRepo, "secret", time.Hour, "issuer")
+	
+	req := CreateUserRequest{
+		Email:     "test@example.com",
+		Username:  "testuser",
+		Password:  "password123",
+		FirstName: "Test",
+		LastName:  "User",
+	}
+	
+	mockRepo.On("GetByEmail", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("not found"))
+	mockRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		userService.CreateUser(context.Background(), req)
+	}
+}
+
+func BenchmarkPasswordHashing(b *testing.B) {
+	user := &User{}
+	password := "password123"
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		user.SetPassword(password)
+	}
+}
+
+func BenchmarkJWTGeneration(b *testing.B) {
+	userService := NewUserService(nil, "secret", time.Hour, "issuer")
+	user := &User{
+		ID:       uuid.New(),
+		Email:    "test@example.com",
+		Username: "testuser",
+		Role:     UserRoleUser,
+	}
+	
+	b.ResetTimer()
+	
+	for i := 0; i < b.N; i++ {
+		userService.generateJWT(user)
+	}
+}
+
+// Load Testing Example
+func TestConcurrentUserCreation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping load test in short mode")
+	}
+	
+	// This would be a more comprehensive load test
+	// using tools like vegeta or custom goroutines
+	
+	concurrency := 100
+	requests := 1000
+	
+	// Setup test server
+	// ... server setup code ...
+	
+	results := make(chan error, requests)
+	
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			for j := 0; j < requests/concurrency; j++ {
+				// Make HTTP request
+				// results <- err
+			}
+		}()
+	}
+	
+	// Collect results
+	var errors []error
+	for i := 0; i < requests; i++ {
+		if err := <-results; err != nil {
+			errors = append(errors, err)
+		}
+	}
+	
+	errorRate := float64(len(errors)) / float64(requests)
+	assert.Less(t, errorRate, 0.01, "Error rate should be less than 1%")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. DEPLOYMENT AND CONTAINERIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Dockerfile
+/*
+# Multi-stage build for smaller production image
+FROM golang:1.21-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/api/main.go
+
+# Final stage
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+WORKDIR /root/
+
+# Copy binary from builder stage
+COPY --from=builder /app/main .
+
+# Copy configuration files
+COPY --from=builder /app/configs ./configs
+
+# Change ownership
+RUN chown -R appuser:appgroup /root/
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Run the application
+CMD ["./main"]
+*/
+
+// docker-compose.yml
+/*
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_DATABASE_HOST=postgres
+      - APP_DATABASE_PORT=5432
+      - APP_DATABASE_USER=myapp
+      - APP_DATABASE_PASSWORD=mypassword
+      - APP_DATABASE_NAME=myapp
+      - APP_REDIS_HOST=redis
+      - APP_REDIS_PORT=6379
+      - APP_JWT_SECRET_KEY=my-super-secret-key
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=myapp
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=myapp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  app-network:
+    driver: bridge
+*/
+
+// Kubernetes Deployment
+// k8s/namespace.yaml
+/*
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myapp
+*/
+
+// k8s/configmap.yaml
+/*
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+  namespace: myapp
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 8080
+    database:
+      host: postgres-service
+      port: 5432
+      name: myapp
+      ssl_mode: "require"
+    redis:
+      host: redis-service
+      port: 6379
+    logging:
+      level: "info"
+      format: "json"
+*/
+
+// k8s/secret.yaml
+/*
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-secrets
+  namespace: myapp
+type: Opaque
+data:
+  database-user: bXlhcHA=        # base64 encoded "myapp"
+  database-password: bXlwYXNzd29yZA==  # base64 encoded "mypassword"
+  jwt-secret: bXktc3VwZXItc2VjcmV0LWtleQ==  # base64 encoded secret
+*/
+
+// k8s/deployment.yaml
+/*
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-api
+  namespace: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp-api
+  template:
+    metadata:
+      labels:
+        app: myapp-api
+    spec:
+      containers:
+      - name: api
+        image: myapp:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: APP_DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: myapp-secrets
+              key: database-user
+        - name: APP_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: myapp-secrets
+              key: database-password
+        - name: APP_JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: myapp-secrets
+              key: jwt-secret
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/configs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: config-volume
+        configMap:
+          name: myapp-config
+*/
+
+// k8s/service.yaml
+/*
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-api-service
+  namespace: myapp
+spec:
+  selector:
+    app: myapp-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
+*/
+
+// k8s/ingress.yaml
+/*
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: myapp
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - api.myapp.com
+    secretName: myapp-tls
+  rules:
+  - host: api.myapp.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-api-service
+            port:
+              number: 80
+*/
+
+// Health Check Handler
+package handlers
+
+func (h *HealthHandler) HealthCheck(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().UTC(),
+		"version":   os.Getenv("APP_VERSION"),
+		"checks":    make(map[string]interface{}),
+	}
+	
+	// Database health check
+	if err := h.db.Health(ctx); err != nil {
+		health["checks"].(map[string]interface{})["database"] = map[string]interface{}{
+			"status": "unhealthy",
+			"error":  err.Error(),
+		}
+		health["status"] = "unhealthy"
+	} else {
+		health["checks"].(map[string]interface{})["database"] = map[string]interface{}{
+			"status": "healthy",
+		}
+	}
+	
+	// Redis health check
+	if err := h.db.Redis.Ping(ctx).Err(); err != nil {
+		health["checks"].(map[string]interface{})["redis"] = map[string]interface{}{
+			"status": "unhealthy",
+			"error":  err.Error(),
+		}
+		health["status"] = "unhealthy"
+	} else {
+		health["checks"].(map[string]interface{})["redis"] = map[string]interface{}{
+			"status": "healthy",
+		}
+	}
+	
+	// External service checks would go here
+	
+	status := http.StatusOK
+	if health["status"] == "unhealthy" {
+		status = http.StatusServiceUnavailable
+	}
+	
+	c.JSON(status, health)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           12. MAIN APPLICATION ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// cmd/api/main.go
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func main() {
+	// Load configuration
+	config, err := LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Initialize logger
+	logger, err := NewLogger(config.Logging.Level, config.Logging.Format, config.Logging.Output)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logger.Sync()
+
+	logger.Info("Starting application",
+		zap.String("environment", os.Getenv("GO_ENV")),
+		zap.String("version", os.Getenv("APP_VERSION")))
+
+	// Initialize database
+	db, err := NewDatabase(config.Database, config.Redis)
+	if err != nil {
+		logger.Fatal("Failed to initialize database", zap.Error(err))
+	}
+	defer db.Close()
+
+	// Run migrations
+	if err := MigrateModels(db.DB); err != nil {
+		logger.Fatal("Failed to run database migrations", zap.Error(err))
+	}
+
+	// Initialize repositories
+	userRepo := NewUserRepository(db.DB, db.Redis)
+	postRepo := NewPostRepository(db.DB, db.Redis)
+	categoryRepo := NewCategoryRepository(db.DB, db.Redis)
+
+	// Initialize services
+	userService := NewUserService(userRepo, config.JWT.SecretKey, config.JWT.ExpirationTime, config.JWT.Issuer)
+	postService := NewPostService(postRepo, categoryRepo, userRepo)
+
+	// Initialize handlers
+	userHandler := NewUserHandler(userService, logger)
+	postHandler := NewPostHandler(postService, logger)
+	healthHandler := NewHealthHandler(db, logger)
+
+	// Initialize event bus
+	eventBus, err := NewEventBus("nats://localhost:4222", logger)
+	if err != nil {
+		logger.Warn("Failed to initialize event bus", zap.Error(err))
+	}
+	defer eventBus.Close()
+
+	// Initialize worker pool
+	workerPool := NewWorkerPool(5, 100, logger)
+	workerPool.Start()
+	defer workerPool.Stop()
+
+	// Setup HTTP server
+	if os.Getenv("GO_ENV") == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	router := gin.New()
+	
+	// Global middleware
+	router.Use(RequestIDMiddleware())
+	router.Use(LoggingMiddleware(logger))
+	router.Use(MetricsMiddleware())
+	router.Use(CORSMiddleware())
+	router.Use(SecurityHeadersMiddleware())		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
+// PostHandler handles post-related HTTP requests
+type PostHandler struct {
+	postService *PostService
+	logger      *logger.Logger
+}
+
+// NewPostHandler creates a new post handler
+func NewPostHandler(postService *PostService, logger *logger.Logger) *PostHandler {
+	return &PostHandler{
+		postService: postService,
+		logger:      logger,
+	}
+}
+
+// CreatePost handles post creation
+func (h *PostHandler) CreatePost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	var req CreatePostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	post, err := h.postService.CreatePost(c.Request.Context(), userID.(uuid.UUID), req)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to create post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
+		return
+	}
+	
+	h.logger.InfoCtx(c.Request.Context(), "Post created successfully", 
+		zap.String("post_id", post.ID.String()), zap.String("user_id", userID.(uuid.UUID).String()))
+	
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Post created successfully",
+		"post":    post,
+	})
+}
+
+// GetPost handles getting a single post
+func (h *PostHandler) GetPost(c *gin.Context) {
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	post, err := h.postService.GetPost(c.Request.Context(), postID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to get post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// GetPostBySlug handles getting a post by slug
+func (h *PostHandler) GetPostBySlug(c *gin.Context) {
+	slug := c.Param("slug")
+	
+	post, err := h.postService.GetPostBySlug(c.Request.Context(), slug)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to get post by slug", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// ListPosts handles listing posts with filters
+func (h *PostHandler) ListPosts(c *gin.Context) {
+	filters := PostFilters{
+		Status:  PostStatus(c.Query("status")),
+		Search:  c.Query("search"),
+		OrderBy: c.Query("order_by"),
+		Order:   c.Query("order"),
+	}
+	
+	// Parse pagination
+	if page := c.Query("page"); page != "" {
+		if p, err := strconv.Atoi(page); err == nil && p > 0 {
+			filters.Offset = (p - 1) * filters.Limit
+		}
+	}
+	
+	if limit := c.Query("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
+			filters.Limit = l
+		}
+	}
+	
+	if filters.Limit == 0 {
+		filters.Limit = 20
+	}
+	
+	// Parse category ID
+	if categoryID := c.Query("category_id"); categoryID != "" {
+		if id, err := uuid.Parse(categoryID); err == nil {
+			filters.CategoryID = id
+		}
+	}
+	
+	// Parse featured filter
+	if featured := c.Query("featured"); featured != "" {
+		if f, err := strconv.ParseBool(featured); err == nil {
+			filters.Featured = &f
+		}
+	}
+	
+	response, err := h.postService.ListPosts(c.Request.Context(), filters)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to list posts", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list posts"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, response)
+}
+
+// UpdatePost handles post updates
+func (h *PostHandler) UpdatePost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	var req UpdatePostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	post, err := h.postService.UpdatePost(c.Request.Context(), postID, userID.(uuid.UUID), req)
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to update post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Post updated successfully",
+		"post":    post,
+	})
+}
+
+// PublishPost handles post publishing
+func (h *PostHandler) PublishPost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	post, err := h.postService.PublishPost(c.Request.Context(), postID, userID.(uuid.UUID))
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to publish post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to publish post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Post published successfully",
+		"post":    post,
+	})
+}
+
+// Middleware
+package middleware
+
+import (
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+// AuthMiddleware validates JWT tokens and sets user context
+func AuthMiddleware(userService *UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+		
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+			c.Abort()
+			return
+		}
+		
+		token := tokenParts[1]
+		user, err := userService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+		
+		// Set user context
+		c.Set("user_id", user.ID)
+		c.Set("user", user)
+		c.Next()
+	}
+}
+
+// OptionalAuthMiddleware validates JWT tokens but doesn't require them
+func OptionalAuthMiddleware(userService *UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next()
+			return
+		}
+		
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.Next()
+			return
+		}
+		
+		token := tokenParts[1]
+		user, err := userService.ValidateToken(token)
+		if err != nil {
+			c.Next()
+			return
+		}
+		
+		// Set user context
+		c.Set("user_id", user.ID)
+		c.Set("user", user)
+		c.Next()
+	}
+}
+
+// RequestIDMiddleware adds a unique request ID to each request
+func RequestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := uuid.New().String()
+		c.Set("request_id", requestID)
+		c.Header("X-Request-ID", requestID)
+		c.Next()
+	}
+}
+
+// LoggingMiddleware logs HTTP requests
+func LoggingMiddleware(logger *logger.Logger) gin.HandlerFunc {
+	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		logger.InfoCtx(param.Request.Context(), "HTTP Request",
+			zap.String("method", param.Method),
+			zap.String("path", param.Path),
+			zap.Int("status", param.StatusCode),
+			zap.Duration("latency", param.Latency),
+			zap.String("client_ip", param.ClientIP),
+			zap.String("user_agent", param.Request.UserAgent()),
+		)
+		return ""
+	})
+}
+
+// MetricsMiddleware records HTTP metrics
+func MetricsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		
+		c.Next()
+		
+		duration := time.Since(start)
+		method := c.Request.Method
+		route := c.FullPath()
+		if route == "" {
+			route = "unknown"
+		}
+		status := strconv.Itoa(c.Writer.Status())
+		
+		metrics.RecordHTTPRequest(method, route, status, duration)
+	}
+}
+
+// CORSMiddleware handles Cross-Origin Resource Sharing
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+		c.Header("Access-Control-Max-Age", "86400")
+		
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		
+		c.Next()
+	}
+}
+
+// RateLimitMiddleware implements simple rate limiting
+func RateLimitMiddleware(rps int) gin.HandlerFunc {
+	// This is a simplified rate limiter
+	// In production, use a proper rate limiting library like golang.org/x/time/rate
+	return func(c *gin.Context) {
+		// Implementation would go here
+		c.Next()
+	}
+}
+
+// SecurityHeadersMiddleware adds security headers
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("Content-Security-Policy", "default-src 'self'")
+		c.Next()
+	}
+}
