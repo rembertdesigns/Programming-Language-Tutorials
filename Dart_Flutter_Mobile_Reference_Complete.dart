@@ -1813,3 +1813,984 @@ class AppTheme {
     );
   }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. SCREENS AND UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Splash Screen
+class SplashScreen extends StatefulWidget {
+  @override
+  _SplashScreenState createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+  
+  Future<void> _initializeApp() async {
+    // Simulate initialization time
+    await Future.delayed(const Duration(seconds: 2));
+    
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    
+    // Load theme preference
+    await themeProvider.loadThemeMode();
+    
+    // Navigate to appropriate screen
+    if (authProvider.isAuthenticated) {
+      NavigationService.navigateAndReplace(AppRoutes.home);
+    } else {
+      NavigationService.navigateAndReplace(AppRoutes.login);
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppTheme.primaryColor, AppTheme.primaryColorDark],
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.article,
+                size: 80,
+                color: Colors.white,
+              ),
+              SizedBox(height: 24),
+              Text(
+                'My Flutter App',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 16),
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Login Screen
+class LoginScreen extends StatefulWidget {
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _login() async {
+    if (_formKey.currentState!.validate()) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      
+      final success = await authProvider.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+      
+      if (success) {
+        NavigationService.navigateAndClearStack(AppRoutes.home);
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(
+                Icons.article,
+                size: 80,
+                color: AppTheme.primaryColor,
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Welcome Back',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Sign in to your account',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 48),
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'Enter your email',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your email';
+                        }
+                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}).hasMatch(value)) {
+                          return 'Please enter a valid email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        hintText: 'Enter your password',
+                        prefixIcon: const Icon(Icons.lock_outlined),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        return SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: authProvider.isLoading ? null : _login,
+                            child: authProvider.isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('Sign In'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Consumer<AuthProvider>(
+                builder: (context, authProvider, child) {
+                  if (authProvider.errorMessage != null) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: AppTheme.errorColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              authProvider.errorMessage!,
+                              style: TextStyle(color: AppTheme.errorColor),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: authProvider.clearError,
+                            iconSize: 20,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              const SizedBox(height: 24),
+              TextButton(
+                onPressed: () {
+                  NavigationService.navigateTo(AppRoutes.register);
+                },
+                child: const Text("Don't have an account? Sign up"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Home Screen with Bottom Navigation
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _currentIndex = 0;
+  
+  final List<Widget> _pages = [
+    PostsScreen(),
+    ExploreScreen(),
+    FavoritesScreen(),
+    ProfileScreen(),
+  ];
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.article_outlined),
+            activeIcon: Icon(Icons.article),
+            label: 'Posts',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore),
+            label: 'Explore',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_outline),
+            activeIcon: Icon(Icons.favorite),
+            label: 'Favorites',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Posts Screen
+class PostsScreen extends StatefulWidget {
+  @override
+  _PostsScreenState createState() => _PostsScreenState();
+}
+
+class _PostsScreenState extends State<PostsScreen> {
+  final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+  
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    
+    // Load posts when screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+      if (postsProvider.posts.isEmpty) {
+        postsProvider.loadPosts(refresh: true);
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _searchController.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+  
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+      if (postsProvider.hasMorePages && !postsProvider.isLoadingMore) {
+        postsProvider.loadPosts();
+      }
+    }
+  }
+  
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+      postsProvider.setSearchQuery(query);
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Posts'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () {
+              NavigationService.navigateTo(AppRoutes.createPost);
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Search posts...',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: _onSearchChanged,
+            ),
+          ),
+          
+          // Posts List
+          Expanded(
+            child: Consumer<PostsProvider>(
+              builder: (context, postsProvider, child) {
+                if (postsProvider.isLoading && postsProvider.posts.isEmpty) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                if (postsProvider.posts.isEmpty && !postsProvider.isLoading) {
+                  return const EmptyStateWidget(
+                    icon: Icons.article_outlined,
+                    title: 'No Posts Found',
+                    subtitle: 'Start by creating your first post',
+                  );
+                }
+                
+                return RefreshIndicator(
+                  onRefresh: () => postsProvider.loadPosts(refresh: true),
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: postsProvider.posts.length + (postsProvider.isLoadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == postsProvider.posts.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      
+                      final post = postsProvider.posts[index];
+                      return PostCard(
+                        post: post,
+                        onTap: () {
+                          NavigationService.navigateTo(
+                            AppRoutes.postDetail,
+                            arguments: {'postId': post.id},
+                          );
+                        },
+                        onLike: () {
+                          postsProvider.likePost(post.id);
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Post Card Widget
+class PostCard extends StatelessWidget {
+  final Post post;
+  final VoidCallback onTap;
+  final VoidCallback onLike;
+  
+  const PostCard({
+    Key? key,
+    required this.post,
+    required this.onTap,
+    required this.onLike,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Author Info
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundImage: post.author?.avatarUrl != null
+                        ? NetworkImage(post.author!.avatarUrl!)
+                        : null,
+                    child: post.author?.avatarUrl == null
+                        ? Text(post.author?.initials ?? '??')
+                        : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          post.author?.fullName ?? 'Unknown Author',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          post.formattedPublishDate,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (post.category != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: post.category!.colorValue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        post.category!.name,
+                        style: TextStyle(
+                          color: post.category!.colorValue,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Post Content
+              Text(
+                post.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                post.excerpt,
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  fontSize: 14,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              
+              // Post Image
+              if (post.imageUrl != null) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImageWidget(
+                    imageUrl: post.imageUrl!,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ],
+              
+              // Tags
+              if (post.tags.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: post.tags.take(3).map((tag) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '#$tag',
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+              
+              const SizedBox(height: 12),
+              
+              // Action Buttons
+              Row(
+                children: [
+                  InkWell(
+                    onTap: onLike,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          post.isLiked ? Icons.favorite : Icons.favorite_border,
+                          color: post.isLiked ? Colors.red : Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          post.likeCount.toString(),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.comment_outlined,
+                        color: Colors.grey[600],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        post.commentCount.toString(),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.visibility_outlined,
+                        color: Colors.grey[600],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        post.viewCount.toString(),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${post.readingTimeMinutes} min read',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Post Detail Screen
+class PostDetailScreen extends StatefulWidget {
+  final String postId;
+  
+  const PostDetailScreen({Key? key, required this.postId}) : super(key: key);
+  
+  @override
+  _PostDetailScreenState createState() => _PostDetailScreenState();
+}
+
+class _PostDetailScreenState extends State<PostDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+      postsProvider.loadPost(widget.postId);
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Post Detail'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () {
+              // Implement share functionality
+            },
+          ),
+        ],
+      ),
+      body: Consumer<PostsProvider>(
+        builder: (context, postsProvider, child) {
+          if (postsProvider.isLoading && postsProvider.selectedPost == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final post = postsProvider.selectedPost;
+          if (post == null) {
+            return const EmptyStateWidget(
+              icon: Icons.error_outline,
+              title: 'Post Not Found',
+              subtitle: 'The requested post could not be loaded',
+            );
+          }
+          
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Post Header
+                Text(
+                  post.title,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Author Info
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundImage: post.author?.avatarUrl != null
+                          ? NetworkImage(post.author!.avatarUrl!)
+                          : null,
+                      child: post.author?.avatarUrl == null
+                          ? Text(post.author?.initials ?? '??')
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            post.author?.fullName ?? 'Unknown Author',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            '${post.formattedPublishDate} • ${post.readingTimeMinutes} min read',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Post Image
+                if (post.imageUrl != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImageWidget(
+                      imageUrl: post.imageUrl!,
+                      height: 250,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+                
+                // Post Content
+                Text(
+                  post.content,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.6,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                // Tags
+                if (post.tags.isNotEmpty) ...[
+                  const Text(
+                    'Tags',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: post.tags.map((tag) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '#$tag',
+                          style: const TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+                
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          postsProvider.likePost(post.id);
+                        },
+                        icon: Icon(
+                          post.isLiked ? Icons.favorite : Icons.favorite_border,
+                          color: post.isLiked ? Colors.red : null,
+                        ),
+                        label: Text('${post.likeCount} Likes'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: post.isLiked 
+                              ? Colors.red.withOpacity(0.1)
+                              : null,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Navigate to comments
+                        },
+                        icon: const Icon(Icons.comment_outlined),
+                        label: Text('${post.commentCount} Comments'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           14. UTILITY WIDGETS AND SERVICES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Cached Network Image Widget
+import 'package:cached_network_image/cached_network_image.dart';
+
+class CachedNetworkImageWidget extends StatelessWidget {
+  final String imageUrl;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final Widget? placeholder;
+  final Widget? errorWidget;
+  
+  const CachedNetworkImageWidget({
+    Key? key,
+    required this.imageUrl,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.placeholder,
+    this.errorWidget,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      width: width,
+      height: height,
+      fit: fit,
+      placeholder: (context, url) => placeholder ?? Container(
+        color: Colors.grey[200],
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+      errorWidget: (context, url, error) => errorWidget ?? Container(
+        color: Colors.grey[200],
+        child: const Icon(
+          Icons.error_outline,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+}
+
+// Empty State Widget
+class EmptyStateWidget extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget? action;
+  
+  const EmptyStateWidget({
+    Key? key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.action,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 80,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (action != null) ...[
+              const SizedBox(height: 24),
+              action!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
