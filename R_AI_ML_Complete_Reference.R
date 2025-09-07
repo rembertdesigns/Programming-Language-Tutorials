@@ -745,3 +745,780 @@ MLModelManager <- R6Class("MLModelManager",
       }
       
       # Save results
+      results_filename <- file.path(directory, "model_results.rds")
+      saveRDS(self$results, results_filename)
+      cat("Saved evaluation results to", results_filename, "\n")
+    },
+    
+    load_models = function(directory = "models") {
+      model_files <- list.files(directory, pattern = "*_model.rds", full.names = TRUE)
+      
+      for (file in model_files) {
+        model_name <- gsub("_model.rds", "", basename(file))
+        self$models[[model_name]] <- readRDS(file)
+        cat("Loaded", model_name, "model from", file, "\n")
+      }
+      
+      # Load results if available
+      results_file <- file.path(directory, "model_results.rds")
+      if (file.exists(results_file)) {
+        self$results <- readRDS(results_file)
+        cat("Loaded evaluation results\n")
+      }
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           5. ADVANCED STATISTICAL ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Advanced Statistical Testing Framework
+StatisticalAnalyzer <- R6Class("StatisticalAnalyzer",
+  public = list(
+    data = NULL,
+    results = list(),
+    
+    initialize = function(data) {
+      self$data <- data
+      cat("StatisticalAnalyzer initialized with", nrow(data), "observations\n")
+    },
+    
+    # Normality tests
+    test_normality = function(columns = NULL) {
+      if (is.null(columns)) {
+        columns <- names(select_if(self$data, is.numeric))
+      }
+      
+      normality_results <- list()
+      
+      for (col in columns) {
+        if (col %in% names(self$data)) {
+          # Shapiro-Wilk test
+          shapiro_test <- tryCatch({
+            shapiro.test(self$data[[col]])
+          }, error = function(e) NULL)
+          
+          # Kolmogorov-Smirnov test
+          ks_test <- tryCatch({
+            ks.test(self$data[[col]], "pnorm", 
+                   mean = mean(self$data[[col]], na.rm = TRUE),
+                   sd = sd(self$data[[col]], na.rm = TRUE))
+          }, error = function(e) NULL)
+          
+          # Anderson-Darling test
+          ad_test <- tryCatch({
+            ad.test(self$data[[col]])
+          }, error = function(e) NULL)
+          
+          normality_results[[col]] <- list(
+            shapiro = shapiro_test,
+            kolmogorov_smirnov = ks_test,
+            anderson_darling = ad_test
+          )
+        }
+      }
+      
+      self$results[["normality"]] <- normality_results
+      self$print_normality_results(normality_results)
+      return(normality_results)
+    },
+    
+    print_normality_results = function(results) {
+      cat("\n=== NORMALITY TEST RESULTS ===\n\n")
+      
+      for (col in names(results)) {
+        cat("Variable:", col, "\n")
+        
+        if (!is.null(results[[col]]$shapiro)) {
+          cat("  Shapiro-Wilk: p =", round(results[[col]]$shapiro$p.value, 4),
+              ifelse(results[[col]]$shapiro$p.value > 0.05, "(Normal)", "(Non-normal)"), "\n")
+        }
+        
+        if (!is.null(results[[col]]$kolmogorov_smirnov)) {
+          cat("  Kolmogorov-Smirnov: p =", round(results[[col]]$kolmogorov_smirnov$p.value, 4),
+              ifelse(results[[col]]$kolmogorov_smirnov$p.value > 0.05, "(Normal)", "(Non-normal)"), "\n")
+        }
+        
+        cat("\n")
+      }
+    },
+    
+    # Hypothesis testing
+    perform_t_test = function(variable1, variable2 = NULL, group_variable = NULL, 
+                             paired = FALSE, alternative = "two.sided") {
+      
+      if (is.null(variable2) && !is.null(group_variable)) {
+        # Independent samples t-test
+        groups <- unique(self$data[[group_variable]])
+        if (length(groups) == 2) {
+          group1_data <- self$data[self$data[[group_variable]] == groups[1], variable1]
+          group2_data <- self$data[self$data[[group_variable]] == groups[2], variable1]
+          
+          test_result <- t.test(group1_data, group2_data, 
+                               paired = paired, alternative = alternative)
+        }
+      } else if (!is.null(variable2)) {
+        # Paired or independent t-test
+        test_result <- t.test(self$data[[variable1]], self$data[[variable2]], 
+                             paired = paired, alternative = alternative)
+      } else {
+        # One-sample t-test
+        test_result <- t.test(self$data[[variable1]], alternative = alternative)
+      }
+      
+      self$results[["t_test"]] <- test_result
+      
+      cat("\n=== T-TEST RESULTS ===\n")
+      print(test_result)
+      
+      return(test_result)
+    },
+    
+    perform_chi_square_test = function(variable1, variable2) {
+      contingency_table <- table(self$data[[variable1]], self$data[[variable2]])
+      
+      chi_square_result <- chisq.test(contingency_table)
+      cramers_v <- sqrt(chi_square_result$statistic / (sum(contingency_table) * (min(dim(contingency_table)) - 1)))
+      
+      self$results[["chi_square"]] <- list(
+        test = chi_square_result,
+        contingency_table = contingency_table,
+        cramers_v = cramers_v
+      )
+      
+      cat("\n=== CHI-SQUARE TEST RESULTS ===\n")
+      cat("Contingency Table:\n")
+      print(contingency_table)
+      cat("\nChi-square test:\n")
+      print(chi_square_result)
+      cat("Cramer's V (effect size):", round(cramers_v, 4), "\n")
+      
+      return(chi_square_result)
+    },
+    
+    perform_anova = function(dependent_var, independent_var) {
+      formula_str <- paste(dependent_var, "~", independent_var)
+      anova_result <- aov(as.formula(formula_str), data = self$data)
+      anova_summary <- summary(anova_result)
+      
+      # Post-hoc tests if significant
+      tukey_result <- NULL
+      if (anova_summary[[1]][["Pr(>F)"]][1] < 0.05) {
+        tukey_result <- TukeyHSD(anova_result)
+      }
+      
+      self$results[["anova"]] <- list(
+        anova = anova_result,
+        summary = anova_summary,
+        tukey = tukey_result
+      )
+      
+      cat("\n=== ANOVA RESULTS ===\n")
+      print(anova_summary)
+      
+      if (!is.null(tukey_result)) {
+        cat("\nTukey HSD Post-hoc Tests:\n")
+        print(tukey_result)
+      }
+      
+      return(anova_result)
+    },
+    
+    # Correlation analysis
+    correlation_analysis = function(method = "pearson", use = "complete.obs") {
+      numeric_data <- select_if(self$data, is.numeric)
+      
+      if (ncol(numeric_data) >= 2) {
+        cor_matrix <- cor(numeric_data, method = method, use = use)
+        
+        # Correlation significance test
+        cor_test_results <- list()
+        combinations <- combn(names(numeric_data), 2, simplify = FALSE)
+        
+        for (combo in combinations) {
+          var1 <- combo[1]
+          var2 <- combo[2]
+          
+          test_result <- cor.test(numeric_data[[var1]], numeric_data[[var2]], method = method)
+          cor_test_results[[paste(var1, var2, sep = "_")]] <- test_result
+        }
+        
+        self$results[["correlation"]] <- list(
+          matrix = cor_matrix,
+          tests = cor_test_results
+        )
+        
+        # Create correlation plot
+        corrplot(cor_matrix, method = "color", type = "upper", 
+                order = "hclust", tl.cex = 0.8, tl.col = "black")
+        
+        return(cor_matrix)
+      }
+    },
+    
+    # Principal Component Analysis
+    perform_pca = function(scale = TRUE, center = TRUE) {
+      numeric_data <- select_if(self$data, is.numeric)
+      
+      if (ncol(numeric_data) >= 2) {
+        pca_result <- prcomp(numeric_data, scale = scale, center = center)
+        
+        # Calculate proportion of variance explained
+        var_explained <- summary(pca_result)$importance
+        
+        self$results[["pca"]] <- list(
+          pca = pca_result,
+          variance_explained = var_explained
+        )
+        
+        # Create scree plot
+        plot(pca_result, type = "l", main = "PCA Scree Plot")
+        
+        # Biplot
+        biplot(pca_result, main = "PCA Biplot")
+        
+        cat("\n=== PCA RESULTS ===\n")
+        print(var_explained)
+        
+        return(pca_result)
+      }
+    },
+    
+    # Regression diagnostics
+    regression_diagnostics = function(model) {
+      # Create diagnostic plots
+      par(mfrow = c(2, 2))
+      plot(model, main = "Regression Diagnostics")
+      par(mfrow = c(1, 1))
+      
+      # Durbin-Watson test for autocorrelation
+      dw_test <- durbinWatsonTest(model)
+      
+      # Breusch-Pagan test for heteroscedasticity
+      bp_test <- bptest(model)
+      
+      # Shapiro-Wilk test for normality of residuals
+      shapiro_test <- shapiro.test(residuals(model))
+      
+      diagnostics <- list(
+        durbin_watson = dw_test,
+        breusch_pagan = bp_test,
+        shapiro_wilk = shapiro_test
+      )
+      
+      self$results[["regression_diagnostics"]] <- diagnostics
+      
+      cat("\n=== REGRESSION DIAGNOSTICS ===\n")
+      cat("Durbin-Watson Test (Autocorrelation):\n")
+      print(dw_test)
+      cat("\nBreusch-Pagan Test (Heteroscedasticity):\n")
+      print(bp_test)
+      cat("\nShapiro-Wilk Test (Normality of Residuals):\n")
+      print(shapiro_test)
+      
+      return(diagnostics)
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           6. TIME SERIES ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Comprehensive Time Series Analysis
+TimeSeriesAnalyzer <- R6Class("TimeSeriesAnalyzer",
+  public = list(
+    data = NULL,
+    ts_data = NULL,
+    models = list(),
+    forecasts = list(),
+    
+    initialize = function(data, date_column, value_column, frequency = 12) {
+      self$data <- data
+      
+      # Convert to time series
+      if (is.character(data[[date_column]])) {
+        dates <- as.Date(data[[date_column]])
+      } else {
+        dates <- data[[date_column]]
+      }
+      
+      # Create time series object
+      start_year <- as.numeric(format(min(dates), "%Y"))
+      start_period <- as.numeric(format(min(dates), "%m"))
+      
+      self$ts_data <- ts(data[[value_column]], 
+                        start = c(start_year, start_period), 
+                        frequency = frequency)
+      
+      cat("TimeSeriesAnalyzer initialized with", length(self$ts_data), "observations\n")
+      cat("Time series frequency:", frequency, "\n")
+    },
+    
+    decompose_series = function(type = "additive") {
+      decomposition <- decompose(self$ts_data, type = type)
+      
+      # Plot decomposition
+      plot(decomposition, main = paste("Time Series Decomposition (", type, ")", sep = ""))
+      
+      return(decomposition)
+    },
+    
+    test_stationarity = function() {
+      # Augmented Dickey-Fuller test
+      adf_test <- adf.test(self$ts_data)
+      
+      # KPSS test
+      kpss_test <- kpss.test(self$ts_data)
+      
+      # Phillips-Perron test
+      pp_test <- pp.test(self$ts_data)
+      
+      stationarity_results <- list(
+        adf = adf_test,
+        kpss = kpss_test,
+        phillips_perron = pp_test
+      )
+      
+      cat("\n=== STATIONARITY TESTS ===\n")
+      cat("ADF Test: p =", round(adf_test$p.value, 4),
+          ifelse(adf_test$p.value < 0.05, "(Stationary)", "(Non-stationary)"), "\n")
+      cat("KPSS Test: p =", round(kpss_test$p.value, 4),
+          ifelse(kpss_test$p.value > 0.05, "(Stationary)", "(Non-stationary)"), "\n")
+      cat("PP Test: p =", round(pp_test$p.value, 4),
+          ifelse(pp_test$p.value < 0.05, "(Stationary)", "(Non-stationary)"), "\n")
+      
+      return(stationarity_results)
+    },
+    
+    difference_series = function(differences = 1, seasonal_differences = 0) {
+      diff_data <- self$ts_data
+      
+      # Apply regular differencing
+      for (i in 1:differences) {
+        diff_data <- diff(diff_data)
+      }
+      
+      # Apply seasonal differencing
+      if (seasonal_differences > 0) {
+        for (i in 1:seasonal_differences) {
+          diff_data <- diff(diff_data, lag = frequency(self$ts_data))
+        }
+      }
+      
+      return(diff_data)
+    },
+    
+    fit_arima = function(order = c(1, 1, 1), seasonal = c(0, 0, 0), auto = TRUE) {
+      if (auto) {
+        # Automatic ARIMA model selection
+        arima_model <- auto.arima(self$ts_data, 
+                                 seasonal = TRUE,
+                                 stepwise = FALSE,
+                                 approximation = FALSE)
+      } else {
+        # Manual ARIMA specification
+        arima_model <- arima(self$ts_data, order = order, seasonal = seasonal)
+      }
+      
+      self$models[["arima"]] <- arima_model
+      
+      cat("\n=== ARIMA MODEL ===\n")
+      print(arima_model)
+      
+      # Model diagnostics
+      checkresiduals(arima_model)
+      
+      return(arima_model)
+    },
+    
+    fit_exponential_smoothing = function(model = "ZZZ") {
+      # Exponential smoothing model
+      ets_model <- ets(self$ts_data, model = model)
+      
+      self$models[["ets"]] <- ets_model
+      
+      cat("\n=== EXPONENTIAL SMOOTHING MODEL ===\n")
+      print(ets_model)
+      
+      # Plot model components
+      plot(ets_model, main = "Exponential Smoothing Components")
+      
+      return(ets_model)
+    },
+    
+    fit_prophet = function() {
+      # Prepare data for Prophet
+      df <- data.frame(
+        ds = as.Date(time(self$ts_data)),
+        y = as.numeric(self$ts_data)
+      )
+      
+      # Fit Prophet model
+      prophet_model <- prophet(df)
+      
+      self$models[["prophet"]] <- prophet_model
+      
+      cat("\n=== PROPHET MODEL ===\n")
+      cat("Prophet model fitted successfully\n")
+      
+      return(prophet_model)
+    },
+    
+    forecast_models = function(h = 12) {
+      forecasts <- list()
+      
+      for (model_name in names(self$models)) {
+        if (model_name == "arima" || model_name == "ets") {
+          forecast_result <- forecast(self$models[[model_name]], h = h)
+          forecasts[[model_name]] <- forecast_result
+          
+          # Plot forecast
+          plot(forecast_result, main = paste("Forecast -", str_to_title(model_name)))
+          
+        } else if (model_name == "prophet") {
+          # Prophet forecast
+          future <- make_future_dataframe(self$models[[model_name]], periods = h, freq = "month")
+          forecast_result <- predict(self$models[[model_name]], future)
+          forecasts[[model_name]] <- forecast_result
+          
+          # Plot Prophet forecast
+          plot(self$models[[model_name]], forecast_result)
+        }
+      }
+      
+      self$forecasts <- forecasts
+      return(forecasts)
+    },
+    
+    evaluate_forecasts = function(test_data = NULL, h = 12) {
+      if (is.null(test_data)) {
+        # Use last h observations as test set
+        train_length <- length(self$ts_data) - h
+        train_data <- window(self$ts_data, end = time(self$ts_data)[train_length])
+        test_data <- window(self$ts_data, start = time(self$ts_data)[train_length + 1])
+      }
+      
+      results <- list()
+      
+      for (model_name in names(self$models)) {
+        if (model_name == "arima" || model_name == "ets") {
+          # Refit model on training data
+          if (model_name == "arima") {
+            temp_model <- auto.arima(train_data)
+          } else {
+            temp_model <- ets(train_data)
+          }
+          
+          forecast_result <- forecast(temp_model, h = length(test_data))
+          
+          # Calculate accuracy metrics
+          accuracy_metrics <- accuracy(forecast_result, test_data)
+          results[[model_name]] <- accuracy_metrics
+        }
+      }
+      
+      cat("\n=== FORECAST ACCURACY ===\n")
+      for (model_name in names(results)) {
+        cat("\n", str_to_title(model_name), "Model:\n")
+        print(results[[model_name]])
+      }
+      
+      return(results)
+    },
+    
+    seasonal_analysis = function() {
+      # Seasonal decomposition
+      seasonal_decomp <- stl(self$ts_data, s.window = "periodic")
+      
+      # Plot seasonal decomposition
+      plot(seasonal_decomp, main = "STL Decomposition")
+      
+      # Seasonal plots
+      seasonplot(self$ts_data, main = "Seasonal Plot")
+      
+      # Monthly/quarterly plots
+      monthplot(self$ts_data, main = "Month Plot")
+      
+      return(seasonal_decomp)
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           7. TEXT MINING AND NLP
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Natural Language Processing Pipeline
+TextAnalyzer <- R6Class("TextAnalyzer",
+  public = list(
+    text_data = NULL,
+    corpus = NULL,
+    dtm = NULL,
+    processed_texts = NULL,
+    models = list(),
+    
+    initialize = function(text_data) {
+      if (is.data.frame(text_data)) {
+        self$text_data <- text_data
+      } else {
+        self$text_data <- data.frame(text = text_data, stringsAsFactors = FALSE)
+      }
+      
+      cat("TextAnalyzer initialized with", nrow(self$text_data), "documents\n")
+    },
+    
+    preprocess_text = function(text_column = "text", 
+                              remove_punctuation = TRUE,
+                              remove_numbers = TRUE,
+                              convert_to_lowercase = TRUE,
+                              remove_stopwords = TRUE,
+                              stem_words = TRUE) {
+      
+      texts <- self$text_data[[text_column]]
+      
+      # Create corpus
+      self$corpus <- VCorpus(VectorSource(texts))
+      
+      # Text preprocessing
+      if (convert_to_lowercase) {
+        self$corpus <- tm_map(self$corpus, content_transformer(tolower))
+      }
+      
+      if (remove_punctuation) {
+        self$corpus <- tm_map(self$corpus, removePunctuation)
+      }
+      
+      if (remove_numbers) {
+        self$corpus <- tm_map(self$corpus, removeNumbers)
+      }
+      
+      # Remove extra whitespace
+      self$corpus <- tm_map(self$corpus, stripWhitespace)
+      
+      if (remove_stopwords) {
+        self$corpus <- tm_map(self$corpus, removeWords, stopwords("english"))
+      }
+      
+      if (stem_words) {
+        self$corpus <- tm_map(self$corpus, stemDocument)
+      }
+      
+      # Convert back to text
+      self$processed_texts <- sapply(self$corpus, as.character)
+      
+      cat("Text preprocessing completed\n")
+      return(self$processed_texts)
+    },
+    
+    create_document_term_matrix = function(min_doc_freq = 0.01, max_doc_freq = 0.95) {
+      # Create document-term matrix
+      self$dtm <- DocumentTermMatrix(self$corpus)
+      
+      # Remove sparse terms
+      self$dtm <- removeSparseTerms(self$dtm, sparse = max_doc_freq)
+      
+      # Remove terms that appear in too few documents
+      term_freq <- colSums(as.matrix(self$dtm))
+      min_freq <- ceiling(nrow(self$dtm) * min_doc_freq)
+      self$dtm <- self$dtm[, term_freq >= min_freq]
+      
+      cat("Document-term matrix created with", nrow(self$dtm), "documents and", ncol(self$dtm), "terms\n")
+      
+      return(self$dtm)
+    },
+    
+    word_frequency_analysis = function(top_n = 20) {
+      if (is.null(self$dtm)) {
+        self$create_document_term_matrix()
+      }
+      
+      # Calculate word frequencies
+      word_freq <- colSums(as.matrix(self$dtm))
+      word_freq <- sort(word_freq, decreasing = TRUE)
+      
+      # Create frequency plot
+      top_words <- head(word_freq, top_n)
+      
+      barplot(top_words, las = 2, main = paste("Top", top_n, "Most Frequent Words"),
+              ylab = "Frequency", col = "skyblue")
+      
+      # Word cloud
+      wordcloud(names(word_freq), word_freq, max.words = 100, 
+                colors = brewer.pal(8, "Dark2"))
+      
+      return(word_freq)
+    },
+    
+    sentiment_analysis = function(text_column = "text", method = "afinn") {
+      # Get sentiment lexicon
+      if (method == "afinn") {
+        sentiment_lexicon <- get_sentiments("afinn")
+      } else if (method == "bing") {
+        sentiment_lexicon <- get_sentiments("bing")
+      } else if (method == "nrc") {
+        sentiment_lexicon <- get_sentiments("nrc")
+      }
+      
+      # Tokenize and analyze sentiment
+      text_df <- data.frame(
+        doc_id = 1:nrow(self$text_data),
+        text = self$text_data[[text_column]],
+        stringsAsFactors = FALSE
+      )
+      
+      sentiment_scores <- text_df %>%
+        unnest_tokens(word, text) %>%
+        inner_join(sentiment_lexicon, by = "word") %>%
+        group_by(doc_id) %>%
+        summarise(
+          sentiment_score = if (method == "afinn") sum(value) else sum(sentiment == "positive") - sum(sentiment == "negative"),
+          .groups = "drop"
+        )
+      
+      # Merge back with original data
+      self$text_data$sentiment_score <- 0
+      self$text_data$sentiment_score[sentiment_scores$doc_id] <- sentiment_scores$sentiment_score
+      
+      # Classify sentiment
+      self$text_data$sentiment_class <- ifelse(self$text_data$sentiment_score > 0, "positive",
+                                              ifelse(self$text_data$sentiment_score < 0, "negative", "neutral"))
+      
+      # Plot sentiment distribution
+      ggplot(self$text_data, aes(x = sentiment_score)) +
+        geom_histogram(bins = 30, fill = "lightblue", alpha = 0.7) +
+        geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
+        labs(title = "Sentiment Score Distribution", x = "Sentiment Score", y = "Frequency") +
+        theme_minimal()
+      
+      return(self$text_data)
+    },
+    
+    topic_modeling_lda = function(num_topics = 5, alpha = 0.1, beta = 0.1) {
+      if (is.null(self$dtm)) {
+        self$create_document_term_matrix()
+      }
+      
+      # Convert to format required by topicmodels
+      dtm_matrix <- as.matrix(self$dtm)
+      
+      # Remove empty documents
+      row_sums <- rowSums(dtm_matrix)
+      dtm_matrix <- dtm_matrix[row_sums > 0, ]
+      
+      # Fit LDA model
+      lda_model <- LDA(dtm_matrix, k = num_topics, 
+                      control = list(alpha = alpha, delta = beta, seed = 42))
+      
+      self$models[["lda"]] <- lda_model
+      
+      # Extract topics
+      topics <- tidy(lda_model, matrix = "beta")
+      
+      # Extract document-topic probabilities
+      doc_topics <- tidy(lda_model, matrix = "gamma")
+      
+      # Plot top terms per topic
+      top_terms <- topics %>%
+        group_by(topic) %>%
+        top_n(10, beta) %>%
+        ungroup() %>%
+        arrange(topic, -beta)
+      
+      top_terms %>%
+        mutate(term = reorder_within(term, beta, topic)) %>%
+        ggplot(aes(term, beta, fill = factor(topic))) +
+        geom_col(show.legend = FALSE) +
+        facet_wrap(~ topic, scales = "free") +
+        coord_flip() +
+        scale_x_reordered() +
+        labs(title = "Top Terms per Topic", x = "Terms", y = "Beta (Term-Topic Probability)") +
+        theme_minimal()
+      
+      cat("LDA topic modeling completed with", num_topics, "topics\n")
+      
+      return(list(model = lda_model, topics = topics, doc_topics = doc_topics))
+    },
+    
+    text_similarity = function(method = "cosine") {
+      if (is.null(self$dtm)) {
+        self$create_document_term_matrix()
+      }
+      
+      # Convert to matrix
+      dtm_matrix <- as.matrix(self$dtm)
+      
+      if (method == "cosine") {
+        # Cosine similarity
+        similarity_matrix <- dtm_matrix %*% t(dtm_matrix) / 
+          (sqrt(rowSums(dtm_matrix^2)) %*% t(sqrt(rowSums(dtm_matrix^2))))
+      } else if (method == "jaccard") {
+        # Jaccard similarity
+        binary_matrix <- (dtm_matrix > 0) * 1
+        intersection <- binary_matrix %*% t(binary_matrix)
+        union <- rowSums(binary_matrix) + rep(rowSums(binary_matrix), each = nrow(binary_matrix)) - intersection
+        similarity_matrix <- intersection / union
+      }
+      
+      # Plot heatmap
+      corrplot(similarity_matrix, method = "color", type = "upper",
+               title = paste("Document Similarity (", str_to_title(method), ")", sep = ""))
+      
+      return(similarity_matrix)
+    },
+    
+    named_entity_recognition = function(text_column = "text") {
+      # Simple NER using regex patterns (basic implementation)
+      texts <- self$text_data[[text_column]]
+      
+      entities <- list()
+      
+      # Email pattern
+      email_pattern <- "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+      entities[["emails"]] <- unlist(str_extract_all(texts, email_pattern))
+      
+      # Phone number pattern (US format)
+      phone_pattern <- "\\b(?:\\d{3}-)?\\d{3}-\\d{4}\\b|\\b\\(\\d{3}\\)\\s?\\d{3}-\\d{4}\\b"
+      entities[["phones"]] <- unlist(str_extract_all(texts, phone_pattern))
+      
+      # URL pattern
+      url_pattern <- "https?://[^\\s]+"
+      entities[["urls"]] <- unlist(str_extract_all(texts, url_pattern))
+      
+      # Capitalize words (potential names)
+      name_pattern <- "\\b[A-Z][a-z]+\\s[A-Z][a-z]+\\b"
+      entities[["potential_names"]] <- unlist(str_extract_all(texts, name_pattern))
+      
+      cat("Named Entity Recognition completed\n")
+      for (entity_type in names(entities)) {
+        cat(str_to_title(entity_type), "found:", length(entities[[entity_type]]), "\n")
+      }
+      
+      return(entities)
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           8. DEEP LEARNING WITH R
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Deep Learning Framework
+DeepLearningModel <- R6Class("DeepLearningModel",
+  public = list(
+    model = NULL,
+    history = NULL,
+    data = NULL,
+    
+    initialize = function() {
+      # Check if TensorFlow/Keras is available
+      if (!reticulate::py_module_available("tensorflow")) {
+        cat("Installing TensorFlow...\n")
+        install_tensorflow()
+      }
+      
+      cat("DeepLearningModel initialized\n")
+    },
+    
+    prepare_data = function(X, y, validation_split = 0.2, test
