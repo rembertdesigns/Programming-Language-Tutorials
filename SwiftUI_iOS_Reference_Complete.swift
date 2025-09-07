@@ -957,4 +957,1946 @@ class CoreDataManager: ObservableObject {
         
         do {
             let postEntities = try viewContext.fetch(request)
-            return postEntities.compactMap { $0.toDomainModel
+            return postEntities.compactMap { $0.toDomainModel() }
+        } catch {
+            print("Fetch posts error: \(error)")
+            return []
+        }
+    }
+    
+    func searchPosts(query: String) -> [Post] {
+        let request: NSFetchRequest<PostEntity> = PostEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "title CONTAINS[cd] %@ OR content CONTAINS[cd] %@", query, query)
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        
+        do {
+            let postEntities = try viewContext.fetch(request)
+            return postEntities.compactMap { $0.toDomainModel() }
+        } catch {
+            print("Search posts error: \(error)")
+            return []
+        }
+    }
+    
+    func clearAllData() {
+        let entities = ["UserEntity", "PostEntity", "CategoryEntity"]
+        
+        entities.forEach { entityName in
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
+            let deleteRequest = NSBatchDeleteRequest(fetchRequest: request)
+            
+            do {
+                try viewContext.execute(deleteRequest)
+            } catch {
+                print("Clear data error for \(entityName): \(error)")
+            }
+        }
+        
+        save()
+    }
+}
+
+// MARK: - Core Data Extensions
+
+extension UserEntity {
+    func toDomainModel() -> User? {
+        guard let id = id,
+              let email = email,
+              let username = username,
+              let firstName = firstName,
+              let lastName = lastName,
+              let createdAt = createdAt,
+              let updatedAt = updatedAt else {
+            return nil
+        }
+        
+        return User(
+            id: id,
+            email: email,
+            username: username,
+            firstName: firstName,
+            lastName: lastName,
+            avatarURL: avatarURL.flatMap(URL.init),
+            bio: bio,
+            isActive: isActive,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+}
+
+extension PostEntity {
+    func toDomainModel() -> Post? {
+        guard let id = id,
+              let title = title,
+              let content = content,
+              let excerpt = excerpt,
+              let authorID = authorID,
+              let categoryID = categoryID,
+              let createdAt = createdAt,
+              let updatedAt = updatedAt else {
+            return nil
+        }
+        
+        let tagsArray = tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? []
+        
+        return Post(
+            id: id,
+            title: title,
+            content: content,
+            excerpt: excerpt,
+            imageURL: imageURL.flatMap(URL.init),
+            authorID: authorID,
+            author: nil, // Would need to fetch separately
+            categoryID: categoryID,
+            category: nil, // Would need to fetch separately
+            tags: tagsArray,
+            isPublished: isPublished,
+            viewCount: Int(viewCount),
+            likeCount: Int(likeCount),
+            commentCount: Int(commentCount),
+            isLiked: isLiked,
+            publishedAt: publishedAt,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. AUTHENTICATION SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class AuthenticationService: ObservableObject {
+    @Published var isAuthenticated = false
+    @Published var currentUser: User?
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    
+    private var cancellables = Set<AnyCancellable>()
+    private let networkManager = NetworkManager.shared
+    private let keychainManager = KeychainManager.shared
+    
+    init() {
+        checkAuthenticationStatus()
+    }
+    
+    // MARK: - Authentication Methods
+    
+    func login(email: String, password: String) {
+        isLoading = true
+        errorMessage = nil
+        
+        networkManager.requestPublisher(
+            endpoint: .login(email: email, password: password),
+            responseType: APIResponse<AuthResponse>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let authData = response.data {
+                    self?.handleSuccessfulAuthentication(authData)
+                } else {
+                    self?.errorMessage = response.message ?? "Login failed"
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func register(email: String, username: String, firstName: String, lastName: String, password: String) {
+        isLoading = true
+        errorMessage = nil
+        
+        let request = RegisterRequest(
+            email: email,
+            username: username,
+            firstName: firstName,
+            lastName: lastName,
+            password: password
+        )
+        
+        networkManager.requestPublisher(
+            endpoint: .register(request),
+            responseType: APIResponse<AuthResponse>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let authData = response.data {
+                    self?.handleSuccessfulAuthentication(authData)
+                } else {
+                    self?.errorMessage = response.message ?? "Registration failed"
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func logout() {
+        networkManager.requestPublisher(
+            endpoint: .logout,
+            responseType: APIResponse<String>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { _ in },
+            receiveValue: { [weak self] _ in
+                self?.handleLogout()
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func refreshToken() {
+        guard let refreshToken = keychainManager.getRefreshToken() else {
+            handleLogout()
+            return
+        }
+        
+        networkManager.requestPublisher(
+            endpoint: .refreshToken(refreshToken),
+            responseType: APIResponse<AuthResponse>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure = completion {
+                    self?.handleLogout()
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let authData = response.data {
+                    self?.handleSuccessfulAuthentication(authData)
+                } else {
+                    self?.handleLogout()
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func handleSuccessfulAuthentication(_ authResponse: AuthResponse) {
+        // Save tokens
+        keychainManager.saveAccessToken(authResponse.accessToken)
+        keychainManager.saveRefreshToken(authResponse.refreshToken)
+        
+        // Map and save user
+        let user = DataMapper.mapUser(from: authResponse.user)
+        currentUser = user
+        CoreDataManager.shared.saveUser(user)
+        
+        // Update authentication state
+        isAuthenticated = true
+        
+        // Post notification
+        NotificationCenter.default.post(name: .userDidLogin, object: user)
+    }
+    
+    private func handleLogout() {
+        // Clear tokens
+        keychainManager.clearTokens()
+        
+        // Clear user data
+        currentUser = nil
+        isAuthenticated = false
+        
+        // Clear Core Data
+        CoreDataManager.shared.clearAllData()
+        
+        // Post notification
+        NotificationCenter.default.post(name: .userDidLogout, object: nil)
+    }
+    
+    private func checkAuthenticationStatus() {
+        if keychainManager.getAccessToken() != nil {
+            // Try to get current user
+            getCurrentUser()
+        }
+    }
+    
+    private func getCurrentUser() {
+        networkManager.requestPublisher(
+            endpoint: .getCurrentUser,
+            responseType: APIResponse<UserDTO>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure = completion {
+                    self?.handleLogout()
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let userDTO = response.data {
+                    let user = DataMapper.mapUser(from: userDTO)
+                    self?.currentUser = user
+                    self?.isAuthenticated = true
+                    CoreDataManager.shared.saveUser(user)
+                } else {
+                    self?.handleLogout()
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func clearError() {
+        errorMessage = nil
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. KEYCHAIN MANAGER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import Security
+
+class KeychainManager {
+    static let shared = KeychainManager()
+    
+    private let service = Bundle.main.bundleIdentifier ?? "com.example.myapp"
+    
+    private enum Keys {
+        static let accessToken = "access_token"
+        static let refreshToken = "refresh_token"
+    }
+    
+    private init() {}
+    
+    // MARK: - Token Management
+    
+    func saveAccessToken(_ token: String) {
+        save(key: Keys.accessToken, value: token)
+    }
+    
+    func getAccessToken() -> String? {
+        return get(key: Keys.accessToken)
+    }
+    
+    func saveRefreshToken(_ token: String) {
+        save(key: Keys.refreshToken, value: token)
+    }
+    
+    func getRefreshToken() -> String? {
+        return get(key: Keys.refreshToken)
+    }
+    
+    func clearTokens() {
+        delete(key: Keys.accessToken)
+        delete(key: Keys.refreshToken)
+    }
+    
+    // MARK: - Generic Keychain Operations
+    
+    private func save(key: String, value: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data
+        ]
+        
+        // Delete any existing item
+        SecItemDelete(query as CFDictionary)
+        
+        // Add new item
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("Keychain save error: \(status)")
+        }
+    }
+    
+    private func get(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let string = String(data: data, encoding: .utf8) {
+            return string
+        }
+        
+        return nil
+    }
+    
+    private func delete(key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key
+        ]
+        
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. VIEW MODELS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Posts View Model
+
+class PostsViewModel: ObservableObject {
+    @Published var posts: [Post] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var searchText = ""
+    @Published var selectedCategory: Category?
+    @Published var currentPage = 1
+    @Published var hasMorePages = true
+    
+    private var cancellables = Set<AnyCancellable>()
+    private let networkManager = NetworkManager.shared
+    private let itemsPerPage = 20
+    
+    init() {
+        loadPosts()
+        setupSearchDebounce()
+    }
+    
+    // MARK: - Public Methods
+    
+    func loadPosts(refresh: Bool = false) {
+        if refresh {
+            currentPage = 1
+            posts = []
+            hasMorePages = true
+        }
+        
+        guard hasMorePages && !isLoading else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        networkManager.requestPublisher(
+            endpoint: .getPosts(
+                page: currentPage,
+                limit: itemsPerPage,
+                categoryID: selectedCategory?.id,
+                search: searchText.isEmpty ? nil : searchText
+            ),
+            responseType: PaginatedResponse<PostDTO>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                guard let self = self else { return }
+                
+                if response.success {
+                    let newPosts = response.data.map(DataMapper.mapPost)
+                    
+                    if refresh {
+                        self.posts = newPosts
+                    } else {
+                        self.posts.append(contentsOf: newPosts)
+                    }
+                    
+                    self.hasMorePages = response.pagination.hasNext
+                    self.currentPage += 1
+                    
+                    // Cache posts locally
+                    CoreDataManager.shared.savePosts(newPosts)
+                } else {
+                    self.errorMessage = response.message ?? "Failed to load posts"
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func loadMorePosts() {
+        loadPosts()
+    }
+    
+    func refreshPosts() {
+        loadPosts(refresh: true)
+    }
+    
+    func searchPosts() {
+        loadPosts(refresh: true)
+    }
+    
+    func likePost(_ post: Post) {
+        let endpoint: APIEndpoint = post.isLiked ? .unlikePost(id: post.id) : .likePost(id: post.id)
+        
+        networkManager.requestPublisher(
+            endpoint: endpoint,
+            responseType: APIResponse<String>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success {
+                    // Update local state
+                    self?.updatePostLikeStatus(post)
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func setCategory(_ category: Category?) {
+        selectedCategory = category
+        refreshPosts()
+    }
+    
+    func clearError() {
+        errorMessage = nil
+    }
+    
+    // MARK: - Private Methods
+    
+    private func setupSearchDebounce() {
+        $searchText
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.searchPosts()
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updatePostLikeStatus(_ post: Post) {
+        if let index = posts.firstIndex(where: { $0.id == post.id }) {
+            posts[index] = Post(
+                id: post.id,
+                title: post.title,
+                content: post.content,
+                excerpt: post.excerpt,
+                imageURL: post.imageURL,
+                authorID: post.authorID,
+                author: post.author,
+                categoryID: post.categoryID,
+                category: post.category,
+                tags: post.tags,
+                isPublished: post.isPublished,
+                viewCount: post.viewCount,
+                likeCount: post.isLiked ? post.likeCount - 1 : post.likeCount + 1,
+                commentCount: post.commentCount,
+                isLiked: !post.isLiked,
+                publishedAt: post.publishedAt,
+                createdAt: post.createdAt,
+                updatedAt: post.updatedAt
+            )
+        }
+    }
+}
+
+// MARK: - Post Detail View Model
+
+class PostDetailViewModel: ObservableObject {
+    @Published var post: Post?
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var comments: [Comment] = []
+    @Published var isLoadingComments = false
+    
+    private var cancellables = Set<AnyCancellable>()
+    private let networkManager = NetworkManager.shared
+    private let postID: String
+    
+    init(postID: String) {
+        self.postID = postID
+        loadPost()
+        loadComments()
+    }
+    
+    func loadPost() {
+        isLoading = true
+        errorMessage = nil
+        
+        networkManager.requestPublisher(
+            endpoint: .getPost(id: postID),
+            responseType: APIResponse<PostDTO>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let postDTO = response.data {
+                    self?.post = DataMapper.mapPost(from: postDTO)
+                } else {
+                    self?.errorMessage = response.message ?? "Failed to load post"
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    func loadComments() {
+        // Implementation for loading comments
+        isLoadingComments = true
+        // ... similar pattern as above
+    }
+    
+    func likePost() {
+        guard let post = post else { return }
+        
+        let endpoint: APIEndpoint = post.isLiked ? .unlikePost(id: post.id) : .likePost(id: post.id)
+        
+        networkManager.requestPublisher(
+            endpoint: endpoint,
+            responseType: APIResponse<String>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success {
+                    self?.updateLikeStatus()
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+    
+    private func updateLikeStatus() {
+        guard let currentPost = post else { return }
+        
+        post = Post(
+            id: currentPost.id,
+            title: currentPost.title,
+            content: currentPost.content,
+            excerpt: currentPost.excerpt,
+            imageURL: currentPost.imageURL,
+            authorID: currentPost.authorID,
+            author: currentPost.author,
+            categoryID: currentPost.categoryID,
+            category: currentPost.category,
+            tags: currentPost.tags,
+            isPublished: currentPost.isPublished,
+            viewCount: currentPost.viewCount,
+            likeCount: currentPost.isLiked ? currentPost.likeCount - 1 : currentPost.likeCount + 1,
+            commentCount: currentPost.commentCount,
+            isLiked: !currentPost.isLiked,
+            publishedAt: currentPost.publishedAt,
+            createdAt: currentPost.createdAt,
+            updatedAt: currentPost.updatedAt
+        )
+    }
+}
+
+// MARK: - Categories View Model
+
+class CategoriesViewModel: ObservableObject {
+    @Published var categories: [Category] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    
+    private var cancellables = Set<AnyCancellable>()
+    private let networkManager = NetworkManager.shared
+    
+    init() {
+        loadCategories()
+    }
+    
+    func loadCategories() {
+        isLoading = true
+        errorMessage = nil
+        
+        networkManager.requestPublisher(
+            endpoint: .getCategories,
+            responseType: APIResponse<[CategoryDTO]>.self
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.errorMessage = error.localizedDescription
+                }
+            },
+            receiveValue: { [weak self] response in
+                if response.success, let categoryDTOs = response.data {
+                    self?.categories = categoryDTOs.map(DataMapper.mapCategory)
+                } else {
+                    self?.errorMessage = response.message ?? "Failed to load categories"
+                }
+            }
+        )
+        .store(in: &cancellables)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. SWIFTUI VIEWS AND SCREENS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Content View
+
+struct ContentView: View {
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var authService: AuthenticationService
+    
+    var body: some View {
+        Group {
+            if authService.isAuthenticated {
+                MainTabView()
+            } else {
+                AuthenticationView()
+            }
+        }
+        .overlay(
+            Group {
+                if let errorMessage = appState.errorMessage {
+                    ErrorBannerView(message: errorMessage) {
+                        appState.clearError()
+                    }
+                }
+            }
+        )
+    }
+}
+
+// MARK: - Authentication View
+
+struct AuthenticationView: View {
+    @State private var isLoginMode = true
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                // Logo or App Title
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.blue)
+                    
+                    Text("MyApp")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                }
+                .padding(.top, 60)
+                
+                Spacer()
+                
+                // Authentication Form
+                if isLoginMode {
+                    LoginView()
+                } else {
+                    RegisterView()
+                }
+                
+                // Toggle between login and register
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isLoginMode.toggle()
+                    }
+                }) {
+                    Text(isLoginMode ? "Don't have an account? Sign up" : "Already have an account? Sign in")
+                        .foregroundColor(.blue)
+                        .padding()
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .navigationBarHidden(true)
+        }
+    }
+}
+
+// MARK: - Login View
+
+struct LoginView: View {
+    @EnvironmentObject var authService: AuthenticationService
+    @State private var email = ""
+    @State private var password = ""
+    @State private var showPassword = false
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Welcome Back")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .padding(.bottom, 20)
+            
+            // Email Field
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Email")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                TextField("Enter your email", text: $email)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .keyboardType(.emailAddress)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+            }
+            
+            // Password Field
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Password")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    if showPassword {
+                        TextField("Enter your password", text: $password)
+                    } else {
+                        SecureField("Enter your password", text: $password)
+                    }
+                    
+                    Button(action: {
+                        showPassword.toggle()
+                    }) {
+                        Image(systemName: showPassword ? "eye.slash" : "eye")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+            
+            // Login Button
+            Button(action: {
+                authService.login(email: email, password: password)
+            }) {
+                HStack {
+                    if authService.isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                    } else {
+                        Text("Sign In")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .disabled(email.isEmpty || password.isEmpty || authService.isLoading)
+            
+            // Error Message
+            if let errorMessage = authService.errorMessage {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+        }
+    }
+}
+
+// MARK: - Register View
+
+struct RegisterView: View {
+    @EnvironmentObject var authService: AuthenticationService
+    @State private var email = ""
+    @State private var username = ""
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var showPassword = false
+    
+    var isFormValid: Bool {
+        !email.isEmpty && !username.isEmpty && !firstName.isEmpty && 
+        !lastName.isEmpty && !password.isEmpty && password == confirmPassword && 
+        password.count >= 8
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("Create Account")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .padding(.bottom, 20)
+                
+                // Name Fields
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("First Name")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("First Name", text: $firstName)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Last Name")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Last Name", text: $lastName)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                }
+                
+                // Email Field
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Email")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("Enter your email", text: $email)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+                
+                // Username Field
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Username")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("Choose a username", text: $username)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+                
+                // Password Fields
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Password")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    HStack {
+                        if showPassword {
+                            TextField("Enter your password", text: $password)
+                        } else {
+                            SecureField("Enter your password", text: $password)
+                        }
+                        
+                        Button(action: {
+                            showPassword.toggle()
+                        }) {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Confirm Password")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    SecureField("Confirm your password", text: $confirmPassword)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                
+                // Password Requirements
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Password must:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    HStack {
+                        Image(systemName: password.count >= 8 ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(password.count >= 8 ? .green : .secondary)
+                        Text("Be at least 8 characters long")
+                            .font(.caption)
+                        Spacer()
+                    }
+                    
+                    HStack {
+                        Image(systemName: password == confirmPassword && !password.isEmpty ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(password == confirmPassword && !password.isEmpty ? .green : .secondary)
+                        Text("Match confirmation password")
+                            .font(.caption)
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Register Button
+                Button(action: {authService.register(
+                        email: email,
+                        username: username,
+                        firstName: firstName,
+                        lastName: lastName,
+                        password: password
+                    )
+                }) {
+                    HStack {
+                        if authService.isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Create Account")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(isFormValid ? Color.blue : Color.gray)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .disabled(!isFormValid || authService.isLoading)
+                
+                // Error Message
+                if let errorMessage = authService.errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Main Tab View
+
+struct MainTabView: View {
+    @EnvironmentObject var appState: AppState
+    
+    var body: some View {
+        TabView(selection: $appState.selectedTab) {
+            PostsListView()
+                .tabItem {
+                    Image(systemName: AppState.Tab.posts.iconName)
+                    Text(AppState.Tab.posts.rawValue)
+                }
+                .tag(AppState.Tab.posts)
+            
+            ExploreView()
+                .tabItem {
+                    Image(systemName: AppState.Tab.explore.iconName)
+                    Text(AppState.Tab.explore.rawValue)
+                }
+                .tag(AppState.Tab.explore)
+            
+            FavoritesView()
+                .tabItem {
+                    Image(systemName: AppState.Tab.favorites.iconName)
+                    Text(AppState.Tab.favorites.rawValue)
+                }
+                .tag(AppState.Tab.favorites)
+            
+            ProfileView()
+                .tabItem {
+                    Image(systemName: AppState.Tab.profile.iconName)
+                    Text(AppState.Tab.profile.rawValue)
+                }
+                .tag(AppState.Tab.profile)
+        }
+        .accentColor(.blue)
+    }
+}
+
+// MARK: - Posts List View
+
+struct PostsListView: View {
+    @StateObject private var viewModel = PostsViewModel()
+    @StateObject private var categoriesViewModel = CategoriesViewModel()
+    @State private var showingCreatePost = false
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Search Bar
+                SearchBar(text: $viewModel.searchText)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                
+                // Category Filter
+                if !categoriesViewModel.categories.isEmpty {
+                    CategoryFilterView(
+                        categories: categoriesViewModel.categories,
+                        selectedCategory: $viewModel.selectedCategory
+                    )
+                    .padding(.horizontal)
+                }
+                
+                // Posts List
+                if viewModel.posts.isEmpty && !viewModel.isLoading {
+                    EmptyStateView(
+                        title: "No Posts Yet",
+                        subtitle: "Start by creating your first post",
+                        imageName: "doc.text.badge.plus"
+                    )
+                } else {
+                    List {
+                        ForEach(viewModel.posts) { post in
+                            NavigationLink(destination: PostDetailView(postID: post.id)) {
+                                PostRowView(post: post) {
+                                    viewModel.likePost(post)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Load more when reaching the end
+                            if post == viewModel.posts.last && viewModel.hasMorePages {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .onAppear {
+                                        viewModel.loadMorePosts()
+                                    }
+                            }
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                    .refreshable {
+                        viewModel.refreshPosts()
+                    }
+                }
+            }
+            .navigationTitle("Posts")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showingCreatePost = true }) {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCreatePost) {
+                CreatePostView()
+            }
+            .overlay(
+                Group {
+                    if viewModel.isLoading && viewModel.posts.isEmpty {
+                        ProgressView("Loading posts...")
+                    }
+                }
+            )
+        }
+        .onAppear {
+            if viewModel.posts.isEmpty {
+                viewModel.loadPosts()
+            }
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.clearError()
+            }
+        } message: {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+            }
+        }
+    }
+}
+
+// MARK: - Post Row View
+
+struct PostRowView: View {
+    let post: Post
+    let onLike: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with author info
+            HStack {
+                AsyncImage(url: post.author?.avatarURL) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Text(post.author?.initials ?? "??")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        )
+                }
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(post.author?.fullName ?? "Unknown Author")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    
+                    Text(post.formattedPublishDate)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if let category = post.category {
+                    CategoryBadge(category: category)
+                }
+            }
+            
+            // Post content
+            VStack(alignment: .leading, spacing: 8) {
+                Text(post.title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .lineLimit(2)
+                
+                Text(post.excerpt)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .lineLimit(3)
+            }
+            
+            // Post image if available
+            if let imageURL = post.imageURL {
+                AsyncImage(url: imageURL) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .overlay(
+                            ProgressView()
+                        )
+                }
+                .frame(height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            
+            // Tags
+            if !post.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(post.tags, id: \.self) { tag in
+                            TagView(tag: tag)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                }
+            }
+            
+            // Action buttons
+            HStack(spacing: 24) {
+                Button(action: onLike) {
+                    HStack(spacing: 4) {
+                        Image(systemName: post.isLiked ? "heart.fill" : "heart")
+                            .foregroundColor(post.isLiked ? .red : .secondary)
+                        Text("\(post.likeCount)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                HStack(spacing: 4) {
+                    Image(systemName: "bubble.left")
+                        .foregroundColor(.secondary)
+                    Text("\(post.commentCount)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack(spacing: 4) {
+                    Image(systemName: "eye")
+                        .foregroundColor(.secondary)
+                    Text("\(post.viewCount)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Text("\(post.readingTimeMinutes) min read")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Post Detail View
+
+struct PostDetailView: View {
+    let postID: String
+    @StateObject private var viewModel: PostDetailViewModel
+    @Environment(\.presentationMode) var presentationMode
+    
+    init(postID: String) {
+        self.postID = postID
+        self._viewModel = StateObject(wrappedValue: PostDetailViewModel(postID: postID))
+    }
+    
+    var body: some View {
+        ScrollView {
+            if let post = viewModel.post {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(post.title)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .lineLimit(nil)
+                        
+                        HStack {
+                            AsyncImage(url: post.author?.avatarURL) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .overlay(
+                                        Text(post.author?.initials ?? "??")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    )
+                            }
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(post.author?.fullName ?? "Unknown Author")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                
+                                HStack(spacing: 8) {
+                                    Text(post.formattedPublishDate)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("•")
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("\(post.readingTimeMinutes) min read")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Spacer()
+                        }
+                    }
+                    
+                    // Featured Image
+                    if let imageURL = post.imageURL {
+                        AsyncImage(url: imageURL) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .overlay(ProgressView())
+                        }
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    
+                    // Content
+                    Text(post.content)
+                        .font(.body)
+                        .lineSpacing(6)
+                    
+                    // Tags
+                    if !post.tags.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Tags")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                            
+                            FlowLayout(spacing: 8) {
+                                ForEach(post.tags, id: \.self) { tag in
+                                    TagView(tag: tag)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    // Action Bar
+                    HStack(spacing: 24) {
+                        Button(action: {
+                            viewModel.likePost()
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: post.isLiked ? "heart.fill" : "heart")
+                                    .foregroundColor(post.isLiked ? .red : .primary)
+                                Text("\(post.likeCount)")
+                                    .foregroundColor(.primary)
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        }
+                        
+                        Button(action: {}) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bubble.left")
+                                Text("\(post.commentCount)")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        }
+                        
+                        Button(action: {}) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    Divider()
+                    
+                    // Comments Section
+                    CommentsSection(comments: viewModel.comments)
+                }
+                .padding()
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .overlay(
+            Group {
+                if viewModel.isLoading {
+                    ProgressView("Loading post...")
+                }
+            }
+        )
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.clearError()
+            }
+        } message: {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+            }
+        }
+    }
+}
+
+// MARK: - Supporting Views
+
+struct SearchBar: View {
+    @Binding var text: String
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+            
+            TextField("Search posts...", text: $text)
+                .textFieldStyle(PlainTextFieldStyle())
+            
+            if !text.isEmpty {
+                Button(action: { text = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
+    }
+}
+
+struct CategoryFilterView: View {
+    let categories: [Category]
+    @Binding var selectedCategory: Category?
+    
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                // All categories button
+                Button(action: { selectedCategory = nil }) {
+                    Text("All")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(selectedCategory == nil ? Color.blue : Color.clear)
+                        .foregroundColor(selectedCategory == nil ? .white : .blue)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(Color.blue, lineWidth: 1)
+                        )
+                        .cornerRadius(20)
+                }
+                
+                ForEach(categories) { category in
+                    Button(action: { selectedCategory = category }) {
+                        Text(category.name)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedCategory?.id == category.id ? category.colorValue : Color.clear)
+                            .foregroundColor(selectedCategory?.id == category.id ? .white : category.colorValue)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(category.colorValue, lineWidth: 1)
+                            )
+                            .cornerRadius(20)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct CategoryBadge: View {
+    let category: Category
+    
+    var body: some View {
+        Text(category.name)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(category.colorValue.opacity(0.2))
+            .foregroundColor(category.colorValue)
+            .cornerRadius(8)
+    }
+}
+
+struct TagView: View {
+    let tag: String
+    
+    var body: some View {
+        Text("#\(tag)")
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(.systemGray6))
+            .foregroundColor(.secondary)
+            .cornerRadius(6)
+    }
+}
+
+struct EmptyStateView: View {
+    let title: String
+    let subtitle: String
+    let imageName: String
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: imageName)
+                .font(.system(size: 60))
+                .foregroundColor(.secondary)
+            
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text(subtitle)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding()
+    }
+}
+
+struct ErrorBannerView: View {
+    let message: String
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        VStack {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.white)
+                
+                Text(message)
+                    .foregroundColor(.white)
+                    .font(.subheadline)
+                
+                Spacer()
+                
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                }
+            }
+            .padding()
+            .background(Color.red)
+            
+            Spacer()
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Flow Layout for Tags
+
+struct FlowLayout: Layout {
+    let spacing: CGFloat
+    
+    init(spacing: CGFloat = 8) {
+        self.spacing = spacing
+    }
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var totalHeight: CGFloat = 0
+        var currentRowWidth: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        
+        for size in sizes {
+            if currentRowWidth + size.width > (proposal.width ?? .infinity) {
+                totalHeight += currentRowHeight + spacing
+                currentRowWidth = size.width
+                currentRowHeight = size.height
+            } else {
+                currentRowWidth += size.width + spacing
+                currentRowHeight = max(currentRowHeight, size.height)
+            }
+        }
+        
+        totalHeight += currentRowHeight
+        
+        return CGSize(width: proposal.width ?? currentRowWidth, height: totalHeight)
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var currentX: CGFloat = bounds.minX
+        var currentY: CGFloat = bounds.minY
+        var currentRowHeight: CGFloat = 0
+        
+        for (index, subview) in subviews.enumerated() {
+            let size = sizes[index]
+            
+            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += currentRowHeight + spacing
+                currentRowHeight = 0
+            }
+            
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(size)
+            )
+            
+            currentX += size.width + spacing
+            currentRowHeight = max(currentRowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Additional Views
+
+struct ExploreView: View {
+    var body: some View {
+        NavigationView {
+            VStack {
+                Text("Explore")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Spacer()
+                Text("Discover new content here")
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .navigationTitle("Explore")
+        }
+    }
+}
+
+struct FavoritesView: View {
+    var body: some View {
+        NavigationView {
+            VStack {
+                Text("Favorites")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Spacer()
+                Text("Your saved posts appear here")
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .navigationTitle("Favorites")
+        }
+    }
+}
+
+struct ProfileView: View {
+    @EnvironmentObject var authService: AuthenticationService
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                if let user = authService.currentUser {
+                    AsyncImage(url: user.avatarURL) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .overlay(
+                                Text(user.initials)
+                                    .font(.title)
+                                    .foregroundColor(.white)
+                            )
+                    }
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    
+                    Text(user.fullName)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("@\(user.username)")
+                        .foregroundColor(.secondary)
+                    
+                    if let bio = user.bio {
+                        Text(bio)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Logout") {
+                        authService.logout()
+                    }
+                    .foregroundColor(.red)
+                }
+            }
+            .padding()
+            .navigationTitle("Profile")
+        }
+    }
+}
+
+struct CreatePostView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @State private var title = ""
+    @State private var content = ""
+    @State private var isPublished = false
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                TextField("Post title", text: $title)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                
+                TextEditor(text: $content)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3))
+                    )
+                
+                Toggle("Publish immediately", isOn: $isPublished)
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("New Post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        // Handle save
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .disabled(title.isEmpty || content.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+struct CommentsSection: View {
+    let comments: [Comment]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Comments (\(comments.count))")
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            if comments.isEmpty {
+                Text("No comments yet")
+                    .foregroundColor(.secondary)
+                    .italic()
+            } else {
+                ForEach(comments) { comment in
+                    CommentView(comment: comment)
+                }
+            }
+        }
+    }
+}
+
+struct CommentView: View {
+    let comment: Comment
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(comment.author?.fullName ?? "Anonymous")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                
+                Spacer()
+                
+                Text(comment.timeAgo)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Text(comment.content)
+                .font(.body)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           12. UTILITY EXTENSIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Date Extensions
+
+extension DateFormatter {
+    static let iso8601: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+    
+    static let mediumDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter
+    }()
+}
+
+extension Date {
+    func timeAgoDisplay() -> String {
+        let now = Date()
+        let components = Calendar.current.dateComponents([.second, .minute, .hour, .day, .weekOfYear, .month, .year], from: self, to: now)
+        
+        if let year = components.year, year >= 1 {
+            return "\(year) year\(year == 1 ? "" : "s") ago"
+        }
+        
+        if let month = components.month, month >= 1 {
+            return "\(month) month\(month == 1 ? "" : "s") ago"
+        }
+        
+        if let week = components.weekOfYear, week >= 1 {
+            return "\(week) week\(week == 1 ? "" : "s") ago"
+        }
+        
+        if let day = components.day, day >= 1 {
+            return "\(day) day\(day == 1 ? "" : "s") ago"
+        }
+        
+        if let hour = components.hour, hour >= 1 {
+            return "\(hour) hour\(hour == 1 ? "" : "s") ago"
+        }
+        
+        if let minute = components.minute, minute >= 1 {
+            return "\(minute) minute\(minute == 1 ? "" : "s") ago"
+        }
+        
+        return "Just now"
+    }
+}
+
+// MARK: - Color Extensions
+
+extension Color {
+    init?(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        
+        Scanner(string: hex).scanHexInt64(&int)
+        
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            return nil
+        }
+        
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
+// MARK: - Codable Extensions
+
+extension Encodable {
+    func asDictionary() throws -> [String: Any] {
+        let data = try JSONEncoder().encode(self)
+        guard let dictionary = try JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any] else {
+            throw NSError()
+        }
+        return dictionary
+    }
+}
