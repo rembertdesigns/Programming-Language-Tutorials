@@ -2912,3 +2912,774 @@ data class PaginationInfo(
     val hasNext: Boolean,
     val hasPrevious: Boolean
 )
+
+@Test
+    fun `login success updates state correctly`() = runTest {
+        // Given
+        val email = "test@example.com"
+        val password = "password123"
+        val user = User(
+            id = "1",
+            email = email,
+            username = "testuser",
+            firstName = "Test",
+            lastName = "User",
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        
+        whenever(loginUseCase(email, password)).thenReturn(Resource.Success(user))
+        
+        // When
+        viewModel.login(email, password)
+        
+        // Then
+        val state = viewModel.authState.value
+        assertFalse(state.isLoading)
+        assertEquals(user, state.user)
+        assertNull(state.error)
+        assertTrue(viewModel.isLoggedIn.value)
+    }
+    
+    @Test
+    fun `login failure updates state with error`() = runTest {
+        // Given
+        val email = "test@example.com"
+        val password = "wrongpassword"
+        val errorMessage = "Invalid credentials"
+        
+        whenever(loginUseCase(email, password)).thenReturn(Resource.Error(errorMessage))
+        
+        // When
+        viewModel.login(email, password)
+        
+        // Then
+        val state = viewModel.authState.value
+        assertFalse(state.isLoading)
+        assertNull(state.user)
+        assertEquals(errorMessage, state.error)
+        assertFalse(viewModel.isLoggedIn.value)
+    }
+    
+    @Test
+    fun `logout clears state`() = runTest {
+        // Given
+        whenever(logoutUseCase()).thenReturn(Resource.Success(Unit))
+        
+        // When
+        viewModel.logout()
+        
+        // Then
+        val state = viewModel.authState.value
+        assertFalse(state.isLoading)
+        assertNull(state.user)
+        assertNull(state.error)
+        assertFalse(viewModel.isLoggedIn.value)
+    }
+}
+
+// UI Tests with Compose Testing
+package com.example.myapp.presentation.ui
+
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.myapp.presentation.ui.screens.LoginScreen
+import com.example.myapp.presentation.ui.theme.MyAppTheme
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class LoginScreenTest {
+    
+    @get:Rule
+    val composeTestRule = createComposeRule()
+    
+    @Test
+    fun loginScreen_displaysCorrectly() {
+        composeTestRule.setContent {
+            MyAppTheme {
+                LoginScreen(
+                    onNavigateToRegister = { },
+                    onLoginSuccess = { }
+                )
+            }
+        }
+        
+        // Verify UI elements are displayed
+        composeTestRule.onNodeWithText("Welcome Back").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Email").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Password").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Login").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Don't have an account? Register").assertIsDisplayed()
+    }
+    
+    @Test
+    fun loginScreen_inputFields_acceptText() {
+        composeTestRule.setContent {
+            MyAppTheme {
+                LoginScreen(
+                    onNavigateToRegister = { },
+                    onLoginSuccess = { }
+                )
+            }
+        }
+        
+        // Test email input
+        composeTestRule.onNodeWithText("Email")
+            .performTextInput("test@example.com")
+        
+        // Test password input
+        composeTestRule.onNodeWithText("Password")
+            .performTextInput("password123")
+        
+        // Verify text was entered
+        composeTestRule.onNodeWithText("test@example.com").assertIsDisplayed()
+    }
+    
+    @Test
+    fun loginButton_isDisabled_whenFieldsEmpty() {
+        composeTestRule.setContent {
+            MyAppTheme {
+                LoginScreen(
+                    onNavigateToRegister = { },
+                    onLoginSuccess = { }
+                )
+            }
+        }
+        
+        // Login button should be disabled when fields are empty
+        composeTestRule.onNodeWithText("Login")
+            .assertIsNotEnabled()
+    }
+}
+
+// Integration Tests
+package com.example.myapp.data.repository
+
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.myapp.data.local.UserDao
+import com.example.myapp.data.mapper.UserMapper
+import com.example.myapp.data.model.AuthResponse
+import com.example.myapp.data.model.LoginRequest
+import com.example.myapp.data.model.UserDto
+import com.example.myapp.data.remote.ApiService
+import com.example.myapp.utils.Resource
+import com.example.myapp.utils.TokenManager
+import kotlinx.coroutines.test.runTest
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.mockito.Mock
+import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import retrofit2.Response
+import org.junit.Assert.*
+
+@RunWith(AndroidJUnit4::class)
+class UserRepositoryImplTest {
+    
+    @Mock
+    private lateinit var apiService: ApiService
+    
+    @Mock
+    private lateinit var userDao: UserDao
+    
+    @Mock
+    private lateinit var tokenManager: TokenManager
+    
+    private lateinit var repository: UserRepositoryImpl
+    
+    @Before
+    fun setup() {
+        MockitoAnnotations.openMocks(this)
+        repository = UserRepositoryImpl(apiService, userDao, tokenManager)
+    }
+    
+    @Test
+    fun `login success saves tokens and caches user`() = runTest {
+        // Given
+        val email = "test@example.com"
+        val password = "password123"
+        val userDto = UserDto(
+            id = "1",
+            email = email,
+            username = "testuser",
+            firstName = "Test",
+            lastName = "User",
+            avatarUrl = null,
+            isActive = true,
+            createdAt = "2023-01-01T00:00:00.000Z",
+            updatedAt = "2023-01-01T00:00:00.000Z"
+        )
+        val authResponse = AuthResponse(
+            accessToken = "access_token",
+            refreshToken = "refresh_token",
+            expiresIn = 3600,
+            user = userDto
+        )
+        
+        whenever(apiService.login(LoginRequest(email, password)))
+            .thenReturn(Response.success(authResponse))
+        
+        // When
+        val result = repository.login(email, password)
+        
+        // Then
+        assertTrue(result is Resource.Success)
+        verify(tokenManager).saveTokens("access_token", "refresh_token")
+        verify(userDao).insertUser(UserMapper.domainToEntity(UserMapper.dtoToDomain(userDto)))
+    }
+    
+    @Test
+    fun `login failure returns error`() = runTest {
+        // Given
+        val email = "test@example.com"
+        val password = "wrongpassword"
+        
+        whenever(apiService.login(LoginRequest(email, password)))
+            .thenReturn(Response.error(401, okhttp3.ResponseBody.create(null, "Unauthorized")))
+        
+        // When
+        val result = repository.login(email, password)
+        
+        // Then
+        assertTrue(result is Resource.Error)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           15. PERFORMANCE OPTIMIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.utils
+
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.*
+
+@Composable
+fun LazyListState.isScrollingUp(): Boolean {
+    var previousIndex by remember(this) { mutableStateOf(firstVisibleItemIndex) }
+    var previousScrollOffset by remember(this) { mutableStateOf(firstVisibleItemScrollOffset) }
+    return remember(this) {
+        derivedStateOf {
+            if (previousIndex != firstVisibleItemIndex) {
+                previousIndex > firstVisibleItemIndex
+            } else {
+                previousScrollOffset >= firstVisibleItemScrollOffset
+            }.also {
+                previousIndex = firstVisibleItemIndex
+                previousScrollOffset = firstVisibleItemScrollOffset
+            }
+        }
+    }.value
+}
+
+@Composable
+fun rememberLazyListScrollConnection(
+    onScrollUp: () -> Unit,
+    onScrollDown: () -> Unit
+): LazyListState {
+    val listState = remember { LazyListState() }
+    val isScrollingUp = listState.isScrollingUp()
+    
+    LaunchedEffect(isScrollingUp) {
+        if (isScrollingUp) {
+            onScrollUp()
+        } else {
+            onScrollDown()
+        }
+    }
+    
+    return listState
+}
+
+// Image Loading Optimization
+package com.example.myapp.utils
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import coil.size.Size
+
+@Composable
+fun AsyncImage(
+    imageUrl: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    placeholder: @Composable (() -> Unit)? = null,
+    error: @Composable (() -> Unit)? = null
+) {
+    val painter = rememberAsyncImagePainter(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(imageUrl)
+            .size(Size.ORIGINAL)
+            .crossfade(true)
+            .build()
+    )
+    
+    Box(modifier = modifier) {
+        when (painter.state) {
+            is AsyncImagePainter.State.Loading -> {
+                placeholder?.invoke() ?: CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .align(Alignment.Center)
+                )
+            }
+            is AsyncImagePainter.State.Error -> {
+                error?.invoke() ?: Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Default error placeholder
+                }
+            }
+            else -> {
+                Image(
+                    painter = painter,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale
+                )
+            }
+        }
+    }
+}
+
+// Memory Management
+package com.example.myapp.utils
+
+import android.app.ActivityManager
+import android.content.Context
+import android.graphics.Bitmap
+import androidx.collection.LruCache
+
+class ImageMemoryCache private constructor() {
+    
+    companion object {
+        @Volatile
+        private var INSTANCE: ImageMemoryCache? = null
+        
+        fun getInstance(): ImageMemoryCache {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: ImageMemoryCache().also { INSTANCE = it }
+            }
+        }
+    }
+    
+    private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+    private val cacheSize = maxMemory / 8
+    
+    private val memoryCache = object : LruCache<String, Bitmap>(cacheSize) {
+        override fun sizeOf(key: String, bitmap: Bitmap): Int {
+            return bitmap.byteCount / 1024
+        }
+    }
+    
+    fun addBitmapToMemoryCache(key: String, bitmap: Bitmap) {
+        if (getBitmapFromMemCache(key) == null) {
+            memoryCache.put(key, bitmap)
+        }
+    }
+    
+    fun getBitmapFromMemCache(key: String): Bitmap? {
+        return memoryCache.get(key)
+    }
+    
+    fun clearCache() {
+        memoryCache.evictAll()
+    }
+}
+
+// Network State Monitoring
+package com.example.myapp.utils
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import androidx.lifecycle.LiveData
+
+class NetworkConnectionLiveData(context: Context) : LiveData<Boolean>() {
+    
+    private val connectivityManager = 
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            postValue(true)
+        }
+        
+        override fun onLost(network: Network) {
+            postValue(false)
+        }
+    }
+    
+    override fun onActive() {
+        super.onActive()
+        val networkRequest = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
+        
+        // Set initial value
+        postValue(isNetworkAvailable())
+    }
+    
+    override fun onInactive() {
+        super.onInactive()
+        connectivityManager.unregisterNetworkCallback(networkCallback)
+    }
+    
+    private fun isNetworkAvailable(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           16. SECURITY AND BEST PRACTICES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.security
+
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.IvParameterSpec
+
+class CryptoManager {
+    
+    companion object {
+        private const val KEYSTORE_ALIAS = "MyAppSecretKey"
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val TRANSFORMATION = "AES/CBC/PKCS7Padding"
+    }
+    
+    private val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply {
+        load(null)
+    }
+    
+    init {
+        generateSecretKey()
+    }
+    
+    private fun generateSecretKey() {
+        if (!keyStore.containsAlias(KEYSTORE_ALIAS)) {
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            val keyGenParameterSpec = KeyGenParameterSpec.Builder(
+                KEYSTORE_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+                .setUserAuthenticationRequired(false)
+                .build()
+            
+            keyGenerator.init(keyGenParameterSpec)
+            keyGenerator.generateKey()
+        }
+    }
+    
+    fun encrypt(data: String): String {
+        val secretKey = keyStore.getKey(KEYSTORE_ALIAS, null) as SecretKey
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        
+        val iv = cipher.iv
+        val encryptedData = cipher.doFinal(data.toByteArray())
+        
+        val combined = iv + encryptedData
+        return Base64.encodeToString(combined, Base64.DEFAULT)
+    }
+    
+    fun decrypt(encryptedData: String): String {
+        val combined = Base64.decode(encryptedData, Base64.DEFAULT)
+        val iv = combined.sliceArray(0..15)
+        val encrypted = combined.sliceArray(16 until combined.size)
+        
+        val secretKey = keyStore.getKey(KEYSTORE_ALIAS, null) as SecretKey
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
+        
+        val decryptedData = cipher.doFinal(encrypted)
+        return String(decryptedData)
+    }
+}
+
+// Network Security
+package com.example.myapp.security
+
+import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class SecureStorage @Inject constructor(
+    private val context: Context
+) {
+    
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+    
+    private val sharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "secure_prefs",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+    
+    fun storeSecurely(key: String, value: String) {
+        sharedPreferences.edit().putString(key, value).apply()
+    }
+    
+    fun retrieveSecurely(key: String): String? {
+        return sharedPreferences.getString(key, null)
+    }
+    
+    fun removeSecurely(key: String) {
+        sharedPreferences.edit().remove(key).apply()
+    }
+    
+    fun clearAll() {
+        sharedPreferences.edit().clear().apply()
+    }
+}
+
+// Certificate Pinning
+package com.example.myapp.security
+
+import okhttp3.CertificatePinner
+import okhttp3.OkHttpClient
+
+object SecureNetworkClient {
+    
+    fun createSecureClient(): OkHttpClient {
+        val certificatePinner = CertificatePinner.Builder()
+            .add("api.example.com", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=") // Replace with actual certificate hash
+            .build()
+        
+        return OkHttpClient.Builder()
+            .certificatePinner(certificatePinner)
+            .addInterceptor(AuthInterceptor())
+            .build()
+    }
+}
+
+class AuthInterceptor : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val originalRequest = chain.request()
+        
+        // Add authentication header if available
+        val tokenManager = TokenManager(context) // Inject properly
+        val token = tokenManager.getAccessToken()
+        
+        val newRequest = if (token != null) {
+            originalRequest.newBuilder()
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+        } else {
+            originalRequest
+        }
+        
+        return chain.proceed(newRequest)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           17. MAIN ACTIVITY AND APP ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapp.presentation.navigation.AppNavigation
+import com.example.myapp.presentation.ui.theme.MyAppTheme
+import com.example.myapp.presentation.viewmodel.AuthViewModel
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+    
+    private val authViewModel: AuthViewModel by viewModels()
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Install splash screen
+        installSplashScreen().apply {
+            setKeepOnScreenCondition {
+                authViewModel.authState.value.isLoading
+            }
+        }
+        
+        setContent {
+            MyAppTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    AppContent()
+                }
+            }
+        }
+    }
+    
+    @Composable
+    private fun AppContent() {
+        val isLoggedIn by authViewModel.isLoggedIn.collectAsStateWithLifecycle()
+        
+        AppNavigation(
+            startDestination = if (isLoggedIn) "main" else "auth"
+        )
+    }
+}
+
+// Theme Configuration
+package com.example.myapp.presentation.ui.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Purple80,
+    secondary = PurpleGrey80,
+    tertiary = Pink80
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Purple40,
+    secondary = PurpleGrey40,
+    tertiary = Pink40
+)
+
+@Composable
+fun MyAppTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
+}
+
+// Color definitions
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
+
+/*
+═══════════════════════════════════════════════════════════════════════════════
+                           18. CONCLUSION AND ADDITIONAL RESOURCES
+═══════════════════════════════════════════════════════════════════════════════
+
+This comprehensive Kotlin Android reference covers:
+
+✅ Modern Android development with Kotlin
+✅ Clean Architecture with MVVM pattern
+✅ Jetpack Compose for modern UI development
+✅ Dependency injection with Hilt
+✅ Database management with Room
+✅ Network layer with Retrofit and OkHttp
+✅ Reactive programming with Coroutines and Flow
+✅ Image loading and caching strategies
+✅ Security best practices and encryption
+✅ Comprehensive testing strategies
+✅ Performance optimization techniques
+✅ Navigation with Jetpack Navigation Compose
+
+ADDITIONAL KOTLIN ANDROID RESOURCES:
+
+1. OFFICIAL DOCUMENTATION:
+   - Android Developers: https://developer.android.com/
+   - Kotlin for Android: https://developer.android.com/kotlin
+   - Jetpack Compose: https://developer.android.com/jetpack/compose
+
+2. ARCHITECTURE:
+   - Guide to app architecture: https://developer.android.com/guide/app-architecture
+   - Android Architecture Components: https://developer.android.com/topic/libraries/architecture
+   - Clean Architecture: https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html
+
+3. TESTING:
+   - Testing in Android: https://developer.android.com/training/testing
+   - Compose Testing: https://developer.android.com/jetpack/compose/testing
+   - Espresso Testing: https://developer.android.com/training/testing/espresso
+
+4. PERFORMANCE:
+   - Android Performance: https://developer.android.com/topic/performance
+   - Memory Management: https://developer.android.com/topic/performance/memory
+   - Battery Optimization: https://developer.android.com/topic/performance/power
+
+5. SECURITY:
+   - Android Security: https://developer.android.com/topic/security
+   - Network Security: https://developer.android.com/training/articles/security-network
+   - Data Privacy: https://developer.android.com/guide/topics/data
+
+BEST PRACTICES SUMMARY:
+- Follow SOLID principles and Clean Architecture
+- Use dependency injection for better testability
+- Implement proper error handling and user feedback
+- Optimize for different screen sizes and orientations
+- Follow Material Design guidelines
+- Implement proper security measures for sensitive data
+- Write comprehensive tests for critical functionality
+- Use proper navigation patterns and deep linking
+- Implement offline-first architecture when possible
+- Follow Android development best practices and conventions
+
+This reference provides a solid foundation for building production-ready Android
+applications with modern Kotlin development practices and industry standards.
+*/ 
