@@ -1450,3 +1450,501 @@ namespace ml::neural {
     };
     
     } // namespace ml::utils
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. EXAMPLE USAGE AND BENCHMARKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+namespace ml::examples {
+
+    // Example: Training a simple neural network
+    void neural_network_example() {
+        using T = float;
+        
+        // Create dataset (XOR problem)
+        Matrix<T> X(4, 2);
+        X(0, 0) = 0; X(0, 1) = 0;  // Input: [0, 0]
+        X(1, 0) = 0; X(1, 1) = 1;  // Input: [0, 1]
+        X(2, 0) = 1; X(2, 1) = 0;  // Input: [1, 0]
+        X(3, 0) = 1; X(3, 1) = 1;  // Input: [1, 1]
+        
+        Matrix<T> y(4, 1);
+        y(0, 0) = 0;  // Output: 0
+        y(1, 0) = 1;  // Output: 1
+        y(2, 0) = 1;  // Output: 1
+        y(3, 0) = 0;  // Output: 0
+        
+        // Create MLP
+        neural::MLP<T> model;
+        model.add_layer(2, 4, [](const T* in, T* out, size_t size) {
+            neural::ActivationFunctions::relu(in, out, size);
+        });
+        model.add_layer(4, 1, [](const T* in, T* out, size_t size) {
+            neural::ActivationFunctions::sigmoid(in, out, size);
+        });
+        
+        // Create optimizer
+        optimizers::AdamOptimizer<T> optimizer(T(0.01));
+        
+        // Training loop
+        const size_t epochs = 1000;
+        for (size_t epoch = 0; epoch < epochs; ++epoch) {
+            // Forward pass
+            Matrix<T> predictions = model.forward(X);
+            
+            // Compute loss
+            T loss = loss::LossFunctions<T>::mse_loss(predictions, y);
+            
+            // Compute gradients
+            Matrix<T> loss_grad = loss::LossFunctions<T>::mse_gradient(predictions, y);
+            
+            // Backward pass
+            model.backward(loss_grad);
+            
+            // Update parameters (simplified - would need proper gradient handling)
+            // optimizer.update(layer.weights(), weight_gradients);
+            // optimizer.update(layer.biases(), bias_gradients);
+            
+            if (epoch % 100 == 0) {
+                std::cout << "Epoch " << epoch << ", Loss: " << loss << std::endl;
+            }
+        }
+    }
+    
+    // Example: K-Means clustering benchmark
+    void kmeans_benchmark() {
+        using T = float;
+        const size_t n_samples = 10000;
+        const size_t n_features = 50;
+        const size_t k = 10;
+        
+        // Generate random data
+        Matrix<T> data(n_samples, n_features);
+        data.random_normal(T(0), T(1));
+        
+        // Benchmark K-Means
+        utils::Timer timer;
+        timer.start();
+        
+        algorithms::KMeans<T> kmeans(k);
+        kmeans.fit(data);
+        
+        double elapsed = timer.elapsed_ms();
+        std::cout << "K-Means clustering (" << n_samples << " samples, " 
+                  << n_features << " features, k=" << k << "): " 
+                  << elapsed << " ms" << std::endl;
+    }
+    
+    // Example: Matrix multiplication benchmark with SIMD
+    void matrix_multiplication_benchmark() {
+        using T = float;
+        const size_t size = 1024;
+        
+        Matrix<T> A(size, size);
+        Matrix<T> B(size, size);
+        A.random_uniform(T(-1), T(1));
+        B.random_uniform(T(-1), T(1));
+        
+        utils::Timer timer;
+        utils::FLOPSCounter flops_counter;
+        
+        // Benchmark matrix multiplication
+        flops_counter.start_timing();
+        timer.start();
+        
+        Matrix<T> C = A.multiply(B);
+        
+        double elapsed = timer.elapsed_ms();
+        size_t ops = 2ULL * size * size * size; // 2 * N^3 operations
+        flops_counter.add_ops(ops);
+        
+        std::cout << "Matrix multiplication (" << size << "x" << size << "): " 
+                  << elapsed << " ms, " << flops_counter.gflops() << " GFLOPS" << std::endl;
+    }
+    
+    // Example: SIMD vs non-SIMD performance comparison
+    void simd_performance_comparison() {
+        const size_t n = 1000000;
+        std::vector<float> a(n), b(n), result_simd(n), result_scalar(n);
+        
+        // Initialize with random data
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+        
+        for (size_t i = 0; i < n; ++i) {
+            a[i] = dist(gen);
+            b[i] = dist(gen);
+        }
+        
+        utils::Timer timer;
+        
+        // SIMD version
+        timer.start();
+        float dot_simd = simd::SIMDOperations::dot_product_avx2(a.data(), b.data(), n);
+        double simd_time = timer.elapsed_ms();
+        
+        // Scalar version
+        timer.start();
+        float dot_scalar = 0.0f;
+        for (size_t i = 0; i < n; ++i) {
+            dot_scalar += a[i] * b[i];
+        }
+        double scalar_time = timer.elapsed_ms();
+        
+        std::cout << "Dot product (" << n << " elements):" << std::endl;
+        std::cout << "  SIMD:   " << simd_time << " ms, result: " << dot_simd << std::endl;
+        std::cout << "  Scalar: " << scalar_time << " ms, result: " << dot_scalar << std::endl;
+        std::cout << "  Speedup: " << scalar_time / simd_time << "x" << std::endl;
+    }
+    
+    } // namespace ml::examples
+    
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //                           11. ADVANCED FEATURES AND EXTENSIONS
+    // ═══════════════════════════════════════════════════════════════════════════════
+    
+    namespace ml::advanced {
+    
+    // Automatic differentiation for gradient computation
+    template<FloatingPoint T>
+    class AutoDiff {
+    private:
+        T value_;
+        T gradient_;
+        
+    public:
+        AutoDiff(T value = T(0), T gradient = T(0)) : value_(value), gradient_(gradient) {}
+        
+        T value() const { return value_; }
+        T gradient() const { return gradient_; }
+        
+        // Arithmetic operations with automatic gradient computation
+        AutoDiff operator+(const AutoDiff& other) const {
+            return AutoDiff(value_ + other.value_, gradient_ + other.gradient_);
+        }
+        
+        AutoDiff operator*(const AutoDiff& other) const {
+            return AutoDiff(value_ * other.value_, 
+                           gradient_ * other.value_ + value_ * other.gradient_);
+        }
+        
+        AutoDiff operator-(const AutoDiff& other) const {
+            return AutoDiff(value_ - other.value_, gradient_ - other.gradient_);
+        }
+        
+        // Elementary functions
+        friend AutoDiff sin(const AutoDiff& x) {
+            return AutoDiff(std::sin(x.value_), x.gradient_ * std::cos(x.value_));
+        }
+        
+        friend AutoDiff cos(const AutoDiff& x) {
+            return AutoDiff(std::cos(x.value_), -x.gradient_ * std::sin(x.value_));
+        }
+        
+        friend AutoDiff exp(const AutoDiff& x) {
+            T exp_val = std::exp(x.value_);
+            return AutoDiff(exp_val, x.gradient_ * exp_val);
+        }
+        
+        friend AutoDiff log(const AutoDiff& x) {
+            return AutoDiff(std::log(x.value_), x.gradient_ / x.value_);
+        }
+    };
+    
+    // Thread pool for parallel computation
+    class ThreadPool {
+    private:
+        std::vector<std::thread> workers_;
+        std::queue<std::function<void()>> tasks_;
+        std::mutex queue_mutex_;
+        std::condition_variable condition_;
+        bool stop_;
+        
+    public:
+        ThreadPool(size_t threads = std::thread::hardware_concurrency()) : stop_(false) {
+            for (size_t i = 0; i < threads; ++i) {
+                workers_.emplace_back([this] {
+                    for (;;) {
+                        std::function<void()> task;
+                        
+                        {
+                            std::unique_lock<std::mutex> lock(queue_mutex_);
+                            condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
+                            
+                            if (stop_ && tasks_.empty()) {
+                                return;
+                            }
+                            
+                            task = std::move(tasks_.front());
+                            tasks_.pop();
+                        }
+                        
+                        task();
+                    }
+                });
+            }
+        }
+        
+        template<class F, class... Args>
+        auto enqueue(F&& f, Args&&... args) -> std::future<typename std::result_of<F(Args...)>::type> {
+            using return_type = typename std::result_of<F(Args...)>::type;
+            
+            auto task = std::make_shared<std::packaged_task<return_type()>>(
+                std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+            );
+            
+            std::future<return_type> result = task->get_future();
+            
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex_);
+                
+                if (stop_) {
+                    throw std::runtime_error("enqueue on stopped ThreadPool");
+                }
+                
+                tasks_.emplace([task]() { (*task)(); });
+            }
+            
+            condition_.notify_one();
+            return result;
+        }
+        
+        ~ThreadPool() {
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex_);
+                stop_ = true;
+            }
+            
+            condition_.notify_all();
+            
+            for (std::thread& worker : workers_) {
+                worker.join();
+            }
+        }
+    };
+    
+    // Model serialization for saving/loading trained models
+    template<FloatingPoint T>
+    class ModelSerializer {
+    public:
+        // Save matrix to binary file
+        static void save_matrix(const Matrix<T>& matrix, const std::string& filename) {
+            std::ofstream file(filename, std::ios::binary);
+            if (!file) {
+                throw std::runtime_error("Cannot open file for writing: " + filename);
+            }
+            
+            // Write dimensions
+            size_t rows = matrix.rows();
+            size_t cols = matrix.cols();
+            file.write(reinterpret_cast<const char*>(&rows), sizeof(rows));
+            file.write(reinterpret_cast<const char*>(&cols), sizeof(cols));
+            
+            // Write data
+            file.write(reinterpret_cast<const char*>(matrix.data()), 
+                      matrix.size() * sizeof(T));
+        }
+        
+        // Load matrix from binary file
+        static Matrix<T> load_matrix(const std::string& filename) {
+            std::ifstream file(filename, std::ios::binary);
+            if (!file) {
+                throw std::runtime_error("Cannot open file for reading: " + filename);
+            }
+            
+            // Read dimensions
+            size_t rows, cols;
+            file.read(reinterpret_cast<char*>(&rows), sizeof(rows));
+            file.read(reinterpret_cast<char*>(&cols), sizeof(cols));
+            
+            // Create matrix and read data
+            Matrix<T> matrix(rows, cols);
+            file.read(reinterpret_cast<char*>(matrix.data()), 
+                     matrix.size() * sizeof(T));
+            
+            return matrix;
+        }
+        
+        // Save neural network model
+        static void save_mlp(const neural::MLP<T>& model, const std::string& directory) {
+            // Create directory if it doesn't exist
+            std::filesystem::create_directories(directory);
+            
+            // Save each layer's weights and biases
+            const auto& layers = model.layers();
+            for (size_t i = 0; i < layers.size(); ++i) {
+                std::string weight_file = directory + "/layer_" + std::to_string(i) + "_weights.bin";
+                std::string bias_file = directory + "/layer_" + std::to_string(i) + "_biases.bin";
+                
+                save_matrix(layers[i]->weights(), weight_file);
+                // Save biases (would need tensor serialization)
+            }
+        }
+    };
+    
+    // Regularization techniques
+    template<FloatingPoint T>
+    class Regularization {
+    public:
+        // L1 regularization (Lasso)
+        static T l1_penalty(const Matrix<T>& weights, T lambda) {
+            T penalty = T(0);
+            
+            #pragma omp parallel for reduction(+:penalty)
+            for (size_t i = 0; i < weights.size(); ++i) {
+                penalty += std::abs(weights.data()[i]);
+            }
+            
+            return lambda * penalty;
+        }
+        
+        // L2 regularization (Ridge)
+        static T l2_penalty(const Matrix<T>& weights, T lambda) {
+            T penalty = T(0);
+            
+            #pragma omp parallel for reduction(+:penalty)
+            for (size_t i = 0; i < weights.size(); ++i) {
+                penalty += weights.data()[i] * weights.data()[i];
+            }
+            
+            return lambda * penalty / T(2);
+        }
+        
+        // Elastic Net (combination of L1 and L2)
+        static T elastic_net_penalty(const Matrix<T>& weights, T l1_ratio, T lambda) {
+            return l1_ratio * l1_penalty(weights, lambda) + 
+                   (T(1) - l1_ratio) * l2_penalty(weights, lambda);
+        }
+        
+        // Dropout for neural networks
+        static void apply_dropout(Matrix<T>& output, T dropout_rate) {
+            static thread_local std::random_device rd;
+            static thread_local std::mt19937 gen(rd());
+            std::bernoulli_distribution dist(1.0 - dropout_rate);
+            
+            T scale = T(1) / (T(1) - dropout_rate);
+            
+            #pragma omp parallel for
+            for (size_t i = 0; i < output.size(); ++i) {
+                if (!dist(gen)) {
+                    output.data()[i] = T(0);
+                } else {
+                    output.data()[i] *= scale;
+                }
+            }
+        }
+    };
+    
+    } // namespace ml::advanced
+    
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //                           12. MAIN FUNCTION AND USAGE EXAMPLES
+    // ═══════════════════════════════════════════════════════════════════════════════
+    
+    int main() {
+        std::cout << "=== C++ AI/ML Framework Demo ===" << std::endl;
+        
+        try {
+            // Check SIMD capabilities
+            std::cout << "\n--- System Capabilities ---" << std::endl;
+            std::cout << "AVX2 support: " << (ml::simd::SIMDOperations::has_avx2() ? "Yes" : "No") << std::endl;
+            std::cout << "FMA support: " << (ml::simd::SIMDOperations::has_fma() ? "Yes" : "No") << std::endl;
+            std::cout << "OpenMP threads: " << omp_get_max_threads() << std::endl;
+            
+            // Run benchmarks
+            std::cout << "\n--- Performance Benchmarks ---" << std::endl;
+            ml::examples::matrix_multiplication_benchmark();
+            ml::examples::simd_performance_comparison();
+            ml::examples::kmeans_benchmark();
+            
+            // Run neural network example
+            std::cout << "\n--- Neural Network Training ---" << std::endl;
+            ml::examples::neural_network_example();
+            
+            // Test tensor operations
+            std::cout << "\n--- Tensor Operations ---" << std::endl;
+            ml::Tensor<float, 3> tensor(2, 3, 4);
+            tensor.random_normal(0.0f, 1.0f);
+            std::cout << "Created 3D tensor with shape: " 
+                      << tensor.shape()[0] << "x" << tensor.shape()[1] << "x" << tensor.shape()[2] 
+                      << ", size: " << tensor.size() << std::endl;
+            
+            // Test matrix operations
+            ml::Matrix<double> mat1(100, 100);
+            ml::Matrix<double> mat2(100, 100);
+            mat1.random_uniform(-1.0, 1.0);
+            mat2.random_uniform(-1.0, 1.0);
+            
+            ml::utils::Timer timer;
+            timer.start();
+            ml::Matrix<double> result = mat1.multiply(mat2);
+            double elapsed = timer.elapsed_ms();
+            
+            std::cout << "Double precision matrix multiplication (100x100): " 
+                      << elapsed << " ms" << std::endl;
+            
+            std::cout << "\n--- Demo completed successfully! ---" << std::endl;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return 1;
+        }
+        
+        return 0;
+    }
+    
+    /*
+    COMPILATION INSTRUCTIONS:
+    
+    1. Basic compilation:
+    g++ -std=c++20 -O3 -march=native -fopenmp -mavx2 -mfma \
+        cpp_ai_ml_framework.cpp -o ml_framework \
+        -lblas -llapack -lpthread
+    
+    2. With CUDA support:
+    nvcc -std=c++20 -O3 -gencode arch=compute_75,code=sm_75 \
+         -Xcompiler "-fopenmp -mavx2 -mfma" \
+         cpp_ai_ml_framework.cpp -o ml_framework \
+         -lblas -llapack -lcublas -lcurand
+    
+    3. With Intel MKL:
+    icpc -std=c++20 -O3 -xHost -qopenmp -mavx2 -mfma \
+         cpp_ai_ml_framework.cpp -o ml_framework \
+         -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core
+    
+    4. CMake build (recommended):
+    mkdir build && cd build
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+    make -j$(nproc)
+    
+    PERFORMANCE NOTES:
+    - Use float for maximum SIMD performance
+    - Ensure data alignment for vectorized operations
+    - Profile with tools like Intel VTune or perf
+    - Consider memory bandwidth limitations
+    - Use appropriate compiler flags for target architecture
+    - Enable OpenMP for CPU parallelization
+    - Consider GPU acceleration for large-scale operations
+    
+    DEPENDENCIES:
+    - C++20 compatible compiler (GCC 10+, Clang 10+, MSVC 2019+)
+    - OpenMP for parallelization
+    - BLAS/LAPACK for linear algebra (OpenBLAS, Intel MKL, or Apple Accelerate)
+    - CUDA for GPU computing (optional)
+    - CMake 3.20+ for building
+    
+    USAGE PATTERNS:
+    1. High-performance numerical computing
+    2. Custom ML algorithm implementation
+    3. Performance-critical inference engines
+    4. Research prototyping with C++ speed
+    5. Integration with existing C++ codebases
+    6. Real-time ML applications
+    7. Embedded ML systems
+    
+    This framework provides a solid foundation for building high-performance
+    ML/AI applications in C++ with modern language features, SIMD optimization,
+    GPU acceleration, and comprehensive algorithm implementations.
+    */
