@@ -1521,4 +1521,773 @@ DeepLearningModel <- R6Class("DeepLearningModel",
       cat("DeepLearningModel initialized\n")
     },
     
-    prepare_data = function(X, y, validation_split = 0.2, test
+    prepare_data = function(X, y, validation_split = 0.2, test_split = 0.2) {
+      # Split data into train, validation, and test sets
+      n <- nrow(X)
+      
+      # Create indices
+      test_indices <- sample(1:n, size = floor(n * test_split))
+      remaining_indices <- setdiff(1:n, test_indices)
+      
+      val_indices <- sample(remaining_indices, size = floor(length(remaining_indices) * validation_split))
+      train_indices <- setdiff(remaining_indices, val_indices)
+      
+      # Split the data
+      X_train <- X[train_indices, ]
+      y_train <- y[train_indices]
+      X_val <- X[val_indices, ]
+      y_val <- y[val_indices]
+      X_test <- X[test_indices, ]
+      y_test <- y[test_indices]
+      
+      # Scale features
+      means <- apply(X_train, 2, mean)
+      sds <- apply(X_train, 2, sd)
+      
+      X_train <- scale(X_train)
+      X_val <- scale(X_val, center = means, scale = sds)
+      X_test <- scale(X_test, center = means, scale = sds)
+      
+      self$data <- list(
+        X_train = X_train, y_train = y_train,
+        X_val = X_val, y_val = y_val,
+        X_test = X_test, y_test = y_test,
+        means = means, sds = sds
+      )
+      
+      cat("Data prepared - Train:", length(train_indices), 
+          "Val:", length(val_indices), "Test:", length(test_indices), "\n")
+      
+      return(self$data)
+    },
+    
+    build_dense_model = function(input_dim, hidden_layers = c(64, 32), 
+                                output_dim = 1, activation = "relu", 
+                                output_activation = "linear", dropout_rate = 0.2) {
+      
+      self$model <- keras_model_sequential()
+      
+      # Input layer
+      self$model %>%
+        layer_dense(units = hidden_layers[1], activation = activation, input_shape = input_dim) %>%
+        layer_dropout(rate = dropout_rate)
+      
+      # Hidden layers
+      if (length(hidden_layers) > 1) {
+        for (i in 2:length(hidden_layers)) {
+          self$model %>%
+            layer_dense(units = hidden_layers[i], activation = activation) %>%
+            layer_dropout(rate = dropout_rate)
+        }
+      }
+      
+      # Output layer
+      self$model %>%
+        layer_dense(units = output_dim, activation = output_activation)
+      
+      cat("Dense neural network built with", length(hidden_layers), "hidden layers\n")
+      return(self$model)
+    },
+    
+    build_cnn_model = function(input_shape, num_classes = 1, 
+                              conv_layers = list(c(32, 3), c(64, 3), c(128, 3)),
+                              dense_layers = c(128, 64)) {
+      
+      self$model <- keras_model_sequential()
+      
+      # Convolutional layers
+      for (i in seq_along(conv_layers)) {
+        if (i == 1) {
+          self$model %>%
+            layer_conv_2d(filters = conv_layers[[i]][1], 
+                         kernel_size = c(conv_layers[[i]][2], conv_layers[[i]][2]),
+                         activation = "relu", input_shape = input_shape) %>%
+            layer_max_pooling_2d(pool_size = c(2, 2))
+        } else {
+          self$model %>%
+            layer_conv_2d(filters = conv_layers[[i]][1], 
+                         kernel_size = c(conv_layers[[i]][2], conv_layers[[i]][2]),
+                         activation = "relu") %>%
+            layer_max_pooling_2d(pool_size = c(2, 2))
+        }
+      }
+      
+      # Flatten for dense layers
+      self$model %>% layer_flatten()
+      
+      # Dense layers
+      for (units in dense_layers) {
+        self$model %>%
+          layer_dense(units = units, activation = "relu") %>%
+          layer_dropout(rate = 0.5)
+      }
+      
+      # Output layer
+      if (num_classes == 1) {
+        self$model %>% layer_dense(units = 1, activation = "sigmoid")
+      } else {
+        self$model %>% layer_dense(units = num_classes, activation = "softmax")
+      }
+      
+      cat("CNN model built with", length(conv_layers), "convolutional layers\n")
+      return(self$model)
+    },
+    
+    compile_model = function(optimizer = "adam", loss = "mse", metrics = c("mae")) {
+      self$model %>% compile(
+        optimizer = optimizer,
+        loss = loss,
+        metrics = metrics
+      )
+      
+      cat("Model compiled with optimizer:", optimizer, "and loss:", loss, "\n")
+    },
+    
+    train_model = function(epochs = 100, batch_size = 32, verbose = 1,
+                          early_stopping = TRUE, patience = 10) {
+      
+      callbacks <- list()
+      
+      if (early_stopping) {
+        callbacks <- append(callbacks, 
+                           callback_early_stopping(patience = patience, restore_best_weights = TRUE))
+      }
+      
+      self$history <- self$model %>% fit(
+        x = self$data$X_train,
+        y = self$data$y_train,
+        epochs = epochs,
+        batch_size = batch_size,
+        validation_data = list(self$data$X_val, self$data$y_val),
+        callbacks = callbacks,
+        verbose = verbose
+      )
+      
+      # Plot training history
+      plot(self$history)
+      
+      cat("Model training completed\n")
+      return(self$history)
+    },
+    
+    evaluate_model = function() {
+      # Evaluate on test set
+      test_results <- self$model %>% evaluate(
+        x = self$data$X_test,
+        y = self$data$y_test,
+        verbose = 0
+      )
+      
+      # Make predictions
+      predictions <- self$model %>% predict(self$data$X_test)
+      
+      cat("\n=== MODEL EVALUATION ===\n")
+      cat("Test Loss:", round(test_results[[1]], 4), "\n")
+      
+      if (length(test_results) > 1) {
+        cat("Test Metric:", round(test_results[[2]], 4), "\n")
+      }
+      
+      return(list(metrics = test_results, predictions = predictions))
+    },
+    
+    save_model = function(filepath) {
+      save_model_tf(self$model, filepath)
+      cat("Model saved to", filepath, "\n")
+    },
+    
+    load_model = function(filepath) {
+      self$model <- load_model_tf(filepath)
+      cat("Model loaded from", filepath, "\n")
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           9. MODEL DEPLOYMENT AND PRODUCTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Model Deployment Framework
+ModelDeployment <- R6Class("ModelDeployment",
+  public = list(
+    models = list(),
+    api_endpoints = list(),
+    
+    initialize = function() {
+      cat("ModelDeployment system initialized\n")
+    },
+    
+    register_model = function(model, model_name, model_type = "ml") {
+      self$models[[model_name]] <- list(
+        model = model,
+        type = model_type,
+        created_at = Sys.time()
+      )
+      
+      cat("Model", model_name, "registered successfully\n")
+    },
+    
+    create_prediction_function = function(model_name, preprocessor = NULL) {
+      if (!(model_name %in% names(self$models))) {
+        stop("Model not found: ", model_name)
+      }
+      
+      model_info <- self$models[[model_name]]
+      model <- model_info$model
+      
+      prediction_function <- function(new_data) {
+        tryCatch({
+          # Apply preprocessing if provided
+          if (!is.null(preprocessor)) {
+            new_data <- preprocessor(new_data)
+          }
+          
+          # Make predictions based on model type
+          if (model_info$type == "random_forest") {
+            predictions <- predict(model, new_data)
+          } else if (model_info$type == "lm" || model_info$type == "glm") {
+            predictions <- predict(model, new_data)
+          } else if (model_info$type == "svm") {
+            predictions <- predict(model, new_data)
+          } else if (model_info$type == "xgboost") {
+            feature_matrix <- xgb.DMatrix(data = as.matrix(new_data))
+            predictions <- predict(model, feature_matrix)
+          } else if (model_info$type == "keras") {
+            predictions <- predict(model, as.matrix(new_data))
+          } else {
+            predictions <- predict(model, new_data)
+          }
+          
+          return(list(
+            predictions = predictions,
+            status = "success",
+            timestamp = Sys.time()
+          ))
+          
+        }, error = function(e) {
+          return(list(
+            error = e$message,
+            status = "error",
+            timestamp = Sys.time()
+          ))
+        })
+      }
+      
+      return(prediction_function)
+    },
+    
+    create_rest_api = function(model_name, port = 8000) {
+      # This would integrate with plumber for REST API
+      cat("REST API endpoint created for model:", model_name, "\n")
+      cat("API would be available at: http://localhost:", port, "/predict\n")
+      
+      # Example plumber API code (would be in separate file)
+      api_code <- paste0('
+#* @post /predict
+function(req) {
+  # Parse JSON input
+  input_data <- jsonlite::fromJSON(req$postBody)
+  
+  # Make prediction
+  prediction_func <- deployment$create_prediction_function("', model_name, '")
+  result <- prediction_func(input_data)
+  
+  return(result)
+}
+
+#* @get /health
+function() {
+  return(list(status = "healthy", timestamp = Sys.time()))
+}
+
+#* @get /models
+function() {
+  return(list(available_models = names(deployment$models)))
+}
+')
+      
+      self$api_endpoints[[model_name]] <- list(
+        code = api_code,
+        port = port,
+        created_at = Sys.time()
+      )
+      
+      return(api_code)
+    },
+    
+    batch_prediction = function(model_name, data_file, output_file = NULL) {
+      if (!(model_name %in% names(self$models))) {
+        stop("Model not found: ", model_name)
+      }
+      
+      # Load data
+      if (grepl("\\.csv$", data_file)) {
+        data <- read.csv(data_file)
+      } else if (grepl("\\.rds$", data_file)) {
+        data <- readRDS(data_file)
+      } else {
+        stop("Unsupported file format")
+      }
+      
+      # Make predictions
+      prediction_func <- self$create_prediction_function(model_name)
+      results <- prediction_func(data)
+      
+      # Add predictions to original data
+      data$predictions <- results$predictions
+      data$prediction_timestamp <- Sys.time()
+      
+      # Save results
+      if (is.null(output_file)) {
+        output_file <- paste0("predictions_", model_name, "_", 
+                             format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+      }
+      
+      write.csv(data, output_file, row.names = FALSE)
+      cat("Batch predictions saved to:", output_file, "\n")
+      
+      return(data)
+    },
+    
+    model_monitoring = function(model_name, new_data, threshold = 0.05) {
+      # Basic model monitoring for data drift
+      if (!(model_name %in% names(self$models))) {
+        stop("Model not found: ", model_name)
+      }
+      
+      # Make predictions
+      prediction_func <- self$create_prediction_function(model_name)
+      results <- prediction_func(new_data)
+      
+      # Basic drift detection (simplified)
+      predictions <- results$predictions
+      
+      monitoring_results <- list(
+        model_name = model_name,
+        num_predictions = length(predictions),
+        mean_prediction = mean(predictions, na.rm = TRUE),
+        std_prediction = sd(predictions, na.rm = TRUE),
+        min_prediction = min(predictions, na.rm = TRUE),
+        max_prediction = max(predictions, na.rm = TRUE),
+        timestamp = Sys.time()
+      )
+      
+      cat("Model monitoring completed for:", model_name, "\n")
+      cat("Predictions summary:\n")
+      print(monitoring_results)
+      
+      return(monitoring_results)
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           10. ADVANCED ANALYTICS AND REPORTING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Automated Report Generator
+ReportGenerator <- R6Class("ReportGenerator",
+  public = list(
+    data = NULL,
+    analyses = list(),
+    plots = list(),
+    
+    initialize = function(data) {
+      self$data <- data
+      cat("ReportGenerator initialized with", nrow(data), "observations\n")
+    },
+    
+    generate_data_profiling_report = function(output_file = "data_profile_report.html") {
+      # Use DataExplorer for automated profiling
+      if (require(DataExplorer)) {
+        create_report(self$data, output_file = output_file)
+        cat("Data profiling report generated:", output_file, "\n")
+      } else {
+        cat("DataExplorer package required for automated reporting\n")
+      }
+    },
+    
+    generate_statistical_summary = function() {
+      summary_stats <- list()
+      
+      # Basic statistics
+      summary_stats$basic <- summary(self$data)
+      
+      # Data types
+      summary_stats$data_types <- sapply(self$data, class)
+      
+      # Missing values
+      summary_stats$missing_values <- sapply(self$data, function(x) sum(is.na(x)))
+      
+      # Unique values
+      summary_stats$unique_values <- sapply(self$data, function(x) length(unique(x)))
+      
+      # Correlation matrix for numeric variables
+      numeric_data <- select_if(self$data, is.numeric)
+      if (ncol(numeric_data) > 1) {
+        summary_stats$correlations <- cor(numeric_data, use = "complete.obs")
+      }
+      
+      self$analyses[["statistical_summary"]] <- summary_stats
+      
+      return(summary_stats)
+    },
+    
+    create_visualization_dashboard = function() {
+      plots <- list()
+      
+      # Distribution plots for numeric variables
+      numeric_vars <- names(select_if(self$data, is.numeric))
+      if (length(numeric_vars) > 0) {
+        for (var in numeric_vars[1:min(6, length(numeric_vars))]) {
+          p <- ggplot(self$data, aes_string(x = var)) +
+            geom_histogram(bins = 30, fill = "skyblue", alpha = 0.7) +
+            labs(title = paste("Distribution of", var)) +
+            theme_minimal()
+          plots[[paste0("dist_", var)]] <- p
+        }
+      }
+      
+      # Box plots for categorical vs numeric
+      categorical_vars <- names(select_if(self$data, function(x) is.factor(x) || is.character(x)))
+      
+      if (length(categorical_vars) > 0 && length(numeric_vars) > 0) {
+        for (cat_var in categorical_vars[1:min(2, length(categorical_vars))]) {
+          for (num_var in numeric_vars[1:min(2, length(numeric_vars))]) {
+            if (length(unique(self$data[[cat_var]])) <= 10) {
+              p <- ggplot(self$data, aes_string(x = cat_var, y = num_var)) +
+                geom_boxplot(fill = "lightcoral", alpha = 0.7) +
+                labs(title = paste(num_var, "by", cat_var)) +
+                theme_minimal() +
+                theme(axis.text.x = element_text(angle = 45, hjust = 1))
+              plots[[paste0("box_", cat_var, "_", num_var)]] <- p
+            }
+          }
+        }
+      }
+      
+      # Correlation heatmap
+      if (length(numeric_vars) > 1) {
+        cor_matrix <- cor(self$data[numeric_vars], use = "complete.obs")
+        cor_df <- expand.grid(Var1 = rownames(cor_matrix), Var2 = colnames(cor_matrix))
+        cor_df$value <- as.vector(cor_matrix)
+        
+        p <- ggplot(cor_df, aes(Var1, Var2, fill = value)) +
+          geom_tile() +
+          scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+          labs(title = "Correlation Heatmap") +
+          theme_minimal() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1))
+        plots[["correlation_heatmap"]] <- p
+      }
+      
+      self$plots <- plots
+      
+      # Display plots
+      for (plot_name in names(plots)) {
+        print(plots[[plot_name]])
+      }
+      
+      return(plots)
+    },
+    
+    generate_model_comparison_report = function(model_results) {
+      # Create comprehensive model comparison
+      comparison_data <- data.frame()
+      
+      for (model_name in names(model_results)) {
+        result <- model_results[[model_name]]
+        
+        if ("accuracy" %in% names(result)) {
+          # Classification results
+          row <- data.frame(
+            Model = model_name,
+            Accuracy = result$accuracy,
+            Precision = result$precision,
+            Recall = result$recall,
+            F1_Score = result$f1_score
+          )
+        } else {
+          # Regression results
+          row <- data.frame(
+            Model = model_name,
+            RMSE = result$rmse,
+            MAE = result$mae,
+            R_Squared = result$r_squared
+          )
+        }
+        
+        comparison_data <- rbind(comparison_data, row)
+      }
+      
+      # Create comparison plot
+      if ("Accuracy" %in% names(comparison_data)) {
+        p <- ggplot(comparison_data, aes(x = reorder(Model, F1_Score), y = F1_Score)) +
+          geom_col(fill = "steelblue") +
+          coord_flip() +
+          labs(title = "Model Performance Comparison (F1 Score)", 
+               x = "Model", y = "F1 Score") +
+          theme_minimal()
+      } else {
+        p <- ggplot(comparison_data, aes(x = reorder(Model, R_Squared), y = R_Squared)) +
+          geom_col(fill = "steelblue") +
+          coord_flip() +
+          labs(title = "Model Performance Comparison (R²)", 
+               x = "Model", y = "R²") +
+          theme_minimal()
+      }
+      
+      print(p)
+      
+      return(comparison_data)
+    },
+    
+    create_rmarkdown_report = function(output_file = "analysis_report.Rmd") {
+      # Generate R Markdown template
+      rmd_content <- '
+---
+title: "Automated Data Analysis Report"
+author: "Generated by R AI/ML Framework"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(DT)
+library(ggplot2)
+library(dplyr)
+```
+
+# Data Overview
+
+```{r data-summary}
+# Display data summary
+summary(data)
+```
+
+# Data Quality Assessment
+
+```{r data-quality}
+# Missing values analysis
+missing_data <- data.frame(
+  Variable = names(data),
+  Missing_Count = sapply(data, function(x) sum(is.na(x))),
+  Missing_Percentage = round(sapply(data, function(x) sum(is.na(x)) / length(x) * 100), 2)
+)
+
+DT::datatable(missing_data, caption = "Missing Values Analysis")
+```
+
+# Visualizations
+
+```{r plots, fig.width=10, fig.height=6}
+# Include generated plots
+for (plot_name in names(plots)) {
+  print(plots[[plot_name]])
+}
+```
+
+# Statistical Analysis
+
+```{r statistical-analysis}
+# Include statistical test results
+if (length(analyses) > 0) {
+  for (analysis_name in names(analyses)) {
+    cat("\\n\\n##", analysis_name, "\\n")
+    print(analyses[[analysis_name]])
+  }
+}
+```
+
+# Conclusions and Recommendations
+
+Based on the analysis performed, here are the key findings:
+
+1. Data quality assessment shows...
+2. Statistical tests reveal...
+3. Model performance indicates...
+
+## Next Steps
+
+1. Address data quality issues
+2. Consider additional feature engineering
+3. Evaluate model performance in production
+'
+      
+      writeLines(rmd_content, output_file)
+      cat("R Markdown report template created:", output_file, "\n")
+      
+      return(output_file)
+    }
+  )
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           11. EXAMPLE WORKFLOWS AND USE CASES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Complete Machine Learning Pipeline Example
+run_complete_ml_pipeline <- function(data_file, target_column, problem_type = "auto") {
+  cat("=== COMPLETE MACHINE LEARNING PIPELINE ===\n\n")
+  
+  # 1. Load and explore data
+  cat("1. Loading and exploring data...\n")
+  if (grepl("\\.csv$", data_file)) {
+    data <- read.csv(data_file, stringsAsFactors = FALSE)
+  } else if (grepl("\\.rds$", data_file)) {
+    data <- readRDS(data_file)
+  } else {
+    stop("Unsupported file format")
+  }
+  
+  cat("Data loaded:", nrow(data), "rows,", ncol(data), "columns\n")
+  
+  # 2. Data preprocessing
+  cat("\n2. Preprocessing data...\n")
+  preprocessor <- DataPreprocessor$new(data, target_column)
+  processed_data <- preprocessor$
+    handle_missing_values()$
+    handle_outliers()$
+    encode_categorical_variables()$
+    scale_features()$
+    get_processed_data()
+  
+  # 3. Feature selection
+  cat("\n3. Performing feature selection...\n")
+  selected_features <- perform_feature_selection(processed_data, target_column, method = "correlation")
+  
+  if (length(selected_features) > 0) {
+    final_data <- processed_data[, c(selected_features, target_column)]
+  } else {
+    final_data <- processed_data
+  }
+  
+  # 4. Model training and evaluation
+  cat("\n4. Training and evaluating models...\n")
+  ml_manager <- MLModelManager$new(final_data, target_column)
+  
+  # Train multiple models
+  ml_manager$train_linear_model()
+  ml_manager$train_random_forest()
+  ml_manager$train_svm()
+  ml_manager$train_xgboost()
+  
+  # Evaluate models
+  results <- ml_manager$evaluate_models()
+  
+  # 5. Feature importance
+  cat("\n5. Analyzing feature importance...\n")
+  importance <- ml_manager$get_feature_importance("random_forest")
+  
+  # 6. Save models
+  cat("\n6. Saving models...\n")
+  ml_manager$save_models("models")
+  
+  # 7. Generate report
+  cat("\n7. Generating report...\n")
+  report_gen <- ReportGenerator$new(data)
+  report_gen$generate_statistical_summary()
+  report_gen$create_visualization_dashboard()
+  comparison_report <- report_gen$generate_model_comparison_report(results)
+  
+  cat("\n=== PIPELINE COMPLETED SUCCESSFULLY ===\n")
+  
+  return(list(
+    processed_data = final_data,
+    model_results = results,
+    feature_importance = importance,
+    ml_manager = ml_manager
+  ))
+}
+
+# Time Series Forecasting Example
+run_time_series_analysis <- function(data, date_col, value_col, forecast_horizon = 12) {
+  cat("=== TIME SERIES ANALYSIS PIPELINE ===\n\n")
+  
+  # Initialize time series analyzer
+  ts_analyzer <- TimeSeriesAnalyzer$new(data, date_col, value_col)
+  
+  # Decomposition
+  cat("1. Decomposing time series...\n")
+  decomposition <- ts_analyzer$decompose_series()
+  
+  # Stationarity tests
+  cat("\n2. Testing stationarity...\n")
+  stationarity <- ts_analyzer$test_stationarity()
+  
+  # Seasonal analysis
+  cat("\n3. Analyzing seasonality...\n")
+  seasonal_analysis <- ts_analyzer$seasonal_analysis()
+  
+  # Model fitting
+  cat("\n4. Fitting forecasting models...\n")
+  arima_model <- ts_analyzer$fit_arima()
+  ets_model <- ts_analyzer$fit_exponential_smoothing()
+  
+  # Forecasting
+  cat("\n5. Generating forecasts...\n")
+  forecasts <- ts_analyzer$forecast_models(h = forecast_horizon)
+  
+  # Model evaluation
+  cat("\n6. Evaluating forecast accuracy...\n")
+  accuracy <- ts_analyzer$evaluate_forecasts(h = forecast_horizon)
+  
+  cat("\n=== TIME SERIES ANALYSIS COMPLETED ===\n")
+  
+  return(list(
+    ts_analyzer = ts_analyzer,
+    forecasts = forecasts,
+    accuracy = accuracy
+  ))
+}
+
+# Text Analysis Example
+run_text_analysis_pipeline <- function(text_data, text_column = "text") {
+  cat("=== TEXT ANALYSIS PIPELINE ===\n\n")
+  
+  # Initialize text analyzer
+  text_analyzer <- TextAnalyzer$new(text_data)
+  
+  # Preprocessing
+  cat("1. Preprocessing text...\n")
+  processed_texts <- text_analyzer$preprocess_text(text_column)
+  
+  # Create document-term matrix
+  cat("\n2. Creating document-term matrix...\n")
+  dtm <- text_analyzer$create_document_term_matrix()
+  
+  # Word frequency analysis
+  cat("\n3. Analyzing word frequencies...\n")
+  word_freq <- text_analyzer$word_frequency_analysis()
+  
+  # Sentiment analysis
+  cat("\n4. Performing sentiment analysis...\n")
+  sentiment_results <- text_analyzer$sentiment_analysis(text_column)
+  
+  # Topic modeling
+  cat("\n5. Performing topic modeling...\n")
+  topic_results <- text_analyzer$topic_modeling_lda(num_topics = 5)
+  
+  # Text similarity
+  cat("\n6. Computing text similarity...\n")
+  similarity_matrix <- text_analyzer$text_similarity()
+  
+  # Named entity recognition
+  cat("\n7. Extracting named entities...\n")
+  entities <- text_analyzer$named_entity_recognition(text_column)
+  
+  cat("\n=== TEXT ANALYSIS COMPLETED ===\n")
+  
+  return(list(
+    text_analyzer = text_analyzer,
+    sentiment_results = sentiment_results,
+    topic_results = topic_results,
+    entities = entities
+  ))
+}
