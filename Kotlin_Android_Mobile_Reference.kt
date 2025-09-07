@@ -1785,4 +1785,1130 @@ fun LoginScreen(
                     .padding(top = 16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.errorContainer
+                ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostsScreen(
+    onPostClick: (String) -> Unit,
+    viewModel: PostsViewModel = hiltViewModel()
+) {
+    val postsState by viewModel.postsState.collectAsStateWithLifecycle()
+    var searchQuery by remember { mutableStateOf("") }
+    
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search posts...") },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { 
+                        searchQuery = ""
+                        viewModel.loadPosts(refresh = true)
+                    }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                    }
+                }
+            },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        )
+        
+        // Posts List
+        when {
+            postsState.isLoading && postsState.posts.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            postsState.posts.isEmpty() && !postsState.isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No posts found",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(
+                        items = postsState.posts,
+                        key = { it.id }
+                    ) { post ->
+                        PostCard(
+                            post = post,
+                            onPostClick = { onPostClick(post.id) },
+                            onLikeClick = { viewModel.toggleLike(post) }
+                        )
+                    }
+                    
+                    // Loading indicator for pagination
+                    if (postsState.isLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Search functionality
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.length >= 3) {
+            viewModel.searchPosts(searchQuery)
+        } else if (searchQuery.isEmpty()) {
+            viewModel.loadPosts(refresh = true)
+        }
+    }
+    
+    // Error handling
+    postsState.error?.let { error ->
+        LaunchedEffect(error) {
+            // Show snackbar with error
+            viewModel.clearError()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostCard(
+    post: Post,
+    onPostClick: () -> Unit,
+    onLikeClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onPostClick,
+        modifier = modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            // Post Title
+            Text(
+                text = post.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            
+            // Post Excerpt
+            Text(
+                text = post.excerpt,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            
+            // Author and Category Info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    post.author?.let { author ->
+                        Text(
+                            text = "by ${author.fullName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    post.category?.let { category ->
+                        Text(
+                            text = category.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // Reading time
+                Text(
+                    text = "${post.readingTimeMinutes} min read",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            
+            // Action Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Engagement Stats
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${post.viewCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Comment,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${post.commentCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // Like Button
+                IconButton(onClick = onLikeClick) {
+                    Icon(
+                        if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (post.isLiked) "Unlike" else "Like",
+                        tint = if (post.isLiked) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostDetailScreen(
+    postId: String,
+    onBackClick: () -> Unit,
+    viewModel: PostsViewModel = hiltViewModel()
+) {
+    val selectedPost by viewModel.selectedPost.collectAsStateWithLifecycle()
+    
+    LaunchedEffect(postId) {
+        viewModel.getPostById(postId)
+    }
+    
+    selectedPost?.let { post ->
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Top App Bar
+            TopAppBar(
+                title = { Text("Post Details") },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { /* Share */ }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share")
+                    }
+                }
+            )
+            
+            // Post Content
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    // Post Title
+                    Text(
+                        text = post.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                item {
+                    // Author and Meta Info
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            post.author?.let { author ->
+                                Text(
+                                    text = author.fullName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            
+                            Text(
+                                text = "Published ${formatDate(post.publishedAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        Text(
+                            text = "${post.readingTimeMinutes} min read",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                item {
+                    Divider()
+                }
+                
+                item {
+                    // Post Content
+                    Text(
+                        text = post.content,
+                        style = MaterialTheme.typography.bodyLarge,
+                        lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.5
+                    )
+                }
+                
+                item {
+                    // Tags
+                    if (post.tags.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(post.tags) { tag ->
+                                AssistChip(
+                                    onClick = { /* Navigate to tag */ },
+                                    label = { Text(tag) }
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                item {
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        // Like Button
+                        Button(
+                            onClick = { viewModel.toggleLike(post) },
+                            colors = if (post.isLiked) {
+                                ButtonDefaults.buttonColors(
+                                    containerColor = Color.Red,
+                                    contentColor = Color.White
+                                )
+                            } else {
+                                ButtonDefaults.buttonColors()
+                            }
+                        ) {
+                            Icon(
+                                if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Text("${post.likeCount}")
+                        }
+                        
+                        // Comment Button
+                        OutlinedButton(
+                            onClick = { /* Navigate to comments */ }
+                        ) {
+                            Icon(
+                                Icons.Default.Comment,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Text("${post.commentCount}")
+                        }
+                        
+                        // Share Button
+                        OutlinedButton(
+                            onClick = { /* Share post */ }
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Text("Share")
+                        }
+                    }
+                }
+            }
+        }
+    } ?: run {
+        // Loading state
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           12. NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.presentation.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.myapp.presentation.ui.screens.*
+
+@Composable
+fun AppNavigation(
+    navController: NavHostController = rememberNavController(),
+    startDestination: String = "splash"
+) {
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
+        // Splash Screen
+        composable("splash") {
+            SplashScreen(
+                onNavigateToAuth = {
+                    navController.navigate("auth") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                },
+                onNavigateToMain = {
+                    navController.navigate("main") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Authentication Flow
+        composable("auth") {
+            AuthScreen(
+                onLoginSuccess = {
+                    navController.navigate("main") {
+                        popUpTo("auth") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Main App Flow
+        composable("main") {
+            MainScreen(
+                onLogout = {
+                    navController.navigate("auth") {
+                        popUpTo("main") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        // Post Detail
+        composable("post/{postId}") { backStackEntry ->
+            val postId = backStackEntry.arguments?.getString("postId") ?: ""
+            PostDetailScreen(
+                postId = postId,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        
+        // Profile
+        composable("profile") {
+            ProfileScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        
+        // Settings
+        composable("settings") {
+            SettingsScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+@Composable
+fun MainScreen(
+    onLogout: () -> Unit
+) {
+    val navController = rememberNavController()
+    
+    MainBottomNavigation(
+        navController = navController,
+        onLogout = onLogout
+    )
+}
+
+@Composable
+fun MainBottomNavigation(
+    navController: NavHostController,
+    onLogout: () -> Unit
+) {
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                val items = listOf(
+                    BottomNavItem("posts", "Posts", Icons.Default.Article),
+                    BottomNavItem("explore", "Explore", Icons.Default.Explore),
+                    BottomNavItem("favorites", "Favorites", Icons.Default.Favorite),
+                    BottomNavItem("profile", "Profile", Icons.Default.Person)
+                )
+                
+                items.forEach { item ->
+                    NavigationBarItem(
+                        selected = false, // Implement current route logic
+                        onClick = {
+                            navController.navigate(item.route) {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(item.icon, contentDescription = item.label) },
+                        label = { Text(item.label) }
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
+        NavHost(
+            navController = navController,
+            startDestination = "posts",
+            modifier = Modifier.padding(paddingValues)
+        ) {
+            composable("posts") {
+                PostsScreen(
+                    onPostClick = { postId ->
+                        navController.navigate("post/$postId")
+                    }
+                )
+            }
+            
+            composable("explore") {
+                ExploreScreen()
+            }
+            
+            composable("favorites") {
+                FavoritesScreen()
+            }
+            
+            composable("profile") {
+                ProfileScreen(
+                    onLogout = onLogout,
+                    onSettingsClick = {
+                        navController.navigate("settings")
+                    }
+                )
+            }
+        }
+    }
+}
+
+data class BottomNavItem(
+    val route: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. UTILS AND HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp.utils
+
+sealed class Resource<T>(
+    val data: T? = null,
+    val message: String? = null
+) {
+    class Success<T>(data: T) : Resource<T>(data)
+    class Error<T>(message: String, data: T? = null) : Resource<T>(data, message)
+    class Loading<T>(data: T? = null) : Resource<T>(data)
+}
+
+object Constants {
+    const val BASE_URL = "https://api.example.com/v1/"
+    const val DATABASE_NAME = "app_database"
+    
+    // Shared Preferences
+    const val PREFS_NAME = "app_prefs"
+    const val KEY_ACCESS_TOKEN = "access_token"
+    const val KEY_REFRESH_TOKEN = "refresh_token"
+    const val KEY_USER_ID = "user_id"
+    
+    // Request Codes
+    const val REQUEST_CODE_CAMERA = 1001
+    const val REQUEST_CODE_GALLERY = 1002
+    
+    // Notification Channels
+    const val NOTIFICATION_CHANNEL_GENERAL = "general"
+    const val NOTIFICATION_CHANNEL_POSTS = "posts"
+}
+
+package com.example.myapp.utils
+
+import android.content.Context
+import android.content.SharedPreferences
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class TokenManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    private val prefs: SharedPreferences = context.getSharedPreferences(
+        Constants.PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
+    
+    fun saveTokens(accessToken: String, refreshToken: String) {
+        prefs.edit()
+            .putString(Constants.KEY_ACCESS_TOKEN, accessToken)
+            .putString(Constants.KEY_REFRESH_TOKEN, refreshToken)
+            .apply()
+    }
+    
+    fun getAccessToken(): String? {
+        return prefs.getString(Constants.KEY_ACCESS_TOKEN, null)
+    }
+    
+    fun getRefreshToken(): String? {
+        return prefs.getString(Constants.KEY_REFRESH_TOKEN, null)
+    }
+    
+    fun clearTokens() {
+        prefs.edit()
+            .remove(Constants.KEY_ACCESS_TOKEN)
+            .remove(Constants.KEY_REFRESH_TOKEN)
+            .remove(Constants.KEY_USER_ID)
+            .apply()
+    }
+    
+    fun isLoggedIn(): Boolean {
+        return getAccessToken() != null
+    }
+}
+
+package com.example.myapp.utils
+
+import java.text.SimpleDateFormat
+import java.util.*
+
+object DateUtils {
+    private val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+    private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val dateTimeFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+    
+    fun formatDate(date: Date?): String {
+        return if (date != null) {
+            dateFormat.format(date)
+        } else {
+            ""
+        }
+    }
+    
+    fun formatTime(date: Date?): String {
+        return if (date != null) {
+            timeFormat.format(date)
+        } else {
+            ""
+        }
+    }
+    
+    fun formatDateTime(date: Date?): String {
+        return if (date != null) {
+            dateTimeFormat.format(date)
+        } else {
+            ""
+        }
+    }
+    
+    fun getTimeAgo(date: Date?): String {
+        if (date == null) return ""
+        
+        val now = Date()
+        val diff = now.time - date.time
+        
+        val seconds = diff / 1000
+        val minutes = seconds / 60
+        val hours = minutes / 60
+        val days = hours / 24
+        
+        return when {
+            seconds < 60 -> "Just now"
+            minutes < 60 -> "${minutes}m ago"
+            hours < 24 -> "${hours}h ago"
+            days < 7 -> "${days}d ago"
+            else -> formatDate(date)
+        }
+    }
+}
+
+package com.example.myapp.utils
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+
+object AppUtils {
+    
+    fun showToast(context: Context, message: String, length: Int = Toast.LENGTH_SHORT) {
+        Toast.makeText(context, message, length).show()
+    }
+    
+    fun openUrl(context: Context, url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            showToast(context, "Cannot open URL")
+        }
+    }
+    
+    fun shareText(context: Context, text: String, title: String = "Share") {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, title))
+    }
+    
+    fun openEmail(context: Context, email: String, subject: String = "", body: String = "") {
+        try {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:$email")
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, body)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            showToast(context, "No email app found")
+        }
+    }
+}
+
+package com.example.myapp.utils
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+
+inline fun <ResultType, RequestType> networkBoundResource(
+    crossinline query: () -> Flow<ResultType>,
+    crossinline fetch: suspend () -> RequestType,
+    crossinline saveFetchResult: suspend (RequestType) -> Unit,
+    crossinline shouldFetch: (ResultType) -> Boolean = { true }
+) = flow<Resource<ResultType>> {
+    val data = query().first()
+    val flow = if (shouldFetch(data)) {
+        emit(Resource.Loading(data))
+        try {
+            saveFetchResult(fetch())
+            query().map { Resource.Success(it) }
+        } catch (throwable: Throwable) {
+            query().map { Resource.Error(throwable.message ?: "Unknown error", it) }
+        }
+    } else {
+        query().map { Resource.Success(it) }
+    }
+    emitAll(flow)
+}.catch { emit(Resource.Error(it.message ?: "Unknown error")) }
+
+// Extension functions
+fun String.isValidEmail(): Boolean {
+    return android.util.Patterns.EMAIL_ADDRESS.matcher(this).matches()
+}
+
+fun String.capitalizeWords(): String {
+    return split(" ").joinToString(" ") { word ->
+        word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           14. TESTING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package com.example.myapp
+
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.test.core.app.ApplicationProvider
+import com.example.myapp.data.local.AppDatabase
+import com.example.myapp.data.local.UserDao
+import com.example.myapp.data.local.entity.UserEntity
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.Assert.*
+
+@RunWith(AndroidJUnit4::class)
+class UserDaoTest {
+    
+    @get:Rule
+    val instantExecutorRule = InstantTaskExecutorRule()
+    
+    private lateinit var database: AppDatabase
+    private lateinit var userDao: UserDao
+    
+    @Before
+    fun setup() {
+        database = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            AppDatabase::class.java
+        ).allowMainThreadQueries().build()
+        
+        userDao = database.userDao()
+    }
+    
+    @After
+    fun teardown() {
+        database.close()
+    }
+    
+    @Test
+    fun insertAndGetUser() = runTest {
+        // Given
+        val user = UserEntity(
+            id = "1",
+            email = "test@example.com",
+            username = "testuser",
+            firstName = "Test",
+            lastName = "User",
+            avatarUrl = null,
+            isActive = true,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        
+        // When
+        userDao.insertUser(user)
+        val retrievedUser = userDao.getUserById("1")
+        
+        // Then
+        assertNotNull(retrievedUser)
+        assertEquals(user.email, retrievedUser?.email)
+        assertEquals(user.username, retrievedUser?.username)
+    }
+    
+    @Test
+    fun getAllUsers() = runTest {
+        // Given
+        val users = listOf(
+            UserEntity("1", "user1@test.com", "user1", "User", "One", null, true, 0L, 0L),
+            UserEntity("2", "user2@test.com", "user2", "User", "Two", null, true, 0L, 0L)
+        )
+        
+        // When
+        userDao.insertUsers(users)
+        val allUsers = userDao.getAllUsers().first()
+        
+        // Then
+        assertEquals(2, allUsers.size)
+        assertTrue(allUsers.any { it.username == "user1" })
+        assertTrue(allUsers.any { it.username == "user2" })
+    }
+    
+    @Test
+    fun searchUsers() = runTest {
+        // Given
+        val users = listOf(
+            UserEntity("1", "john@test.com", "john_doe", "John", "Doe", null, true, 0L, 0L),
+            UserEntity("2", "jane@test.com", "jane_smith", "Jane", "Smith", null, true, 0L, 0L),
+            UserEntity("3", "bob@test.com", "bob_johnson", "Bob", "Johnson", null, true, 0L, 0L)
+        )
+        
+        // When
+        userDao.insertUsers(users)
+        val searchResults = userDao.searchUsers("john").first()
+        
+        // Then
+        assertEquals(2, searchResults.size) // John Doe and Bob Johnson
+        assertTrue(searchResults.any { it.firstName == "John" })
+        assertTrue(searchResults.any { it.lastName == "Johnson" })
+    }
+}
+
+// Unit Tests for ViewModels
+package com.example.myapp.presentation.viewmodel
+
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.example.myapp.domain.model.User
+import com.example.myapp.domain.usecase.*
+import com.example.myapp.utils.Resource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.*
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.mockito.Mock
+import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.whenever
+import java.util.*
+import org.junit.Assert.*
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class AuthViewModelTest {
+    
+    @get:Rule
+    val instantExecutorRule = InstantTaskExecutorRule()
+    
+    private val testDispatcher = UnconfinedTestDispatcher()
+    
+    @Mock
+    private lateinit var loginUseCase: LoginUseCase
+    
+    @Mock
+    private lateinit var registerUseCase: RegisterUseCase
+    
+    @Mock
+    private lateinit var getCurrentUserUseCase: GetCurrentUserUseCase
+    
+    @Mock
+    private lateinit var logoutUseCase: LogoutUseCase
+    
+    private lateinit var viewModel: AuthViewModel
+    
+    @Before
+    fun setup() {
+        MockitoAnnotations.openMocks(this)
+        Dispatchers.setMain(testDispatcher)
+        
+        whenever(getCurrentUserUseCase()).thenReturn(flowOf(null))
+        
+        viewModel = AuthViewModel(
+            loginUseCase,
+            registerUseCase,
+            getCurrentUserUseCase,
+            logoutUseCase
+        )
+    }
+    
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+    
+    @Test
+    fun `login success updates state correctly    @GET("posts/{id}")
+    suspend fun getPostById(@Path("id") id: String): Response<ApiResponse<PostDto>>
+    
+    @POST("posts")
+    suspend fun createPost(@Body request: CreatePostRequest): Response<ApiResponse<PostDto>>
+    
+    @PUT("posts/{id}")
+    suspend fun updatePost(
+        @Path("id") id: String,
+        @Body request: UpdatePostRequest
+    ): Response<ApiResponse<PostDto>>
+    
+    @DELETE("posts/{id}")
+    suspend fun deletePost(@Path("id") id: String): Response<Unit>
+    
+    @POST("posts/{id}/like")
+    suspend fun likePost(@Path("id") id: String): Response<Unit>
+    
+    @DELETE("posts/{id}/like")
+    suspend fun unlikePost(@Path("id") id: String): Response<Unit>
+    
+    @POST("posts/{id}/view")
+    suspend fun incrementPostView(@Path("id") id: String): Response<Unit>
+    
+    // Categories
+    @GET("categories")
+    suspend fun getCategories(): Response<ApiResponse<List<CategoryDto>>>
+    
+    @GET("categories/{id}")
+    suspend fun getCategoryById(@Path("id") id: String): Response<ApiResponse<CategoryDto>>
+    
+    // Comments
+    @GET("posts/{postId}/comments")
+    suspend fun getComments(
+        @Path("postId") postId: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<PaginatedResponse<CommentDto>>
+    
+    @POST("posts/{postId}/comments")
+    suspend fun createComment(
+        @Path("postId") postId: String,
+        @Body request: CreateCommentRequest
+    ): Response<ApiResponse<CommentDto>>
+    
+    @PUT("comments/{id}")
+    suspend fun updateComment(
+        @Path("id") id: String,
+        @Body request: UpdateCommentRequest
+    ): Response<ApiResponse<CommentDto>>
+    
+    @DELETE("comments/{id}")
+    suspend fun deleteComment(@Path("id") id: String): Response<Unit>
+}
+
+// API Request/Response Models
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
+
+data class RegisterRequest(
+    val email: String,
+    val username: String,
+    val firstName: String,
+    val lastName: String,
+    val password: String
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+data class AuthResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresIn: Long,
+    val user: UserDto
+)
+
+data class UpdateUserRequest(
+    val firstName: String?,
+    val lastName: String?,
+    val username: String?,
+    val bio: String?
+)
+
+data class CreatePostRequest(
+    val title: String,
+    val content: String,
+    val excerpt: String?,
+    val categoryId: String,
+    val tags: List<String>,
+    val isPublished: Boolean = false
+)
+
+data class UpdatePostRequest(
+    val title: String?,
+    val content: String?,
+    val excerpt: String?,
+    val categoryId: String?,
+    val tags: List<String>?,
+    val isPublished: Boolean?
+)
+
+data class CreateCommentRequest(
+    val content: String,
+    val parentId: String? = null
+)
+
+data class UpdateCommentRequest(
+    val content: String
+)
+
+// Generic API Response Wrappers
+data class ApiResponse<T>(
+    val success: Boolean,
+    val data: T?,
+    val message: String?,
+    val errors: List<String>?
+)
+
+data class PaginatedResponse<T>(
+    val success: Boolean,
+    val data: List<T>,
+    val pagination: PaginationInfo,
+    val message: String?,
+    val errors: List<String>?
+)
+
+data class PaginationInfo(
+    val currentPage: Int,
+    val totalPages: Int,
+    val totalItems: Int,
+    val itemsPerPage: Int,
+    val hasNext: Boolean,
+    val hasPrevious: Boolean
+)
