@@ -1734,4 +1734,1122 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		}
 		
 		h.logger.ErrorCtx(c.Request.Context(), "Failed to change password", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
+// PostHandler handles post-related HTTP requests
+type PostHandler struct {
+	postService *PostService
+	logger      *logger.Logger
+}
+
+// NewPostHandler creates a new post handler
+func NewPostHandler(postService *PostService, logger *logger.Logger) *PostHandler {
+	return &PostHandler{
+		postService: postService,
+		logger:      logger,
+	}
+}
+
+// CreatePost handles post creation
+func (h *PostHandler) CreatePost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	var req CreatePostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	post, err := h.postService.CreatePost(c.Request.Context(), userID.(uuid.UUID), req)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to create post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
+		return
+	}
+	
+	h.logger.InfoCtx(c.Request.Context(), "Post created successfully", 
+		zap.String("post_id", post.ID.String()), zap.String("user_id", userID.(uuid.UUID).String()))
+	
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Post created successfully",
+		"post":    post,
+	})
+}
+
+// GetPost handles getting a single post
+func (h *PostHandler) GetPost(c *gin.Context) {
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	post, err := h.postService.GetPost(c.Request.Context(), postID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to get post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// GetPostBySlug handles getting a post by slug
+func (h *PostHandler) GetPostBySlug(c *gin.Context) {
+	slug := c.Param("slug")
+	
+	post, err := h.postService.GetPostBySlug(c.Request.Context(), slug)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to get post by slug", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"post": post})
+}
+
+// ListPosts handles listing posts with filters
+func (h *PostHandler) ListPosts(c *gin.Context) {
+	filters := PostFilters{
+		Status:  PostStatus(c.Query("status")),
+		Search:  c.Query("search"),
+		OrderBy: c.Query("order_by"),
+		Order:   c.Query("order"),
+	}
+	
+	// Parse pagination
+	if page := c.Query("page"); page != "" {
+		if p, err := strconv.Atoi(page); err == nil && p > 0 {
+			filters.Offset = (p - 1) * filters.Limit
+		}
+	}
+	
+	if limit := c.Query("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
+			filters.Limit = l
+		}
+	}
+	
+	if filters.Limit == 0 {
+		filters.Limit = 20
+	}
+	
+	// Parse category ID
+	if categoryID := c.Query("category_id"); categoryID != "" {
+		if id, err := uuid.Parse(categoryID); err == nil {
+			filters.CategoryID = id
+		}
+	}
+	
+	// Parse featured filter
+	if featured := c.Query("featured"); featured != "" {
+		if f, err := strconv.ParseBool(featured); err == nil {
+			filters.Featured = &f
+		}
+	}
+	
+	response, err := h.postService.ListPosts(c.Request.Context(), filters)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to list posts", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list posts"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, response)
+}
+
+// UpdatePost handles post updates
+func (h *PostHandler) UpdatePost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	var req UpdatePostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	post, err := h.postService.UpdatePost(c.Request.Context(), postID, userID.(uuid.UUID), req)
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to update post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Post updated successfully",
+		"post":    post,
+	})
+}
+
+// PublishPost handles post publishing
+func (h *PostHandler) PublishPost(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	idParam := c.Param("id")
+	postID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	
+	post, err := h.postService.PublishPost(c.Request.Context(), postID, userID.(uuid.UUID))
+	if err != nil {
+		if strings.Contains(err.Error(), "permission denied") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to publish post", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to publish post"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Post published successfully",
+		"post":    post,
+	})
+}
+
+// Middleware
+package middleware
+
+import (
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+// AuthMiddleware validates JWT tokens and sets user context
+func AuthMiddleware(userService *UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+		
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+			c.Abort()
+			return
+		}
+		
+		token := tokenParts[1]
+		user, err := userService.ValidateToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+		
+		// Set user context
+		c.Set("user_id", user.ID)
+		c.Set("user", user)
+		c.Next()
+	}
+}
+
+// OptionalAuthMiddleware validates JWT tokens but doesn't require them
+func OptionalAuthMiddleware(userService *UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next()
+			return
+		}
+		
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.Next()
+			return
+		}
+		
+		token := tokenParts[1]
+		user, err := userService.ValidateToken(token)
+		if err != nil {
+			c.Next()
+			return
+		}
+		
+		// Set user context
+		c.Set("user_id", user.ID)
+		c.Set("user", user)
+		c.Next()
+	}
+}
+
+// RequestIDMiddleware adds a unique request ID to each request
+func RequestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := uuid.New().String()
+		c.Set("request_id", requestID)
+		c.Header("X-Request-ID", requestID)
+		c.Next()
+	}
+}
+
+// LoggingMiddleware logs HTTP requests
+func LoggingMiddleware(logger *logger.Logger) gin.HandlerFunc {
+	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		logger.InfoCtx(param.Request.Context(), "HTTP Request",
+			zap.String("method", param.Method),
+			zap.String("path", param.Path),
+			zap.Int("status", param.StatusCode),
+			zap.Duration("latency", param.Latency),
+			zap.String("client_ip", param.ClientIP),
+			zap.String("user_agent", param.Request.UserAgent()),
+		)
+		return ""
+	})
+}
+
+// MetricsMiddleware records HTTP metrics
+func MetricsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		
+		c.Next()
+		
+		duration := time.Since(start)
+		method := c.Request.Method
+		route := c.FullPath()
+		if route == "" {
+			route = "unknown"
+		}
+		status := strconv.Itoa(c.Writer.Status())
+		
+		metrics.RecordHTTPRequest(method, route, status, duration)
+	}
+}
+
+// CORSMiddleware handles Cross-Origin Resource Sharing
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+		c.Header("Access-Control-Max-Age", "86400")
+		
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		
+		c.Next()
+	}
+}
+
+// RateLimitMiddleware implements simple rate limiting
+func RateLimitMiddleware(rps int) gin.HandlerFunc {
+	// This is a simplified rate limiter
+	// In production, use a proper rate limiting library like golang.org/x/time/rate
+	return func(c *gin.Context) {
+		// Implementation would go here
+		c.Next()
+	}
+}
+
+// SecurityHeadersMiddleware adds security headers
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("Content-Security-Policy", "default-src 'self'")
+		c.Next()
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. GRPC AND MICROSERVICES COMMUNICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// api/proto/user.proto
+/*
+syntax = "proto3";
+
+package user;
+
+option go_package = "github.com/username/my-microservice/pkg/proto/user";
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string role = 6;
+  string status = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message CreateUserRequest {
+  string email = 1;
+  string username = 2;
+  string password = 3;
+  string first_name = 4;
+  string last_name = 5;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message UpdateUserRequest {
+  string id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string username = 4;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+}
+
+message ListUsersRequest {
+  int32 page = 1;
+  int32 limit = 2;
+  string search = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+*/
+
+// Generate protobuf code:
+// protoc --go_out=. --go_opt=paths=source_relative \
+//        --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+//        api/proto/user.proto
+
+package grpc
+
+import (
+	"context"
+	"net"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+)
+
+// UserGRPCServer implements the gRPC user service
+type UserGRPCServer struct {
+	userService *UserService
+	logger      *logger.Logger
+	UnimplementedUserServiceServer
+}
+
+// NewUserGRPCServer creates a new gRPC user server
+func NewUserGRPCServer(userService *UserService, logger *logger.Logger) *UserGRPCServer {
+	return &UserGRPCServer{
+		userService: userService,
+		logger:      logger,
+	}
+}
+
+// GetUser implements the GetUser gRPC method
+func (s *UserGRPCServer) GetUser(ctx context.Context, req *GetUserRequest) (*GetUserResponse, error) {
+	userID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID: %v", err)
+	}
+	
+	user, err := s.userService.GetUserByID(ctx, userID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Errorf(codes.NotFound, "user not found")
+		}
+		s.logger.ErrorCtx(ctx, "Failed to get user via gRPC", zap.Error(err))
+		return nil, status.Errorf(codes.Internal, "internal server error")
+	}
+	
+	return &GetUserResponse{
+		User: convertUserToProto(user),
+	}, nil
+}
+
+// CreateUser implements the CreateUser gRPC method
+func (s *UserGRPCServer) CreateUser(ctx context.Context, req *CreateUserRequest) (*CreateUserResponse, error) {
+	createReq := CreateUserRequest{
+		Email:     req.Email,
+		Username:  req.Username,
+		Password:  req.Password,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+	}
+	
+	user, err := s.userService.CreateUser(ctx, createReq)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return nil, status.Errorf(codes.AlreadyExists, err.Error())
+		}
+		if strings.Contains(err.Error(), "validation") {
+			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		
+		s.logger.ErrorCtx(ctx, "Failed to create user via gRPC", zap.Error(err))
+		return nil, status.Errorf(codes.Internal, "internal server error")
+	}
+	
+	return &CreateUserResponse{
+		User: convertUserToProto(user),
+	}, nil
+}
+
+// ListUsers implements the ListUsers gRPC method
+func (s *UserGRPCServer) ListUsers(ctx context.Context, req *ListUsersRequest) (*ListUsersResponse, error) {
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	
+	page := int(req.Page)
+	if page <= 0 {
+		page = 1
+	}
+	
+	offset := (page - 1) * limit
+	
+	users, total, err := s.userService.userRepo.List(ctx, offset, limit)
+	if err != nil {
+		s.logger.ErrorCtx(ctx, "Failed to list users via gRPC", zap.Error(err))
+		return nil, status.Errorf(codes.Internal, "internal server error")
+	}
+	
+	protoUsers := make([]*User, len(users))
+	for i, user := range users {
+		protoUsers[i] = convertUserToProto(&user)
+	}
+	
+	return &ListUsersResponse{
+		Users: protoUsers,
+		Total: total,
+		Page:  int32(page),
+		Limit: int32(limit),
+	}, nil
+}
+
+// convertUserToProto converts domain user to protobuf user
+func convertUserToProto(user *User) *User {
+	return &User{
+		Id:        user.ID.String(),
+		Email:     user.Email,
+		Username:  user.Username,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Role:      string(user.Role),
+		Status:    string(user.Status),
+		CreatedAt: user.CreatedAt.Unix(),
+		UpdatedAt: user.UpdatedAt.Unix(),
+	}
+}
+
+// GRPCServer holds the gRPC server configuration
+type GRPCServer struct {
+	server *grpc.Server
+	logger *logger.Logger
+}
+
+// NewGRPCServer creates a new gRPC server
+func NewGRPCServer(userService *UserService, logger *logger.Logger) *GRPCServer {
+	server := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			loggingInterceptor(logger),
+			metricsInterceptor(),
+			recoveryInterceptor(logger),
+		),
+	)
+	
+	// Register services
+	RegisterUserServiceServer(server, NewUserGRPCServer(userService, logger))
+	
+	// Register health check
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
+	
+	// Register reflection (for development)
+	reflection.Register(server)
+	
+	return &GRPCServer{
+		server: server,
+		logger: logger,
+	}
+}
+
+// Start starts the gRPC server
+func (s *GRPCServer) Start(addr string) error {
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+	}
+	
+	s.logger.Info("Starting gRPC server", zap.String("address", addr))
+	return s.server.Serve(lis)
+}
+
+// Stop gracefully stops the gRPC server
+func (s *GRPCServer) Stop() {
+	s.logger.Info("Stopping gRPC server")
+	s.server.GracefulStop()
+}
+
+// gRPC Interceptors
+func loggingInterceptor(logger *logger.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		
+		resp, err := handler(ctx, req)
+		
+		duration := time.Since(start)
+		
+		fields := []zap.Field{
+			zap.String("method", info.FullMethod),
+			zap.Duration("duration", duration),
+		}
+		
+		if err != nil {
+			fields = append(fields, zap.Error(err))
+			logger.ErrorCtx(ctx, "gRPC request failed", fields...)
+		} else {
+			logger.InfoCtx(ctx, "gRPC request completed", fields...)
+		}
+		
+		return resp, err
+	}
+}
+
+func metricsInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		
+		resp, err := handler(ctx, req)
+		
+		duration := time.Since(start)
+		status := "success"
+		if err != nil {
+			status = "error"
+		}
+		
+		// Record gRPC metrics (would need to define these metrics)
+		// metrics.RecordGRPCRequest(info.FullMethod, status, duration)
+		
+		return resp, err
+	}
+}
+
+func recoveryInterceptor(logger *logger.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.ErrorCtx(ctx, "gRPC panic recovered", 
+					zap.String("method", info.FullMethod),
+					zap.Any("panic", r))
+				err = status.Errorf(codes.Internal, "internal server error")
+			}
+		}()
+		
+		return handler(ctx, req)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. MESSAGE QUEUES AND EVENT PROCESSING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package messaging
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/nats-io/nats.go"
+)
+
+// Event represents a domain event
+type Event struct {
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	Source      string                 `json:"source"`
+	Subject     string                 `json:"subject"`
+	Data        map[string]interface{} `json:"data"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Version     string                 `json:"version"`
+}
+
+// EventBus handles event publishing and subscription
+type EventBus struct {
+	nc     *nats.Conn
+	js     nats.JetStreamContext
+	logger *logger.Logger
+}
+
+// NewEventBus creates a new event bus
+func NewEventBus(natsURL string, logger *logger.Logger) (*EventBus, error) {
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+	
+	js, err := nc.JetStream()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JetStream context: %w", err)
+	}
+	
+	return &EventBus{
+		nc:     nc,
+		js:     js,
+		logger: logger,
+	}, nil
+}
+
+// Publish publishes an event
+func (eb *EventBus) Publish(ctx context.Context, event Event) error {
+	event.ID = uuid.New().String()
+	event.Timestamp = time.Now().UTC()
+	event.Version = "1.0"
+	
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+	
+	subject := fmt.Sprintf("events.%s.%s", event.Source, event.Type)
+	
+	_, err = eb.js.Publish(subject, data)
+	if err != nil {
+		return fmt.Errorf("failed to publish event: %w", err)
+	}
+	
+	eb.logger.InfoCtx(ctx, "Event published", 
+		zap.String("event_id", event.ID),
+		zap.String("event_type", event.Type),
+		zap.String("subject", subject))
+	
+	return nil
+}
+
+// Subscribe subscribes to events with a handler
+func (eb *EventBus) Subscribe(subject string, handler EventHandler) error {
+	_, err := eb.js.Subscribe(subject, func(msg *nats.Msg) {
+		var event Event
+		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			eb.logger.Error("Failed to unmarshal event", zap.Error(err))
+			msg.Nak()
+			return
+		}
+		
+		ctx := context.Background()
+		if err := handler.Handle(ctx, event); err != nil {
+			eb.logger.ErrorCtx(ctx, "Event handler failed", 
+				zap.Error(err),
+				zap.String("event_id", event.ID),
+				zap.String("event_type", event.Type))
+			msg.Nak()
+			return
+		}
+		
+		msg.Ack()
+	}, nats.Durable("durable-consumer"))
+	
+	return err
+}
+
+// Close closes the event bus connection
+func (eb *EventBus) Close() {
+	eb.nc.Close()
+}
+
+// EventHandler interface for event handlers
+type EventHandler interface {
+	Handle(ctx context.Context, event Event) error
+}
+
+// UserEventHandler handles user-related events
+type UserEventHandler struct {
+	logger *logger.Logger
+}
+
+// NewUserEventHandler creates a new user event handler
+func NewUserEventHandler(logger *logger.Logger) *UserEventHandler {
+	return &UserEventHandler{
+		logger: logger,
+	}
+}
+
+// Handle handles user events
+func (h *UserEventHandler) Handle(ctx context.Context, event Event) error {
+	switch event.Type {
+	case "user.created":
+		return h.handleUserCreated(ctx, event)
+	case "user.updated":
+		return h.handleUserUpdated(ctx, event)
+	case "user.deleted":
+		return h.handleUserDeleted(ctx, event)
+	default:
+		h.logger.WarnCtx(ctx, "Unknown event type", zap.String("event_type", event.Type))
+		return nil
+	}
+}
+
+func (h *UserEventHandler) handleUserCreated(ctx context.Context, event Event) error {
+	userID, ok := event.Data["user_id"].(string)
+	if !ok {
+		return fmt.Errorf("missing user_id in event data")
+	}
+	
+	// Handle user creation (e.g., send welcome email, create related records)
+	h.logger.InfoCtx(ctx, "Handling user created event", zap.String("user_id", userID))
+	
+	// Implementation would go here
+	return nil
+}
+
+func (h *UserEventHandler) handleUserUpdated(ctx context.Context, event Event) error {
+	userID, ok := event.Data["user_id"].(string)
+	if !ok {
+		return fmt.Errorf("missing user_id in event data")
+	}
+	
+	// Handle user update (e.g., sync to other services)
+	h.logger.InfoCtx(ctx, "Handling user updated event", zap.String("user_id", userID))
+	
+	return nil
+}
+
+func (h *UserEventHandler) handleUserDeleted(ctx context.Context, event Event) error {
+	userID, ok := event.Data["user_id"].(string)
+	if !ok {
+		return fmt.Errorf("missing user_id in event data")
+	}// GetByID retrieves a user by ID
+func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	// Try cache first
+	cacheKey := fmt.Sprintf("user:%s", id.String())
+	var user User
+	
+	if err := r.CacheGet(ctx, cacheKey, &user); err == nil {
+		return &user, nil
+	}
+	
+	// Cache miss, get from database
+	if err := r.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	
+	// Cache the result
+	r.CacheSet(ctx, cacheKey, &user, time.Hour)
+	
+	return &user, nil
+}
+
+// GetByEmail retrieves a user by email
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	var user User
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	return &user, nil
+}
+
+// Update updates a user
+func (r *UserRepository) Update(ctx context.Context, user *User) error {
+	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("user:%s", user.ID.String())
+	r.CacheDelete(ctx, cacheKey)
+	
+	return nil
+}
+
+// Delete deletes a user
+func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := r.db.WithContext(ctx).Delete(&User{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+	
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("user:%s", id.String())
+	r.CacheDelete(ctx, cacheKey)
+	
+	return nil
+}
+
+// List retrieves users with pagination
+func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]User, int64, error) {
+	var users []User
+	var total int64
+	
+	// Get total count
+	if err := r.db.WithContext(ctx).Model(&User{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	
+	// Get users with pagination
+	if err := r.db.WithContext(ctx).
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list users: %w", err)
+	}
+	
+	return users, total, nil
+}
+
+// PostRepository handles post data operations
+type PostRepository struct {
+	*BaseRepository
+}
+
+// NewPostRepository creates a new post repository
+func NewPostRepository(db *gorm.DB, redis *redis.Client) *PostRepository {
+	return &PostRepository{
+		BaseRepository: NewBaseRepository(db, redis),
+	}
+}
+
+// Create creates a new post
+func (r *PostRepository) Create(ctx context.Context, post *Post) error {
+	if err := r.db.WithContext(ctx).Create(post).Error; err != nil {
+		return fmt.Errorf("failed to create post: %w", err)
+	}
+	
+	// Invalidate related caches
+	r.CacheDelete(ctx, "posts:published", "posts:featured")
+	
+	return nil
+}
+
+// GetByID retrieves a post by ID with relationships
+func (r *PostRepository) GetByID(ctx context.Context, id uuid.UUID) (*Post, error) {
+	var post Post
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags").
+		Preload("Comments", func(db *gorm.DB) *gorm.DB {
+			return db.Where("status = ?", CommentStatusApproved).Order("created_at DESC")
+		}).
+		Preload("Comments.User").
+		First(&post, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("post not found")
+		}
+		return nil, fmt.Errorf("failed to get post: %w", err)
+	}
+	return &post, nil
+}
+
+// GetBySlug retrieves a post by slug
+func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*Post, error) {
+	var post Post
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags").
+		Where("slug = ?", slug).
+		First(&post).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("post not found")
+		}
+		return nil, fmt.Errorf("failed to get post: %w", err)
+	}
+	return &post, nil
+}
+
+// List retrieves posts with filters and pagination
+func (r *PostRepository) List(ctx context.Context, filters PostFilters) ([]Post, int64, error) {
+	query := r.db.WithContext(ctx).Model(&Post{}).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags")
+	
+	// Apply filters
+	if filters.Status != "" {
+		query = query.Where("status = ?", filters.Status)
+	}
+	
+	if filters.CategoryID != uuid.Nil {
+		query = query.Where("category_id = ?", filters.CategoryID)
+	}
+	
+	if filters.UserID != uuid.Nil {
+		query = query.Where("user_id = ?", filters.UserID)
+	}
+	
+	if filters.Featured != nil {
+		query = query.Where("featured = ?", *filters.Featured)
+	}
+	
+	if filters.Search != "" {
+		query = query.Where("title ILIKE ? OR content ILIKE ?", 
+			"%"+filters.Search+"%", "%"+filters.Search+"%")
+	}
+	
+	// Get total count
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count posts: %w", err)
+	}
+	
+	// Apply pagination and ordering
+	var posts []Post
+	if err := query.
+		Offset(filters.Offset).
+		Limit(filters.Limit).
+		Order(filters.OrderBy + " " + filters.Order).
+		Find(&posts).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list posts: %w", err)
+	}
+	
+	return posts, total, nil
+}
+
+// GetPublished retrieves published posts
+func (r *PostRepository) GetPublished(ctx context.Context, limit int) ([]Post, error) {
+	// Try cache first
+	cacheKey := fmt.Sprintf("posts:published:%d", limit)
+	var posts []Post
+	
+	if err := r.CacheGet(ctx, cacheKey, &posts); err == nil {
+		return posts, nil
+	}
+	
+	// Cache miss, get from database
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Where("status = ?", PostStatusPublished).
+		Order("published_at DESC").
+		Limit(limit).
+		Find(&posts).Error; err != nil {
+		return nil, fmt.Errorf("failed to get published posts: %w", err)
+	}
+	
+	// Cache the result
+	r.CacheSet(ctx, cacheKey, posts, 15*time.Minute)
+	
+	return posts, nil
+}
+
+// IncrementViewCount increments the view count for a post
+func (r *PostRepository) IncrementViewCount(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&Post{}).
+		Where("id = ?", id).
+		Update("view_count", gorm.Expr("view_count + 1")).Error
+}
+
+// PostFilters defines filters for post queries
+type PostFilters struct {
+	Status     PostStatus
+	CategoryID uuid.UUID
+	UserID     uuid.UUID
+	Featured   *bool
+	Search     string
+	Offset     int
+	Limit      int
+	OrderBy    string
+	Order      string
+}
