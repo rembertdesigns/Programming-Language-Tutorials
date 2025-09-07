@@ -803,4 +803,794 @@ module enterprise_dapp::dex {
         price_events: EventHandle<PriceUpdateEvent>,
     }
 
-    struct Token
+    struct TokenPrice has store, copy, drop {
+        token_address: address,
+        price_usd: u64, // Price in USD * 1e8
+        volume_24h: u64,
+        last_updated: u64,
+    }
+
+    /// DEX router for multi-hop swaps
+    struct DEXRouter has key {
+        /// Supported trading pairs
+        pairs: vector<TradingPair>,
+        /// Router admin
+        admin: address,
+        /// Total volume processed
+        total_volume: u128,
+        /// Router events
+        router_events: EventHandle<RouterEvent>,
+    }
+
+    struct TradingPair has store, copy, drop {
+        token_x: address,
+        token_y: address,
+        pool_address: address,
+        active: bool,
+        volume_24h: u128,
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           DEX EVENTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    struct PoolEvent has drop, store {
+        event_type: String, // "swap", "add_liquidity", "remove_liquidity"
+        user: address,
+        amount_x: u64,
+        amount_y: u64,
+        reserve_x: u64,
+        reserve_y: u64,
+        timestamp: u64,
+    }
+
+    struct PriceUpdateEvent has drop, store {
+        token_address: address,
+        old_price: u64,
+        new_price: u64,
+        updated_by: address,
+        timestamp: u64,
+    }
+
+    struct RouterEvent has drop, store {
+        event_type: String,
+        user: address,
+        path: vector<address>,
+        amount_in: u64,
+        amount_out: u64,
+        timestamp: u64,
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           POOL MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Create new liquidity pool
+    public entry fun create_pool<X, Y>(
+        creator: &signer,
+        fee_bps: u64
+    ) {
+        let creator_addr = signer::address_of(creator);
+        
+        // Validate fee (max 1% = 100 bps)
+        assert!(fee_bps <= 100, error::invalid_argument(E_INVALID_SLIPPAGE));
+        
+        // Ensure pool doesn't exist
+        assert!(!exists<LiquidityPool<X, Y>>(creator_addr), error::already_exists(E_POOL_EXISTS));
+        
+        // Initialize LP token
+        let (lp_mint_cap, lp_burn_cap) = coin::initialize<LPToken<X, Y>>(
+            creator,
+            string::utf8(b"LP Token"),
+            string::utf8(b"LP"),
+            8,
+            true, // monitor_supply
+        );
+        
+        // Create pool
+        let pool = LiquidityPool<X, Y> {
+            reserve_x: coin::zero<X>(),
+            reserve_y: coin::zero<Y>(),
+            lp_token_supply: 0,
+            lp_mint_cap,
+            lp_burn_cap,
+            fee_bps,
+            created_at: timestamp::now_seconds(),
+            pool_events: account::new_event_handle<PoolEvent>(creator),
+        };
+        
+        move_to(creator, pool);
+        
+        // Create LP token info
+        let lp_info = LPTokenInfo<X, Y> {
+            name: string::utf8(b"Liquidity Pool Token"),
+            symbol: string::utf8(b"LP"),
+            decimals: 8,
+        };
+        
+        move_to(creator, lp_info);
+    }
+
+    /// Add liquidity to pool
+    public entry fun add_liquidity<X, Y>(
+        provider: &signer,
+        pool_address: address,
+        amount_x: u64,
+        amount_y: u64,
+        min_lp_tokens: u64,
+        deadline: u64
+    ) acquires LiquidityPool {
+        let provider_addr = signer::address_of(provider);
+        
+        // Check deadline
+        assert!(timestamp::now_seconds() <= deadline, error::invalid_state(E_DEADLINE_EXCEEDED));
+        
+        // Validate amounts
+        assert!(amount_x > 0 && amount_y > 0, error::invalid_argument(E_ZERO_AMOUNT));
+        
+        let pool = borrow_global_mut<LiquidityPool<X, Y>>(pool_address);
+        
+        let reserve_x = coin::value(&pool.reserve_x);
+        let reserve_y = coin::value(&pool.reserve_y);
+        
+        let lp_tokens_to_mint;
+        
+        if (pool.lp_token_supply == 0) {
+            // First liquidity provision - geometric mean
+            lp_tokens_to_mint = (sqrt(amount_x * amount_y) as u128);
+        } else {
+            // Subsequent provisions - maintain ratio
+            let lp_from_x = ((amount_x as u128) * pool.lp_token_supply) / (reserve_x as u128);
+            let lp_from_y = ((amount_y as u128) * pool.lp_token_supply) / (reserve_y as u128);
+            lp_tokens_to_mint = min(lp_from_x, lp_from_y);
+        };
+        
+        assert!(lp_tokens_to_mint >= (min_lp_tokens as u128), error::invalid_state(E_INSUFFICIENT_OUTPUT));
+        
+        // Take tokens from provider
+        let coins_x = coin::withdraw<X>(provider, amount_x);
+        let coins_y = coin::withdraw<Y>(provider, amount_y);
+        
+        // Add to pool reserves
+        coin::merge(&mut pool.reserve_x, coins_x);
+        coin::merge(&mut pool.reserve_y, coins_y);
+        
+        // Mint LP tokens
+        let lp_tokens = coin::mint((lp_tokens_to_mint as u64), &pool.lp_mint_cap);
+        coin::deposit(provider_addr, lp_tokens);
+        
+        // Update supply
+        pool.lp_token_supply = pool.lp_token_supply + lp_tokens_to_mint;
+        
+        // Update user activity
+        core_fundamentals::update_user_activity(provider_addr, amount_x + amount_y);
+        
+        // Emit event
+        event::emit_event(
+            &mut pool.pool_events,
+            PoolEvent {
+                event_type: string::utf8(b"add_liquidity"),
+                user: provider_addr,
+                amount_x,
+                amount_y,
+                reserve_x: coin::value(&pool.reserve_x),
+                reserve_y: coin::value(&pool.reserve_y),
+                timestamp: timestamp::now_seconds(),
+            }
+        );
+    }
+
+    /// Remove liquidity from pool
+    public entry fun remove_liquidity<X, Y>(
+        provider: &signer,
+        pool_address: address,
+        lp_token_amount: u64,
+        min_amount_x: u64,
+        min_amount_y: u64,
+        deadline: u64
+    ) acquires LiquidityPool {
+        let provider_addr = signer::address_of(provider);
+        
+        // Check deadline
+        assert!(timestamp::now_seconds() <= deadline, error::invalid_state(E_DEADLINE_EXCEEDED));
+        
+        let pool = borrow_global_mut<LiquidityPool<X, Y>>(pool_address);
+        
+        // Calculate withdrawal amounts
+        let total_supply = pool.lp_token_supply;
+        assert!(total_supply > 0, error::invalid_state(E_INSUFFICIENT_LIQUIDITY));
+        
+        let reserve_x = coin::value(&pool.reserve_x);
+        let reserve_y = coin::value(&pool.reserve_y);
+        
+        let amount_x = ((lp_token_amount as u128) * (reserve_x as u128)) / total_supply;
+        let amount_y = ((lp_token_amount as u128) * (reserve_y as u128)) / total_supply;
+        
+        assert!((amount_x as u64) >= min_amount_x, error::invalid_state(E_INSUFFICIENT_OUTPUT));
+        assert!((amount_y as u64) >= min_amount_y, error::invalid_state(E_INSUFFICIENT_OUTPUT));
+        
+        // Burn LP tokens
+        let lp_tokens = coin::withdraw<LPToken<X, Y>>(provider, lp_token_amount);
+        coin::burn(lp_tokens, &pool.lp_burn_cap);
+        
+        // Withdraw from reserves
+        let coins_x = coin::extract(&mut pool.reserve_x, (amount_x as u64));
+        let coins_y = coin::extract(&mut pool.reserve_y, (amount_y as u64));
+        
+        // Transfer to provider
+        coin::deposit(provider_addr, coins_x);
+        coin::deposit(provider_addr, coins_y);
+        
+        // Update supply
+        pool.lp_token_supply = pool.lp_token_supply - (lp_token_amount as u128);
+        
+        // Emit event
+        event::emit_event(
+            &mut pool.pool_events,
+            PoolEvent {
+                event_type: string::utf8(b"remove_liquidity"),
+                user: provider_addr,
+                amount_x: (amount_x as u64),
+                amount_y: (amount_y as u64),
+                reserve_x: coin::value(&pool.reserve_x),
+                reserve_y: coin::value(&pool.reserve_y),
+                timestamp: timestamp::now_seconds(),
+            }
+        );
+    }
+
+    /// Swap tokens with exact input
+    public entry fun swap_exact_input<X, Y>(
+        trader: &signer,
+        pool_address: address,
+        amount_in: u64,
+        min_amount_out: u64,
+        deadline: u64
+    ) acquires LiquidityPool {
+        let trader_addr = signer::address_of(trader);
+        
+        // Check deadline
+        assert!(timestamp::now_seconds() <= deadline, error::invalid_state(E_DEADLINE_EXCEEDED));
+        
+        // Check global pause
+        core_fundamentals::assert_not_paused();
+        
+        let pool = borrow_global_mut<LiquidityPool<X, Y>>(pool_address);
+        
+        let reserve_x = coin::value(&pool.reserve_x);
+        let reserve_y = coin::value(&pool.reserve_y);
+        
+        // Calculate output with fee
+        let amount_in_with_fee = amount_in * (10000 - pool.fee_bps);
+        let numerator = amount_in_with_fee * reserve_y;
+        let denominator = reserve_x * 10000 + amount_in_with_fee;
+        let amount_out = numerator / denominator;
+        
+        assert!(amount_out >= min_amount_out, error::invalid_state(E_INSUFFICIENT_OUTPUT));
+        assert!(amount_out < reserve_y, error::invalid_state(E_INSUFFICIENT_LIQUIDITY));
+        
+        // Execute swap
+        let coins_in = coin::withdraw<X>(trader, amount_in);
+        coin::merge(&mut pool.reserve_x, coins_in);
+        
+        let coins_out = coin::extract(&mut pool.reserve_y, amount_out);
+        coin::deposit(trader_addr, coins_out);
+        
+        // Calculate and handle protocol fee
+        let protocol_fee = core_fundamentals::calculate_protocol_fee(amount_in);
+        if (protocol_fee > 0) {
+            let fee_coins = coin::extract(&mut pool.reserve_x, protocol_fee);
+            // Transfer to treasury (implementation depends on treasury setup)
+            coin::deposit(@enterprise_dapp, fee_coins);
+        };
+        
+        // Update user activity
+        core_fundamentals::update_user_activity(trader_addr, amount_in);
+        
+        // Emit event
+        event::emit_event(
+            &mut pool.pool_events,
+            PoolEvent {
+                event_type: string::utf8(b"swap"),
+                user: trader_addr,
+                amount_x: amount_in,
+                amount_y: amount_out,
+                reserve_x: coin::value(&pool.reserve_x),
+                reserve_y: coin::value(&pool.reserve_y),
+                timestamp: timestamp::now_seconds(),
+            }
+        );
+    }
+
+    /// Multi-hop swap through router
+    public entry fun swap_exact_input_multihop<X, Y, Z>(
+        trader: &signer,
+        pool_address_1: address,
+        pool_address_2: address,
+        amount_in: u64,
+        min_amount_out: u64,
+        deadline: u64
+    ) acquires LiquidityPool {
+        let trader_addr = signer::address_of(trader);
+        
+        // Check deadline
+        assert!(timestamp::now_seconds() <= deadline, error::invalid_state(E_DEADLINE_EXCEEDED));
+        
+        // First hop: X -> Y
+        let pool_1 = borrow_global_mut<LiquidityPool<X, Y>>(pool_address_1);
+        let reserve_x_1 = coin::value(&pool_1.reserve_x);
+        let reserve_y_1 = coin::value(&pool_1.reserve_y);
+        
+        let amount_in_with_fee_1 = amount_in * (10000 - pool_1.fee_bps);
+        let numerator_1 = amount_in_with_fee_1 * reserve_y_1;
+        let denominator_1 = reserve_x_1 * 10000 + amount_in_with_fee_1;
+        let intermediate_amount = numerator_1 / denominator_1;
+        
+        // Execute first swap
+        let coins_in = coin::withdraw<X>(trader, amount_in);
+        coin::merge(&mut pool_1.reserve_x, coins_in);
+        let intermediate_coins = coin::extract(&mut pool_1.reserve_y, intermediate_amount);
+        
+        // Second hop: Y -> Z
+        let pool_2 = borrow_global_mut<LiquidityPool<Y, Z>>(pool_address_2);
+        let reserve_y_2 = coin::value(&pool_2.reserve_x);
+        let reserve_z_2 = coin::value(&pool_2.reserve_y);
+        
+        let amount_in_with_fee_2 = intermediate_amount * (10000 - pool_2.fee_bps);
+        let numerator_2 = amount_in_with_fee_2 * reserve_z_2;
+        let denominator_2 = reserve_y_2 * 10000 + amount_in_with_fee_2;
+        let final_amount = numerator_2 / denominator_2;
+        
+        assert!(final_amount >= min_amount_out, error::invalid_state(E_INSUFFICIENT_OUTPUT));
+        
+        // Execute second swap
+        coin::merge(&mut pool_2.reserve_x, intermediate_coins);
+        let final_coins = coin::extract(&mut pool_2.reserve_y, final_amount);
+        coin::deposit(trader_addr, final_coins);
+        
+        // Update user activity
+        core_fundamentals::update_user_activity(trader_addr, amount_in);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           UTILITY FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Calculate square root (for geometric mean)
+    fun sqrt(x: u64): u64 {
+        if (x == 0) return 0;
+        let z = (x + 1) / 2;
+        let y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        };
+        y
+    }
+
+    /// Get minimum of two values
+    fun min(a: u128, b: u128): u128 {
+        if (a < b) a else b
+    }
+
+    /// Get quote for token swap
+    public fun get_quote(amount_a: u64, reserve_a: u64, reserve_b: u64): u64 {
+        assert!(amount_a > 0, error::invalid_argument(E_ZERO_AMOUNT));
+        assert!(reserve_a > 0 && reserve_b > 0, error::invalid_state(E_INSUFFICIENT_LIQUIDITY));
+        (amount_a * reserve_b) / reserve_a
+    }
+
+    /// Get amount out for exact input swap
+    public fun get_amount_out(amount_in: u64, reserve_in: u64, reserve_out: u64, fee_bps: u64): u64 {
+        assert!(amount_in > 0, error::invalid_argument(E_ZERO_AMOUNT));
+        assert!(reserve_in > 0 && reserve_out > 0, error::invalid_state(E_INSUFFICIENT_LIQUIDITY));
+        
+        let amount_in_with_fee = amount_in * (10000 - fee_bps);
+        let numerator = amount_in_with_fee * reserve_out;
+        let denominator = reserve_in * 10000 + amount_in_with_fee;
+        numerator / denominator
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           VIEW FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[view]
+    public fun get_pool_info<X, Y>(pool_address: address): (u64, u64, u128, u64) acquires LiquidityPool {
+        let pool = borrow_global<LiquidityPool<X, Y>>(pool_address);
+        (
+            coin::value(&pool.reserve_x),
+            coin::value(&pool.reserve_y),
+            pool.lp_token_supply,
+            pool.fee_bps
+        )
+    }
+
+    #[view]
+    public fun pool_exists<X, Y>(pool_address: address): bool {
+        exists<LiquidityPool<X, Y>>(pool_address)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           3. NFT MARKETPLACE AND COLLECTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+module enterprise_dapp::nft_marketplace {
+    use std::string::{Self, String};
+    use std::vector;
+    use std::option::{Self, Option};
+    use std::error;
+    use std::signer;
+    use aptos_framework::coin::{Self, Coin};
+    use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::timestamp;
+    use aptos_framework::account;
+    use aptos_framework::event::{Self, EventHandle};
+    use aptos_token::token::{Self, Token, TokenId};
+    use enterprise_dapp::core_fundamentals;
+
+    // Error codes
+    const E_NOT_OWNER: u64 = 201;
+    const E_LISTING_NOT_EXISTS: u64 = 202;
+    const E_INSUFFICIENT_PAYMENT: u64 = 203;
+    const E_AUCTION_ENDED: u64 = 204;
+    const E_AUCTION_NOT_ENDED: u64 = 205;
+    const E_BID_TOO_LOW: u64 = 206;
+    const E_COLLECTION_NOT_EXISTS: u64 = 207;
+    const E_INVALID_ROYALTY: u64 = 208;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           NFT MARKETPLACE STRUCTURES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// NFT Collection with enterprise features
+    struct Collection has key {
+        /// Collection name
+        name: String,
+        /// Collection description
+        description: String,
+        /// Collection URI (metadata)
+        uri: String,
+        /// Collection creator
+        creator: address,
+        /// Maximum supply (0 = unlimited)
+        max_supply: u64,
+        /// Current supply
+        current_supply: u64,
+        /// Mint price in APT
+        mint_price: u64,
+        /// Royalty percentage (basis points)
+        royalty_bps: u64,
+        /// Royalty recipient
+        royalty_recipient: address,
+        /// Whitelist for minting
+        whitelist: vector<address>,
+        /// Public minting enabled
+        public_mint: bool,
+        /// Collection creation timestamp
+        created_at: u64,
+        /// Collection events
+        collection_events: EventHandle<CollectionEvent>,
+    }
+
+    /// NFT Listing for marketplace
+    struct Listing has key {
+        /// Token being sold
+        token_id: TokenId,
+        /// Seller address
+        seller: address,
+        /// Price in APT
+        price: u64,
+        /// Listing type (fixed, auction)
+        listing_type: u8, // 0 = fixed, 1 = auction
+        /// Auction end time (for auctions)
+        auction_end: Option<u64>,
+        /// Current highest bid (for auctions)
+        highest_bid: u64,
+        /// Highest bidder (for auctions)
+        highest_bidder: Option<address>,
+        /// Reserve price (for auctions)
+        reserve_price: u64,
+        /// Listing creation timestamp
+        created_at: u64,
+        /// Listing events
+        listing_events: EventHandle<ListingEvent>,
+    }
+
+    /// Marketplace configuration
+    struct Marketplace has key {
+        /// Marketplace admin
+        admin: address,
+        /// Platform fee in basis points
+        platform_fee_bps: u64,
+        /// Fee recipient
+        fee_recipient: address,
+        /// Supported payment tokens
+        supported_tokens: vector<address>,
+        /// Total volume traded
+        total_volume: u128,
+        /// Total transactions
+        total_transactions: u64,
+        /// Marketplace events
+        marketplace_events: EventHandle<MarketplaceEvent>,
+    }
+
+    /// Bid for auction
+    struct Bid has store, copy, drop {
+        bidder: address,
+        amount: u64,
+        timestamp: u64,
+    }
+
+    /// Royalty information
+    struct RoyaltyInfo has store, copy, drop {
+        recipient: address,
+        percentage_bps: u64,
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           NFT EVENTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    struct CollectionEvent has drop, store {
+        event_type: String, // "created", "minted", "updated"
+        collection_name: String,
+        user: address,
+        token_id: Option<TokenId>,
+        price: Option<u64>,
+        timestamp: u64,
+    }
+
+    struct ListingEvent has drop, store {
+        event_type: String, // "listed", "sold", "cancelled", "bid_placed"
+        token_id: TokenId,
+        seller: address,
+        buyer: Option<address>,
+        price: u64,
+        timestamp: u64,
+    }
+
+    struct MarketplaceEvent has drop, store {
+        event_type: String,
+        collection: Option<String>,
+        volume: u64,
+        fee_collected: u64,
+        timestamp: u64,
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           COLLECTION MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Create NFT collection
+    public entry fun create_collection(
+        creator: &signer,
+        name: String,
+        description: String,
+        uri: String,
+        max_supply: u64,
+        mint_price: u64,
+        royalty_bps: u64,
+        royalty_recipient: address
+    ) {
+        let creator_addr = signer::address_of(creator);
+        
+        // Validate royalty (max 20% = 2000 bps)
+        assert!(royalty_bps <= 2000, error::invalid_argument(E_INVALID_ROYALTY));
+        
+        // Create token collection
+        token::create_collection(
+            creator,
+            name,
+            description,
+            uri,
+            max_supply,
+            vector[false, false, false], // mutate settings
+        );
+        
+        // Create collection resource
+        let collection = Collection {
+            name,
+            description,
+            uri,
+            creator: creator_addr,
+            max_supply,
+            current_supply: 0,
+            mint_price,
+            royalty_bps,
+            royalty_recipient,
+            whitelist: vector::empty(),
+            public_mint: false,
+            created_at: timestamp::now_seconds(),
+            collection_events: account::new_event_handle<CollectionEvent>(creator),
+        };
+        
+        move_to(creator, collection);
+        
+        // Emit collection creation event
+        let collection_ref = borrow_global_mut<Collection>(creator_addr);
+        event::emit_event(
+            &mut collection_ref.collection_events,
+            CollectionEvent {
+                event_type: string::utf8(b"created"),
+                collection_name: name,
+                user: creator_addr,
+                token_id: option::none(),
+                price: option::some(mint_price),
+                timestamp: timestamp::now_seconds(),
+            }
+        );
+    }
+
+    /// Mint NFT from collection
+    public entry fun mint_nft(
+        minter: &signer,
+        collection_creator: address,
+        token_name: String,
+        token_description: String,
+        token_uri: String,
+        property_keys: vector<String>,
+        property_values: vector<vector<u8>>,
+        property_types: vector<String>
+    ) acquires Collection {
+        let minter_addr = signer::address_of(minter);
+        let collection = borrow_global_mut<Collection>(collection_creator);
+        
+        // Check supply limit
+        if (collection.max_supply > 0) {
+            assert!(collection.current_supply < collection.max_supply, error::resource_exhausted(E_COLLECTION_NOT_EXISTS));
+        };
+        
+        // Check minting permissions
+        if (!collection.public_mint) {
+            assert!(
+                minter_addr == collection.creator || vector::contains(&collection.whitelist, &minter_addr),
+                error::permission_denied(E_NOT_OWNER)
+            );
+        };
+        
+        // Handle payment
+        if (collection.mint_price > 0) {
+            let payment = coin::withdraw<AptosCoin>(minter, collection.mint_price);
+            
+            // Calculate royalty
+            let royalty_amount = (collection.mint_price * collection.royalty_bps) / 10000;
+            let creator_amount = collection.mint_price - royalty_amount;
+            
+            // Transfer payments
+            if (royalty_amount > 0) {
+                let royalty_coin = coin::extract(&mut payment, royalty_amount);
+                coin::deposit(collection.royalty_recipient, royalty_coin);
+            };
+            
+            coin::deposit(collection.creator, payment);
+        };
+        
+        // Create token
+        let token_data_id = token::create_tokendata(
+            &account::create_signer_with_capability(&account::create_test_signer_cap(collection_creator)),
+            collection.name,
+            token_name,
+            token_description,
+            1, // maximum
+            token_uri,
+            collection.royalty_recipient,
+            collection.royalty_bps,
+            0, // token_mutate_config
+            property_keys,
+            property_values,
+            property_types,
+        );
+        
+        let token_id = token::mint_token(
+            &account::create_signer_with_capability(&account::create_test_signer_cap(collection_creator)),
+            token_data_id,
+            1,
+        );
+        
+        // Transfer to minter
+        token::direct_transfer(
+            &account::create_signer_with_capability(&account::create_test_signer_cap(collection_creator)),
+            minter,
+            token_id,
+            1,
+        );
+        
+        // Update supply
+        collection.current_supply = collection.current_supply + 1;
+        
+        // Update user activity
+        core_fundamentals::update_user_activity(minter_addr, collection.mint_price);
+        
+        // Emit mint event
+        event::emit_event(
+            &mut collection.collection_events,
+            CollectionEvent {
+                event_type: string::utf8(b"minted"),
+                collection_name: collection.name,
+                user: minter_addr,
+                token_id: option::some(token_id),
+                price: option::some(collection.mint_price),
+                timestamp: timestamp::now_seconds(),
+            }
+        );
+    }
+
+    /// Add address to whitelist
+    public entry fun add_to_whitelist(
+        creator: &signer,
+        user: address
+    ) acquires Collection {
+        let creator_addr = signer::address_of(creator);
+        let collection = borrow_global_mut<Collection>(creator_addr);
+        
+        assert!(creator_addr == collection.creator, error::permission_denied(E_NOT_OWNER));
+        
+        if (!vector::contains(&collection.whitelist, &user)) {
+            vector::push_back(&mut collection.whitelist, user);
+        };
+    }
+
+    /// Toggle public minting
+    public entry fun toggle_public_mint(
+        creator: &signer,
+        enabled: bool
+    ) acquires Collection {
+        let creator_addr = signer::address_of(creator);
+        let collection = borrow_global_mut<Collection>(creator_addr);
+        
+        assert!(creator_addr == collection.creator, error::permission_denied(E_NOT_OWNER));
+        
+        collection.public_mint = enabled;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                           MARKETPLACE OPERATIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Initialize marketplace
+    public entry fun initialize_marketplace(
+        admin: &signer,
+        platform_fee_bps: u64,
+        fee_recipient: address
+    ) {
+        let admin_addr = signer::address_of(admin);
+        
+        // Validate fee (max 5% = 500 bps)
+        assert!(platform_fee_bps <= 500, error::invalid_argument(E_INVALID_ROYALTY));
+        
+        let marketplace = Marketplace {
+            admin: admin_addr,
+            platform_fee_bps,
+            fee_recipient,
+            supported_tokens: vector[],
+            total_volume: 0,
+            total_transactions: 0,
+            marketplace_events: account::new_event_handle<MarketplaceEvent>(admin),
+        };
+        
+        move_to(admin, marketplace);
+    }
+
+    /// List NFT for fixed price sale
+    public entry fun list_for_sale(
+        seller: &signer,
+        token_id: TokenId,
+        price: u64
+    ) {
+        let seller_addr = signer::address_of(seller);
+        
+        // Validate token ownership
+        assert!(token::balance_of(seller_addr, token_id) > 0, error::permission_denied(E_NOT_OWNER));
+        assert!(price > 0, error::invalid_argument(E_INSUFFICIENT_PAYMENT));
+        
+        // Create listing
+        let listing = Listing {
+            token_id,
+            seller: seller_addr,
+            price,
+            listing_type: 0, // fixed price
+            auction_end: option::none(),
+            highest_bid: 0,
+            highest_bidder: option::none(),
