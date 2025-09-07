@@ -783,3 +783,955 @@ func MigrateModels(db *gorm.DB) error {
 		&Tag{},
 	)
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           5. REPOSITORY LAYER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package repository
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/go-redis/redis/v8"
+	"gorm.io/gorm"
+)
+
+// BaseRepository provides common repository functionality
+type BaseRepository struct {
+	db    *gorm.DB
+	redis *redis.Client
+}
+
+// NewBaseRepository creates a new base repository
+func NewBaseRepository(db *gorm.DB, redis *redis.Client) *BaseRepository {
+	return &BaseRepository{
+		db:    db,
+		redis: redis,
+	}
+}
+
+// CacheGet retrieves data from cache
+func (r *BaseRepository) CacheGet(ctx context.Context, key string, dest interface{}) error {
+	val, err := r.redis.Get(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(val), dest)
+}
+
+// CacheSet stores data in cache
+func (r *BaseRepository) CacheSet(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return r.redis.Set(ctx, key, data, expiration).Err()
+}
+
+// CacheDelete removes data from cache
+func (r *BaseRepository) CacheDelete(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	return r.redis.Del(ctx, keys...).Err()
+}
+
+// UserRepository handles user data operations
+type UserRepository struct {
+	*BaseRepository
+}
+
+// NewUserRepository creates a new user repository
+func NewUserRepository(db *gorm.DB, redis *redis.Client) *UserRepository {
+	return &UserRepository{
+		BaseRepository: NewBaseRepository(db, redis),
+	}
+}
+
+// Create creates a new user
+func (r *UserRepository) Create(ctx context.Context, user *User) error {
+	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+	
+	// Cache the user
+	cacheKey := fmt.Sprintf("user:%s", user.ID.String())
+	r.CacheSet(ctx, cacheKey, user, time.Hour)
+	
+	return nil
+}
+
+// GetByID retrieves a user by ID
+func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	// Try cache first
+	cacheKey := fmt.Sprintf("user:%s", id.String())
+	var user User
+	
+	if err := r.CacheGet(ctx, cacheKey, &user); err == nil {
+		return &user, nil
+	}
+	
+	// Cache miss, get from database
+	if err := r.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	
+	// Cache the result
+	r.CacheSet(ctx, cacheKey, &user, time.Hour)
+	
+	return &user, nil
+}
+
+// GetByEmail retrieves a user by email
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	var user User
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	return &user, nil
+}
+
+// Update updates a user
+func (r *UserRepository) Update(ctx context.Context, user *User) error {
+	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("user:%s", user.ID.String())
+	r.CacheDelete(ctx, cacheKey)
+	
+	return nil
+}
+
+// Delete deletes a user
+func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	if err := r.db.WithContext(ctx).Delete(&User{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+	
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("user:%s", id.String())
+	r.CacheDelete(ctx, cacheKey)
+	
+	return nil
+}
+
+// List retrieves users with pagination
+func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]User, int64, error) {
+	var users []User
+	var total int64
+	
+	// Get total count
+	if err := r.db.WithContext(ctx).Model(&User{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	
+	// Get users with pagination
+	if err := r.db.WithContext(ctx).
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list users: %w", err)
+	}
+	
+	return users, total, nil
+}
+
+// PostRepository handles post data operations
+type PostRepository struct {
+	*BaseRepository
+}
+
+// NewPostRepository creates a new post repository
+func NewPostRepository(db *gorm.DB, redis *redis.Client) *PostRepository {
+	return &PostRepository{
+		BaseRepository: NewBaseRepository(db, redis),
+	}
+}
+
+// Create creates a new post
+func (r *PostRepository) Create(ctx context.Context, post *Post) error {
+	if err := r.db.WithContext(ctx).Create(post).Error; err != nil {
+		return fmt.Errorf("failed to create post: %w", err)
+	}
+	
+	// Invalidate related caches
+	r.CacheDelete(ctx, "posts:published", "posts:featured")
+	
+	return nil
+}
+
+// GetByID retrieves a post by ID with relationships
+func (r *PostRepository) GetByID(ctx context.Context, id uuid.UUID) (*Post, error) {
+	var post Post
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags").
+		Preload("Comments", func(db *gorm.DB) *gorm.DB {
+			return db.Where("status = ?", CommentStatusApproved).Order("created_at DESC")
+		}).
+		Preload("Comments.User").
+		First(&post, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("post not found")
+		}
+		return nil, fmt.Errorf("failed to get post: %w", err)
+	}
+	return &post, nil
+}
+
+// GetBySlug retrieves a post by slug
+func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*Post, error) {
+	var post Post
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags").
+		Where("slug = ?", slug).
+		First(&post).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("post not found")
+		}
+		return nil, fmt.Errorf("failed to get post: %w", err)
+	}
+	return &post, nil
+}
+
+// List retrieves posts with filters and pagination
+func (r *PostRepository) List(ctx context.Context, filters PostFilters) ([]Post, int64, error) {
+	query := r.db.WithContext(ctx).Model(&Post{}).
+		Preload("User").
+		Preload("Category").
+		Preload("Tags")
+	
+	// Apply filters
+	if filters.Status != "" {
+		query = query.Where("status = ?", filters.Status)
+	}
+	
+	if filters.CategoryID != uuid.Nil {
+		query = query.Where("category_id = ?", filters.CategoryID)
+	}
+	
+	if filters.UserID != uuid.Nil {
+		query = query.Where("user_id = ?", filters.UserID)
+	}
+	
+	if filters.Featured != nil {
+		query = query.Where("featured = ?", *filters.Featured)
+	}
+	
+	if filters.Search != "" {
+		query = query.Where("title ILIKE ? OR content ILIKE ?", 
+			"%"+filters.Search+"%", "%"+filters.Search+"%")
+	}
+	
+	// Get total count
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count posts: %w", err)
+	}
+	
+	// Apply pagination and ordering
+	var posts []Post
+	if err := query.
+		Offset(filters.Offset).
+		Limit(filters.Limit).
+		Order(filters.OrderBy + " " + filters.Order).
+		Find(&posts).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list posts: %w", err)
+	}
+	
+	return posts, total, nil
+}
+
+// GetPublished retrieves published posts
+func (r *PostRepository) GetPublished(ctx context.Context, limit int) ([]Post, error) {
+	// Try cache first
+	cacheKey := fmt.Sprintf("posts:published:%d", limit)
+	var posts []Post
+	
+	if err := r.CacheGet(ctx, cacheKey, &posts); err == nil {
+		return posts, nil
+	}
+	
+	// Cache miss, get from database
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Category").
+		Where("status = ?", PostStatusPublished).
+		Order("published_at DESC").
+		Limit(limit).
+		Find(&posts).Error; err != nil {
+		return nil, fmt.Errorf("failed to get published posts: %w", err)
+	}
+	
+	// Cache the result
+	r.CacheSet(ctx, cacheKey, posts, 15*time.Minute)
+	
+	return posts, nil
+}
+
+// IncrementViewCount increments the view count for a post
+func (r *PostRepository) IncrementViewCount(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&Post{}).
+		Where("id = ?", id).
+		Update("view_count", gorm.Expr("view_count + 1")).Error
+}
+
+// PostFilters defines filters for post queries
+type PostFilters struct {
+	Status     PostStatus
+	CategoryID uuid.UUID
+	UserID     uuid.UUID
+	Featured   *bool
+	Search     string
+	Offset     int
+	Limit      int
+	OrderBy    string
+	Order      string
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           6. SERVICE LAYER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package service
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+)
+
+// UserService handles user business logic
+type UserService struct {
+	userRepo   *UserRepository
+	jwtSecret  string
+	jwtExpiry  time.Duration
+	jwtIssuer  string
+}
+
+// NewUserService creates a new user service
+func NewUserService(userRepo *UserRepository, jwtSecret string, jwtExpiry time.Duration, jwtIssuer string) *UserService {
+	return &UserService{
+		userRepo:  userRepo,
+		jwtSecret: jwtSecret,
+		jwtExpiry: jwtExpiry,
+		jwtIssuer: jwtIssuer,
+	}
+}
+
+// CreateUser creates a new user
+func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*User, error) {
+	// Validate input
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+	
+	// Check if user already exists
+	existing, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err == nil && existing != nil {
+		return nil, fmt.Errorf("user with email %s already exists", req.Email)
+	}
+	
+	// Create user
+	user := &User{
+		Email:     req.Email,
+		Username:  req.Username,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Role:      UserRoleUser,
+		Status:    UserStatusActive,
+	}
+	
+	if err := user.SetPassword(req.Password); err != nil {
+		return nil, fmt.Errorf("failed to set password: %w", err)
+	}
+	
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+	
+	return user, nil
+}
+
+// Authenticate authenticates a user and returns a JWT token
+func (s *UserService) Authenticate(ctx context.Context, email, password string) (*AuthResponse, error) {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+	
+	if !user.CheckPassword(password) {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+	
+	if user.Status != UserStatusActive {
+		return nil, fmt.Errorf("user account is not active")
+	}
+	
+	// Generate JWT token
+	token, err := s.generateJWT(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+	
+	// Update last login time
+	now := time.Now()
+	user.LastLoginAt = &now
+	s.userRepo.Update(ctx, user)
+	
+	return &AuthResponse{
+		Token:     token,
+		User:      user,
+		ExpiresAt: time.Now().Add(s.jwtExpiry),
+	}, nil
+}
+
+// GetUserByID retrieves a user by ID
+func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	return s.userRepo.GetByID(ctx, id)
+}
+
+// UpdateUser updates user information
+func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, req UpdateUserRequest) (*User, error) {
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Update fields
+	if req.FirstName != "" {
+		user.FirstName = req.FirstName
+	}
+	if req.LastName != "" {
+		user.LastName = req.LastName
+	}
+	if req.Username != "" {
+		user.Username = req.Username
+	}
+	
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+	
+	return user, nil
+}
+
+// ChangePassword changes user password
+func (s *UserService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	
+	if !user.CheckPassword(oldPassword) {
+		return fmt.Errorf("invalid current password")
+	}
+	
+	if err := user.SetPassword(newPassword); err != nil {
+		return fmt.Errorf("failed to set new password: %w", err)
+	}
+	
+	return s.userRepo.Update(ctx, user)
+}
+
+// ValidateToken validates a JWT token and returns the user
+func (s *UserService) ValidateToken(tokenString string) (*User, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(s.jwtSecret), nil
+	})
+	
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+	
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid token claims")
+		}
+		
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user ID in token")
+		}
+		
+		user, err := s.userRepo.GetByID(context.Background(), userID)
+		if err != nil {
+			return nil, fmt.Errorf("user not found")
+		}
+		
+		return user, nil
+	}
+	
+	return nil, fmt.Errorf("invalid token")
+}
+
+// generateJWT generates a JWT token for a user
+func (s *UserService) generateJWT(user *User) (string, error) {
+	claims := jwt.MapClaims{
+		"user_id":  user.ID.String(),
+		"email":    user.Email,
+		"username": user.Username,
+		"role":     user.Role,
+		"iss":      s.jwtIssuer,
+		"exp":      time.Now().Add(s.jwtExpiry).Unix(),
+		"iat":      time.Now().Unix(),
+	}
+	
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(s.jwtSecret))
+}
+
+// Request/Response types
+type CreateUserRequest struct {
+	Email     string `json:"email" validate:"required,email"`
+	Username  string `json:"username" validate:"required,min=3,max=50"`
+	Password  string `json:"password" validate:"required,min=8"`
+	FirstName string `json:"first_name" validate:"required"`
+	LastName  string `json:"last_name" validate:"required"`
+}
+
+func (r *CreateUserRequest) Validate() error {
+	if r.Email == "" {
+		return fmt.Errorf("email is required")
+	}
+	if r.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if len(r.Password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	if r.FirstName == "" {
+		return fmt.Errorf("first name is required")
+	}
+	if r.LastName == "" {
+		return fmt.Errorf("last name is required")
+	}
+	return nil
+}
+
+type UpdateUserRequest struct {
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+type AuthResponse struct {
+	Token     string    `json:"token"`
+	User      *User     `json:"user"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// PostService handles post business logic
+type PostService struct {
+	postRepo     *PostRepository
+	categoryRepo *CategoryRepository
+	userRepo     *UserRepository
+}
+
+// NewPostService creates a new post service
+func NewPostService(postRepo *PostRepository, categoryRepo *CategoryRepository, userRepo *UserRepository) *PostService {
+	return &PostService{
+		postRepo:     postRepo,
+		categoryRepo: categoryRepo,
+		userRepo:     userRepo,
+	}
+}
+
+// CreatePost creates a new post
+func (s *PostService) CreatePost(ctx context.Context, userID uuid.UUID, req CreatePostRequest) (*Post, error) {
+	// Validate input
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+	
+	// Verify user exists
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+	
+	// Verify category exists
+	category, err := s.categoryRepo.GetByID(ctx, req.CategoryID)
+	if err != nil {
+		return nil, fmt.Errorf("category not found: %w", err)
+	}
+	
+	// Generate slug
+	slug := generateSlug(req.Title)
+	
+	// Create post
+	post := &Post{
+		Title:      req.Title,
+		Slug:       slug,
+		Content:    req.Content,
+		Excerpt:    req.Excerpt,
+		Status:     PostStatusDraft,
+		UserID:     userID,
+		CategoryID: req.CategoryID,
+	}
+	
+	if err := s.postRepo.Create(ctx, post); err != nil {
+		return nil, fmt.Errorf("failed to create post: %w", err)
+	}
+	
+	// Load relationships
+	return s.postRepo.GetByID(ctx, post.ID)
+}
+
+// GetPost retrieves a post by ID
+func (s *PostService) GetPost(ctx context.Context, id uuid.UUID) (*Post, error) {
+	post, err := s.postRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Increment view count asynchronously
+	go func() {
+		s.postRepo.IncrementViewCount(context.Background(), id)
+	}()
+	
+	return post, nil
+}
+
+// GetPostBySlug retrieves a post by slug
+func (s *PostService) GetPostBySlug(ctx context.Context, slug string) (*Post, error) {
+	return s.postRepo.GetBySlug(ctx, slug)
+}
+
+// UpdatePost updates a post
+func (s *PostService) UpdatePost(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdatePostRequest) (*Post, error) {
+	post, err := s.postRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Check ownership or admin permission
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	
+	if post.UserID != userID && !user.CanModerate() {
+		return nil, fmt.Errorf("permission denied")
+	}
+	
+	// Update fields
+	if req.Title != "" {
+		post.Title = req.Title
+		post.Slug = generateSlug(req.Title)
+	}
+	if req.Content != "" {
+		post.Content = req.Content
+	}
+	if req.Excerpt != "" {
+		post.Excerpt = req.Excerpt
+	}
+	if req.CategoryID != uuid.Nil {
+		post.CategoryID = req.CategoryID
+	}
+	
+	if err := s.postRepo.Update(ctx, post); err != nil {
+		return nil, fmt.Errorf("failed to update post: %w", err)
+	}
+	
+	return s.postRepo.GetByID(ctx, post.ID)
+}
+
+// PublishPost publishes a draft post
+func (s *PostService) PublishPost(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Post, error) {
+	post, err := s.postRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Check ownership or admin permission
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	
+	if post.UserID != userID && !user.CanModerate() {
+		return nil, fmt.Errorf("permission denied")
+	}
+	
+	if post.Status != PostStatusDraft {
+		return nil, fmt.Errorf("only draft posts can be published")
+	}
+	
+	// Publish the post
+	now := time.Now()
+	post.Status = PostStatusPublished
+	post.PublishedAt = &now
+	
+	if err := s.postRepo.Update(ctx, post); err != nil {
+		return nil, fmt.Errorf("failed to publish post: %w", err)
+	}
+	
+	return post, nil
+}
+
+// ListPosts retrieves posts with filters
+func (s *PostService) ListPosts(ctx context.Context, filters PostFilters) (*PostListResponse, error) {
+	// Set defaults
+	if filters.Limit <= 0 {
+		filters.Limit = 20
+	}
+	if filters.Limit > 100 {
+		filters.Limit = 100
+	}
+	if filters.OrderBy == "" {
+		filters.OrderBy = "created_at"
+	}
+	if filters.Order == "" {
+		filters.Order = "DESC"
+	}
+	
+	posts, total, err := s.postRepo.List(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &PostListResponse{
+		Posts: posts,
+		Total: total,
+		Page:  filters.Offset/filters.Limit + 1,
+		Limit: filters.Limit,
+	}, nil
+}
+
+// generateSlug generates a URL-friendly slug from a title
+func generateSlug(title string) string {
+	slug := strings.ToLower(title)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	// Remove special characters (simplified)
+	slug = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return -1
+	}, slug)
+	return slug
+}
+
+// Request/Response types for posts
+type CreatePostRequest struct {
+	Title      string    `json:"title" validate:"required"`
+	Content    string    `json:"content" validate:"required"`
+	Excerpt    string    `json:"excerpt"`
+	CategoryID uuid.UUID `json:"category_id" validate:"required"`
+}
+
+func (r *CreatePostRequest) Validate() error {
+	if r.Title == "" {
+		return fmt.Errorf("title is required")
+	}
+	if r.Content == "" {
+		return fmt.Errorf("content is required")
+	}
+	if r.CategoryID == uuid.Nil {
+		return fmt.Errorf("category ID is required")
+	}
+	return nil
+}
+
+type UpdatePostRequest struct {
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	Excerpt    string    `json:"excerpt"`
+	CategoryID uuid.UUID `json:"category_id"`
+}
+
+type PostListResponse struct {
+	Posts []Post `json:"posts"`
+	Total int64  `json:"total"`
+	Page  int    `json:"page"`
+	Limit int    `json:"limit"`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           7. HTTP HANDLERS AND MIDDLEWARE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+package handlers
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+// UserHandler handles user-related HTTP requests
+type UserHandler struct {
+	userService *UserService
+	logger      *logger.Logger
+}
+
+// NewUserHandler creates a new user handler
+func NewUserHandler(userService *UserService, logger *logger.Logger) *UserHandler {
+	return &UserHandler{
+		userService: userService,
+		logger:      logger,
+	}
+}
+
+// Register handles user registration
+func (h *UserHandler) Register(c *gin.Context) {
+	var req CreateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	user, err := h.userService.CreateUser(c.Request.Context(), req)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to create user", 
+			zap.Error(err), zap.String("email", req.Email))
+		
+		if strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+	
+	h.logger.InfoCtx(c.Request.Context(), "User created successfully", 
+		zap.String("user_id", user.ID.String()), zap.String("email", user.Email))
+	
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "User created successfully",
+		"user":    user,
+	})
+}
+
+// Login handles user authentication
+func (h *UserHandler) Login(c *gin.Context) {
+	var req struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	authResp, err := h.userService.Authenticate(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		h.logger.WarnCtx(c.Request.Context(), "Authentication failed", 
+			zap.Error(err), zap.String("email", req.Email))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+	
+	h.logger.InfoCtx(c.Request.Context(), "User authenticated successfully", 
+		zap.String("user_id", authResp.User.ID.String()), zap.String("email", authResp.User.Email))
+	
+	c.JSON(http.StatusOK, authResp)
+}
+
+// GetProfile handles getting user profile
+func (h *UserHandler) GetProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	user, err := h.userService.GetUserByID(c.Request.Context(), userID.(uuid.UUID))
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to get user profile", zap.Error(err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"user": user})
+}
+
+// UpdateProfile handles updating user profile
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	var req UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	user, err := h.userService.UpdateUser(c.Request.Context(), userID.(uuid.UUID), req)
+	if err != nil {
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to update user profile", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Profile updated successfully",
+		"user":    user,
+	})
+}
+
+// ChangePassword handles password change
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+	
+	var req struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	err := h.userService.ChangePassword(c.Request.Context(), userID.(uuid.UUID), req.OldPassword, req.NewPassword)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid current password") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid current password"})
+			return
+		}
+		
+		h.logger.ErrorCtx(c.Request.Context(), "Failed to change password", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "
