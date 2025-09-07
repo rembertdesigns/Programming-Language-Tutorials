@@ -2663,3 +2663,732 @@ module MyWebApp
     config.log_tags = [ :request_id ]# RUBY ON RAILS WEB DEVELOPMENT - Comprehensive Reference - by Richard Rembert
   # Ruby on Rails enables rapid prototyping and development of full-stack web applications
   # with convention over configuration, built-in security, and powerful abstractions
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           13. SECURITY BEST PRACTICES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# config/application.rb - Security configurations
+module MyWebApp
+    class Application < Rails::Application
+      # ... existing configuration ...
+      
+      # Security headers
+      config.force_ssl = true
+      config.ssl_options = { 
+        redirect: { exclude: ->(request) { request.path =~ /health/ } },
+        secure_cookies: true,
+        hsts: { 
+          expires: 1.year,
+          subdomains: true,
+          preload: true
+        }
+      }
+      
+      # Content Security Policy
+      config.content_security_policy do |policy|
+        policy.default_src :self, :https
+        policy.font_src    :self, :https, :data
+        policy.img_src     :self, :https, :data, 'https://picsum.photos'
+        policy.object_src  :none
+        policy.script_src  :self, :https, :unsafe_inline, :unsafe_eval
+        policy.style_src   :self, :https, :unsafe_inline
+        
+        # Specify URI for violation reports
+        policy.report_uri "/csp-violation-report-endpoint"
+      end
+      
+      # Referrer Policy
+      config.referrer_policy = "strict-origin-when-cross-origin"
+      
+      # Feature Policy
+      config.permissions_policy = {
+        camera: :none,
+        microphone: :none,
+        geolocation: :self,
+        payment: :none
+      }
+    end
+  end
+  
+  # app/controllers/concerns/security.rb
+  module Security
+    extend ActiveSupport::Concern
+    
+    included do
+      before_action :set_security_headers
+      before_action :validate_request_origin
+      before_action :rate_limit_requests
+    end
+    
+    private
+    
+    def set_security_headers
+      response.headers['X-Frame-Options'] = 'DENY'
+      response.headers['X-Content-Type-Options'] = 'nosniff'
+      response.headers['X-XSS-Protection'] = '1; mode=block'
+      response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    end
+    
+    def validate_request_origin
+      return unless Rails.env.production?
+      
+      allowed_origins = ['https://mywebapp.com', 'https://www.mywebapp.com']
+      origin = request.headers['Origin']
+      
+      if origin.present? && !allowed_origins.include?(origin)
+        render json: { error: 'Invalid origin' }, status: :forbidden
+      end
+    end
+    
+    def rate_limit_requests
+      # Simple rate limiting (consider using Rack::Attack for production)
+      key = "rate_limit:#{request.remote_ip}"
+      requests = Rails.cache.read(key) || 0
+      
+      if requests > 100 # 100 requests per minute
+        render json: { error: 'Rate limit exceeded' }, status: :too_many_requests
+        return
+      end
+      
+      Rails.cache.write(key, requests + 1, expires_in: 1.minute)
+    end
+  end
+  
+  # app/models/concerns/secure_token.rb
+  module SecureToken
+    extend ActiveSupport::Concern
+    
+    class_methods do
+      def has_secure_token(attribute = :token, length: 32)
+        define_method("regenerate_#{attribute}") do
+          update!(attribute => generate_token(length))
+        end
+        
+        before_create do
+          self.send("#{attribute}=", generate_token(length)) if self.send(attribute).blank?
+        end
+      end
+    end
+    
+    private
+    
+    def generate_token(length)
+      SecureRandom.alphanumeric(length)
+    end
+  end
+  
+  # Input sanitization and validation
+  class SecureValidator < ActiveModel::EachValidator
+    def validate_each(record, attribute, value)
+      return if value.blank?
+      
+      # Remove potentially dangerous HTML tags
+      sanitized_value = ActionController::Base.helpers.sanitize(
+        value,
+        tags: %w[p br strong em ul ol li h1 h2 h3 h4 h5 h6 blockquote],
+        attributes: %w[href title]
+      )
+      
+      # Check for SQL injection patterns
+      sql_patterns = [
+        /(\bunion\b.*\bselect\b)/i,
+        /(\bselect\b.*\bfrom\b)/i,
+        /(\binsert\b.*\binto\b)/i,
+        /(\bupdate\b.*\bset\b)/i,
+        /(\bdelete\b.*\bfrom\b)/i,
+        /(\bdrop\b.*\btable\b)/i
+      ]
+      
+      if sql_patterns.any? { |pattern| sanitized_value.match?(pattern) }
+        record.errors.add(attribute, 'contains potentially unsafe content')
+      end
+      
+      # Update the value with sanitized version
+      record.send("#{attribute}=", sanitized_value)
+    end
+  end
+  
+  # Usage in models
+  class Post < ApplicationRecord
+    validates :content, secure: true
+    validates :excerpt, secure: true
+  end
+  
+  # Password security
+  class User < ApplicationRecord
+    devise :database_authenticatable, :registerable,
+           :recoverable, :rememberable, :validatable,
+           :confirmable, :lockable, :trackable
+    
+    # Strong password validation
+    validate :password_complexity
+    
+    # Rate limiting for login attempts
+    devise :lockable, lock_strategy: :failed_attempts,
+           unlock_strategy: :time, maximum_attempts: 5,
+           unlock_in: 30.minutes
+    
+    private
+    
+    def password_complexity
+      return if password.blank?
+      
+      rules = [
+        [/.{8,}/, 'must be at least 8 characters long'],
+        [/[A-Z]/, 'must contain at least one uppercase letter'],
+        [/[a-z]/, 'must contain at least one lowercase letter'],
+        [/\d/, 'must contain at least one number'],
+        [/[^A-Za-z\d]/, 'must contain at least one special character']
+      ]
+      
+      rules.each do |rule, message|
+        unless password.match?(rule)
+          errors.add(:password, message)
+        end
+      end
+    end
+  end
+  
+  # File upload security
+  class ApplicationController < ActionController::Base
+    before_action :validate_file_uploads
+    
+    private
+    
+    def validate_file_uploads
+      return unless params[:post] && params[:post][:featured_image]
+      
+      file = params[:post][:featured_image]
+      
+      # Check file size (max 5MB)
+      if file.size > 5.megabytes
+        flash[:alert] = 'File size must be less than 5MB'
+        redirect_back(fallback_location: root_path)
+        return
+      end
+      
+      # Check file type
+      allowed_types = %w[image/jpeg image/png image/gif image/webp]
+      unless allowed_types.include?(file.content_type)
+        flash[:alert] = 'Only image files are allowed'
+        redirect_back(fallback_location: root_path)
+        return
+      end
+      
+      # Scan file content for malicious code
+      if file.read.include?('<script') || file.read.include?('<?php')
+        flash[:alert] = 'File contains potentially malicious content'
+        redirect_back(fallback_location: root_path)
+        return
+      end
+      
+      file.rewind # Reset file pointer after reading
+    end
+  end
+  
+  # ═══════════════════════════════════════════════════════════════════════════════
+  #                           14. MONITORING AND LOGGING
+  # ═══════════════════════════════════════════════════════════════════════════════
+  
+  # config/initializers/logging.rb
+  Rails.application.configure do
+    # Custom log formatter
+    config.log_formatter = proc do |severity, datetime, progname, msg|
+      formatted_datetime = datetime.strftime("%Y-%m-%d %H:%M:%S")
+      "[#{formatted_datetime}] #{severity} -- #{progname}: #{msg}\n"
+    end
+    
+    # Structured logging for production
+    if Rails.env.production?
+      config.logger = ActiveSupport::Logger.new(STDOUT)
+      config.log_level = :info
+    end
+  end
+  
+  # app/controllers/concerns/request_logging.rb
+  module RequestLogging
+    extend ActiveSupport::Concern
+    
+    included do
+      around_action :log_request_details
+    end
+    
+    private
+    
+    def log_request_details
+      start_time = Time.current
+      
+      begin
+        yield
+      ensure
+        duration = ((Time.current - start_time) * 1000).round(2)
+        
+        log_data = {
+          method: request.method,
+          path: request.path,
+          remote_ip: request.remote_ip,
+          user_agent: request.user_agent,
+          user_id: current_user&.id,
+          status: response.status,
+          duration_ms: duration,
+          timestamp: Time.current.iso8601
+        }
+        
+        Rails.logger.info("REQUEST: #{log_data.to_json}")
+      end
+    end
+  end
+  
+  # Health check endpoint
+  class HealthController < ApplicationController
+    skip_before_action :authenticate_user!
+    
+    def check
+      health_data = {
+        status: 'healthy',
+        timestamp: Time.current.iso8601,
+        version: Rails.application.config.version || 'unknown',
+        environment: Rails.env,
+        checks: {
+          database: database_healthy?,
+          redis: redis_healthy?,
+          storage: storage_healthy?
+        }
+      }
+      
+      overall_status = health_data[:checks].values.all? ? 200 : 503
+      render json: health_data, status: overall_status
+    end
+    
+    private
+    
+    def database_healthy?
+      ActiveRecord::Base.connection.execute('SELECT 1')
+      true
+    rescue => e
+      Rails.logger.error("Database health check failed: #{e.message}")
+      false
+    end
+    
+    def redis_healthy?
+      Redis.new(url: ENV['REDIS_URL']).ping == 'PONG'
+    rescue => e
+      Rails.logger.error("Redis health check failed: #{e.message}")
+      false
+    end
+    
+    def storage_healthy?
+      ActiveStorage::Blob.service.exist?('health_check_file')
+      true
+    rescue => e
+      Rails.logger.error("Storage health check failed: #{e.message}")
+      false
+    end
+  end
+  
+  # Error tracking and notification
+  class ApplicationController < ActionController::Base
+    rescue_from StandardError, with: :handle_error
+    
+    private
+    
+    def handle_error(exception)
+      # Log the error with context
+      error_data = {
+        error_class: exception.class.name,
+        error_message: exception.message,
+        backtrace: exception.backtrace&.first(10),
+        request_id: request.uuid,
+        user_id: current_user&.id,
+        url: request.url,
+        method: request.method,
+        params: params.except(:password, :password_confirmation).to_h,
+        timestamp: Time.current.iso8601
+      }
+      
+      Rails.logger.error("APPLICATION_ERROR: #{error_data.to_json}")
+      
+      # Send notification for critical errors in production
+      if Rails.env.production?
+        ErrorNotificationJob.perform_later(error_data)
+      end
+      
+      # Respond appropriately
+      if request.xhr? || request.format.json?
+        render json: { error: 'An unexpected error occurred' }, status: :internal_server_error
+      else
+        redirect_to root_path, alert: 'An unexpected error occurred. Please try again.'
+      end
+    end
+  end
+  
+  # Performance monitoring
+  class ApplicationController < ActionController::Base
+    around_action :monitor_performance
+    
+    private
+    
+    def monitor_performance
+      start_time = Time.current
+      memory_before = memory_usage
+      
+      yield
+      
+    ensure
+      duration = ((Time.current - start_time) * 1000).round(2)
+      memory_after = memory_usage
+      memory_used = ((memory_after - memory_before) / 1024.0).round(2)
+      
+      if duration > 1000 || memory_used > 50 # Log slow requests or high memory usage
+        performance_data = {
+          controller: self.class.name,
+          action: action_name,
+          duration_ms: duration,
+          memory_used_mb: memory_used,
+          user_id: current_user&.id,
+          timestamp: Time.current.iso8601
+        }
+        
+        Rails.logger.warn("SLOW_REQUEST: #{performance_data.to_json}")
+      end
+    end
+    
+    def memory_usage
+      `ps -o rss= -p #{Process.pid}`.to_i # RSS in KB
+    rescue
+      0
+    end
+  end
+  
+  # Background job for error notifications
+  class ErrorNotificationJob < ApplicationJob
+    queue_as :urgent
+    
+    def perform(error_data)
+      # Send to error tracking service (e.g., Sentry, Rollbar)
+      # ErrorTracker.notify(error_data)
+      
+      # Send email notification for critical errors
+      if critical_error?(error_data)
+        AdminMailer.critical_error_notification(error_data).deliver_now
+      end
+    end
+    
+    private
+    
+    def critical_error?(error_data)
+      critical_errors = [
+        'NoMethodError',
+        'ActiveRecord::RecordNotFound',
+        'ActionController::RoutingError'
+      ]
+      
+      !critical_errors.include?(error_data[:error_class])
+    end
+  end
+  
+  # ═══════════════════════════════════════════════════════════════════════════════
+  #                           15. BEST PRACTICES AND CONVENTIONS
+  # ═══════════════════════════════════════════════════════════════════════════════
+  
+  =begin
+  RUBY ON RAILS BEST PRACTICES:
+  
+  1. CODE ORGANIZATION:
+     - Follow Rails conventions (fat models, skinny controllers)
+     - Use concerns for shared functionality
+     - Keep controllers focused on HTTP concerns
+     - Use service objects for complex business logic
+     - Organize code with namespaces
+  
+  2. DATABASE DESIGN:
+     - Use appropriate data types
+     - Add proper indexes for query performance
+     - Use foreign key constraints
+     - Normalize data structure
+     - Use migrations for schema changes
+  
+  3. SECURITY:
+     - Always use strong parameters
+     - Sanitize user input
+     - Use CSRF protection
+     - Implement proper authentication and authorization
+     - Validate file uploads
+     - Use HTTPS in production
+  
+  4. PERFORMANCE:
+     - Use eager loading to avoid N+1 queries
+     - Implement caching strategies
+     - Optimize database queries
+     - Use background jobs for heavy tasks
+     - Monitor application performance
+  
+  5. TESTING:
+     - Write comprehensive tests (models, controllers, integration)
+     - Use factories instead of fixtures
+     - Test edge cases and error conditions
+     - Mock external services
+     - Maintain good test coverage
+  
+  6. DEPLOYMENT:
+     - Use environment variables for configuration
+     - Implement proper logging
+     - Set up monitoring and alerting
+     - Use load balancers and CDNs
+     - Implement zero-downtime deployments
+  
+  7. CODE QUALITY:
+     - Follow Ruby and Rails style guides
+     - Use linters (RuboCop, Reek)
+     - Write clear, self-documenting code
+     - Use meaningful variable and method names
+     - Keep methods and classes small
+  
+  8. API DESIGN:
+     - Follow RESTful conventions
+     - Use appropriate HTTP status codes
+     - Implement proper error handling
+     - Version your APIs
+     - Document API endpoints
+  
+  COMMON RAILS PATTERNS:
+  
+  Service Objects:
+  # app/services/post_publisher.rb
+  class PostPublisher
+    def initialize(post, user)
+      @post = post
+      @user = user
+    end
+    
+    def call
+      return failure('Unauthorized') unless can_publish?
+      
+      ActiveRecord::Base.transaction do
+        @post.publish!
+        notify_subscribers
+        update_statistics
+      end
+      
+      success(@post)
+    rescue => e
+      failure(e.message)
+    end
+    
+    private
+    
+    def can_publish?
+      @user == @post.user || @user.can_moderate?
+    end
+    
+    def notify_subscribers
+      NotifySubscribersJob.perform_later(@post)
+    end
+    
+    def update_statistics
+      @post.category.increment!(:posts_count)
+    end
+    
+    def success(data)
+      OpenStruct.new(success?: true, data: data, error: nil)
+    end
+    
+    def failure(error)
+      OpenStruct.new(success?: false, data: nil, error: error)
+    end
+  end
+  
+  Form Objects:
+  # app/forms/post_form.rb
+  class PostForm
+    include ActiveModel::Model
+    include ActiveModel::Attributes
+    
+    attribute :title, :string
+    attribute :content, :string
+    attribute :category_id, :integer
+    attribute :tag_names, :string
+    attribute :featured_image
+    
+    validates :title, :content, :category_id, presence: true
+    validate :category_exists
+    
+    def save(user)
+      return false unless valid?
+      
+      ActiveRecord::Base.transaction do
+        @post = user.posts.create!(post_attributes)
+        assign_tags
+        @post
+      end
+    end
+    
+    private
+    
+    def post_attributes
+      {
+        title: title,
+        content: content,
+        category_id: category_id,
+        featured_image: featured_image
+      }
+    end
+    
+    def assign_tags
+      return if tag_names.blank?
+      
+      tags = tag_names.split(',').map(&:strip).map do |name|
+        Tag.find_or_create_by(name: name)
+      end
+      
+      @post.tags = tags
+    end
+    
+    def category_exists
+      return if category_id.blank?
+      
+      unless Category.exists?(category_id)
+        errors.add(:category_id, 'does not exist')
+      end
+    end
+  end
+  
+  Query Objects:
+  # app/queries/posts_query.rb
+  class PostsQuery
+    def initialize(relation = Post.all)
+      @relation = relation
+    end
+    
+    def call(params = {})
+      @relation = filter_by_status(params[:status])
+      @relation = filter_by_category(params[:category])
+      @relation = filter_by_author(params[:author])
+      @relation = search(params[:search])
+      @relation = sort(params[:sort])
+      @relation
+    end
+    
+    private
+    
+    def filter_by_status(status)
+      return @relation if status.blank?
+      
+      case status
+      when 'published'
+        @relation.published
+      when 'draft'
+        @relation.drafts
+      when 'featured'
+        @relation.featured
+      else
+        @relation
+      end
+    end
+    
+    def filter_by_category(category_slug)
+      return @relation if category_slug.blank?
+      
+      @relation.joins(:category).where(categories: { slug: category_slug })
+    end
+    
+    def filter_by_author(author_username)
+      return @relation if author_username.blank?
+      
+      @relation.joins(:user).where(users: { username: author_username })
+    end
+    
+    def search(query)
+      return @relation if query.blank?
+      
+      @relation.search_full_text(query)
+    end
+    
+    def sort(sort_option)
+      case sort_option
+      when 'popular'
+        @relation.popular
+      when 'oldest'
+        @relation.oldest
+      else
+        @relation.recent
+      end
+    end
+  end
+  
+  Decorator Pattern:
+  # app/decorators/post_decorator.rb
+  class PostDecorator < SimpleDelegator
+    def formatted_published_date
+      published_at&.strftime('%B %d, %Y')
+    end
+    
+    def reading_time_text
+      "#{reading_time} min read"
+    end
+    
+    def status_badge_class
+      case status
+      when 'published'
+        'badge-success'
+      when 'draft'
+        'badge-warning'
+      when 'archived'
+        'badge-secondary'
+      end
+    end
+    
+    def truncated_content(limit = 200)
+      content.to_plain_text.truncate(limit)
+    end
+    
+    def social_sharing_url
+      Rails.application.routes.url_helpers.post_url(self)
+    end
+  end
+  
+  RAILS TESTING STRATEGIES:
+  
+  Model Testing:
+  - Test validations and associations
+  - Test instance methods and class methods
+  - Test scopes and callbacks
+  - Test edge cases and error conditions
+  
+  Controller Testing:
+  - Test authentication and authorization
+  - Test successful and failed actions
+  - Test redirects and flash messages
+  - Test parameter handling
+  
+  Integration Testing:
+  - Test complete user workflows
+  - Test API endpoints
+  - Test JavaScript interactions
+  - Test file uploads and downloads
+  
+  System Testing:
+  - Test user interface with browser simulation
+  - Test responsive design
+  - Test accessibility
+  - Test performance under load
+  
+  DEPLOYMENT CHECKLIST:
+  
+  □ Environment variables configured
+  □ Database migrations run
+  □ Assets precompiled
+  □ SSL certificate installed
+  □ Monitoring and logging set up
+  □ Backup strategy implemented
+  □ Security headers configured
+  □ Error tracking enabled
+  □ Performance monitoring active
+  □ Health checks implemented
+  
+  This comprehensive Rails reference covers everything from basic setup to advanced
+  production deployment. Use it as a guide for building robust, scalable web
+  applications with Ruby on Rails, focusing on rapid prototyping while maintaining
+  best practices for security, performance, and maintainability.
