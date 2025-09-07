@@ -2447,3 +2447,219 @@ FactoryBot.define do
     )
     request.headers['Authorization'] = "Bearer #{token}"
   end
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           11. PERFORMANCE OPTIMIZATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# config/application.rb - Performance configurations
+module MyWebApp
+    class Application < Rails::Application
+      # ... existing configuration ...
+      
+      # Asset pipeline optimizations
+      config.assets.compile = false
+      config.assets.digest = true
+      config.assets.compress = true
+      
+      # Gzip compression
+      config.middleware.use Rack::Deflater
+      
+      # Cache store configuration
+      config.cache_store = :redis_cache_store, {
+        url: ENV['REDIS_URL'],
+        namespace: 'myapp_cache'
+      }
+      
+      # Session store with Redis
+      config.session_store :redis_store,
+        servers: [ENV['REDIS_URL']],
+        expire_after: 1.week,
+        key: '_myapp_session'
+    end
+  end
+  
+  # app/models/concerns/cacheable.rb
+  module Cacheable
+    extend ActiveSupport::Concern
+    
+    class_methods do
+      def cached_find(id, expires_in: 1.hour)
+        Rails.cache.fetch("#{self.name.downcase}/#{id}", expires_in: expires_in) do
+          find(id)
+        end
+      end
+      
+      def cached_count(expires_in: 10.minutes)
+        Rails.cache.fetch("#{self.name.downcase}/count", expires_in: expires_in) do
+          count
+        end
+      end
+    end
+    
+    def cache_key_with_version
+      "#{super}/#{updated_at.to_i}"
+    end
+    
+    def expire_cache
+      Rails.cache.delete("#{self.class.name.downcase}/#{id}")
+      Rails.cache.delete("#{self.class.name.downcase}/count")
+    end
+  end
+  
+  # Include in models that need caching
+  class Post < ApplicationRecord
+    include Cacheable
+    
+    after_update :expire_cache
+    after_destroy :expire_cache
+    
+    # ... rest of model ...
+  end
+  
+  # app/controllers/concerns/caching.rb
+  module Caching
+    extend ActiveSupport::Concern
+    
+    private
+    
+    def cache_page(key, expires_in: 1.hour, &block)
+      Rails.cache.fetch(key, expires_in: expires_in) do
+        yield
+      end
+    end
+    
+    def set_cache_headers(max_age: 1.hour)
+      response.cache_control[:max_age] = max_age.to_i
+      response.cache_control[:public] = true
+    end
+  end
+  
+  # Database optimization examples
+  class OptimizedPostsQuery
+    def self.homepage_posts
+      Post.includes(:user, :category, :tags)
+          .published
+          .featured
+          .select(:id, :title, :slug, :excerpt, :published_at, :user_id, :category_id)
+          .recent
+          .limit(3)
+    end
+    
+    def self.posts_with_stats
+      Post.joins(:user, :category)
+          .select('posts.*, users.first_name, users.last_name, categories.name as category_name')
+          .where(status: :published)
+          .order(published_at: :desc)
+    end
+    
+    def self.popular_posts(limit: 10)
+      Rails.cache.fetch("popular_posts/#{limit}", expires_in: 1.hour) do
+        Post.published
+            .select(:id, :title, :slug, :views_count)
+            .order(views_count: :desc)
+            .limit(limit)
+      end
+    end
+  end
+  
+  # Background job for cache warming
+  class CacheWarmupJob < ApplicationJob
+    queue_as :low_priority
+    
+    def perform
+      # Warm up popular posts cache
+      OptimizedPostsQuery.popular_posts
+      
+      # Warm up categories cache
+      Category.active.includes(:posts).order(:name)
+      
+      # Warm up homepage data
+      OptimizedPostsQuery.homepage_posts
+    end
+  end
+  
+  # Database indexes for performance
+  =begin
+  # Add these to your migrations for better query performance
+  
+  class AddIndexesForPerformance < ActiveRecord::Migration[7.1]
+    def change
+      # Posts indexes
+      add_index :posts, [:status, :published_at]
+      add_index :posts, [:category_id, :status]
+      add_index :posts, [:user_id, :status]
+      add_index :posts, [:featured, :status]
+      add_index :posts, :views_count
+      
+      # Comments indexes
+      add_index :comments, [:post_id, :status, :created_at]
+      add_index :comments, [:parent_id]
+      
+      # Users indexes
+      add_index :users, [:status, :created_at]
+      add_index :users, :username
+      
+      # Full-text search indexes (PostgreSQL)
+      add_index :posts, :title, using: :gin, opclass: :gin_trgm_ops
+      add_index :posts, :excerpt, using: :gin, opclass: :gin_trgm_ops
+    end
+  end
+  =end
+  
+  # ═══════════════════════════════════════════════════════════════════════════════
+  #                           12. DEPLOYMENT AND PRODUCTION
+  # ═══════════════════════════════════════════════════════════════════════════════
+  
+  # config/environments/production.rb
+  Rails.application.configure do
+    # Settings specified here will take precedence over those in config/application.rb.
+    
+    # Code is not reloaded between requests.
+    config.cache_classes = true
+    
+    # Eager load code on boot.
+    config.eager_load = true
+    
+    # Full error reports are disabled and caching is turned on.
+    config.consider_all_requests_local = false
+    config.action_controller.perform_caching = true
+    
+    # Ensures that a master key has been made available
+    config.require_master_key = true
+    
+    # Disable serving static files from the `/public` folder by default since
+    # Apache or NGINX already handles this.
+    config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
+    
+    # Compress CSS using a preprocessor.
+    config.assets.css_compressor = :sass
+    
+    # Do not fallback to assets pipeline if a precompiled asset is missed.
+    config.assets.compile = false
+    
+    # Enable serving of images, stylesheets, and JavaScripts from an asset server.
+    config.asset_host = ENV['ASSET_HOST'] if ENV['ASSET_HOST'].present?
+    
+    # Specifies the header that your server uses for sending files.
+    config.action_dispatch.x_sendfile_header = 'X-Accel-Redirect' # for NGINX
+    
+    # Store uploaded files on the local file system (see config/storage.yml for options).
+    config.active_storage.variant_processor = :mini_magick
+    
+    # Mount Action Cable outside main process or domain.
+    # config.action_cable.mount_path = nil
+    # config.action_cable.url = 'wss://example.com/cable'
+    # config.action_cable.allowed_request_origins = [ 'http://example.com', /http:\/\/example.*/ ]
+    
+    # Force all access to the app over SSL
+    config.force_ssl = true
+    
+    # Include generic and useful information about system operation
+    config.log_level = :info
+    
+    # Prepend all log lines with the following tags.
+    config.log_tags = [ :request_id ]# RUBY ON RAILS WEB DEVELOPMENT - Comprehensive Reference - by Richard Rembert
+  # Ruby on Rails enables rapid prototyping and development of full-stack web applications
+  # with convention over configuration, built-in security, and powerful abstractions
