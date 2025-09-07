@@ -941,4 +941,755 @@ class DatabaseService {
     );
   }
   
-  Future<User?> getUser(String i
+  Future<User?> getUser(String id) async {
+    final db = await database;
+    final maps = await db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    
+    if (maps.isNotEmpty) {
+      return User.fromJson(maps.first);
+    }
+    return null;
+  }
+  
+  Future<List<User>> getAllUsers() async {
+    final db = await database;
+    final maps = await db.query('users', orderBy: 'created_at DESC');
+    return maps.map((map) => User.fromJson(map)).toList();
+  }
+  
+  Future<void> deleteUser(String id) async {
+    final db = await database;
+    await db.delete('users', where: 'id = ?', whereArgs: [id]);
+  }
+  
+  // Post operations
+  Future<void> insertPost(Post post) async {
+    final db = await database;
+    final postData = post.toJson();
+    postData['tags'] = post.tags.join(','); // Convert list to string
+    await db.insert(
+      'posts',
+      postData,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+  
+  Future<void> insertPosts(List<Post> posts) async {
+    final db = await database;
+    final batch = db.batch();
+    
+    for (final post in posts) {
+      final postData = post.toJson();
+      postData['tags'] = post.tags.join(',');
+      batch.insert('posts', postData, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    
+    await batch.commit();
+  }
+  
+  Future<Post?> getPost(String id) async {
+    final db = await database;
+    final maps = await db.query(
+      'posts',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    
+    if (maps.isNotEmpty) {
+      final postData = Map<String, dynamic>.from(maps.first);
+      postData['tags'] = (postData['tags'] as String).split(',').where((tag) => tag.isNotEmpty).toList();
+      return Post.fromJson(postData);
+    }
+    return null;
+  }
+  
+  Future<List<Post>> getPosts({
+    int limit = 20,
+    int offset = 0,
+    String? categoryId,
+    String? searchQuery,
+  }) async {
+    final db = await database;
+    String whereClause = 'is_published = 1';
+    List<dynamic> whereArgs = [];
+    
+    if (categoryId != null) {
+      whereClause += ' AND category_id = ?';
+      whereArgs.add(categoryId);
+    }
+    
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      whereClause += ' AND (title LIKE ? OR content LIKE ?)';
+      whereArgs.addAll(['%$searchQuery%', '%$searchQuery%']);
+    }
+    
+    final maps = await db.query(
+      'posts',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'published_at DESC, created_at DESC',
+      limit: limit,
+      offset: offset,
+    );
+    
+    return maps.map((map) {
+      final postData = Map<String, dynamic>.from(map);
+      postData['tags'] = (postData['tags'] as String).split(',').where((tag) => tag.isNotEmpty).toList();
+      return Post.fromJson(postData);
+    }).toList();
+  }
+  
+  Future<List<Post>> searchPosts(String query) async {
+    final db = await database;
+    final maps = await db.query(
+      'posts',
+      where: 'is_published = 1 AND (title LIKE ? OR content LIKE ?)',
+      whereArgs: ['%$query%', '%$query%'],
+      orderBy: 'published_at DESC',
+    );
+    
+    return maps.map((map) {
+      final postData = Map<String, dynamic>.from(map);
+      postData['tags'] = (postData['tags'] as String).split(',').where((tag) => tag.isNotEmpty).toList();
+      return Post.fromJson(postData);
+    }).toList();
+  }
+  
+  Future<void> clearAllData() async {
+    final db = await database;
+    await db.delete('posts');
+    await db.delete('users');
+    await db.delete('categories');
+  }
+  
+  Future<void> close() async {
+    final db = await database;
+    await db.close();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           7. SECURE STORAGE SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class SecureStorageService {
+  static final SecureStorageService instance = SecureStorageService._internal();
+  SecureStorageService._internal();
+  
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: IOSAccessibility.first_unlock_this_device,
+    ),
+  );
+  
+  // Token management
+  Future<void> setAccessToken(String token) async {
+    await _storage.write(key: 'access_token', value: token);
+  }
+  
+  Future<String?> getAccessToken() async {
+    return await _storage.read(key: 'access_token');
+  }
+  
+  Future<void> setRefreshToken(String token) async {
+    await _storage.write(key: 'refresh_token', value: token);
+  }
+  
+  Future<String?> getRefreshToken() async {
+    return await _storage.read(key: 'refresh_token');
+  }
+  
+  Future<void> clearTokens() async {
+    await _storage.delete(key: 'access_token');
+    await _storage.delete(key: 'refresh_token');
+  }
+  
+  // User data
+  Future<void> setUserData(String userData) async {
+    await _storage.write(key: 'user_data', value: userData);
+  }
+  
+  Future<String?> getUserData() async {
+    return await _storage.read(key: 'user_data');
+  }
+  
+  Future<void> clearUserData() async {
+    await _storage.delete(key: 'user_data');
+  }
+  
+  // Clear all data
+  Future<void> clearAll() async {
+    await _storage.deleteAll();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           8. AUTHENTICATION PROVIDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class AuthProvider extends ChangeNotifier {
+  final ApiService _apiService = ApiService();
+  final SecureStorageService _storage = SecureStorageService.instance;
+  
+  User? _currentUser;
+  bool _isAuthenticated = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  
+  User? get currentUser => _currentUser;
+  bool get isAuthenticated => _isAuthenticated;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+  
+  AuthProvider() {
+    _checkAuthenticationStatus();
+  }
+  
+  Future<void> _checkAuthenticationStatus() async {
+    final token = await _storage.getAccessToken();
+    if (token != null) {
+      await getCurrentUser();
+    }
+  }
+  
+  Future<bool> login(String email, String password) async {
+    try {
+      _setLoading(true);
+      _clearError();
+      
+      final response = await _apiService.post<ApiResponse<Map<String, dynamic>>>(
+        ApiEndpoints.login,
+        body: {'email': email, 'password': password},
+        fromJson: (json) => ApiResponse.fromJson(json, (data) => data as Map<String, dynamic>),
+      );
+      
+      if (response.success && response.data != null) {
+        await _handleSuccessfulAuth(response.data!);
+        return true;
+      } else {
+        _setError(response.message ?? 'Login failed');
+        return false;
+      }
+    } catch (e) {
+      _setError(_getErrorMessage(e));
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  Future<bool> register({
+    required String email,
+    required String username,
+    required String firstName,
+    required String lastName,
+    required String password,
+  }) async {
+    try {
+      _setLoading(true);
+      _clearError();
+      
+      final response = await _apiService.post<ApiResponse<Map<String, dynamic>>>(
+        ApiEndpoints.register,
+        body: {
+          'email': email,
+          'username': username,
+          'first_name': firstName,
+          'last_name': lastName,
+          'password': password,
+        },
+        fromJson: (json) => ApiResponse.fromJson(json, (data) => data as Map<String, dynamic>),
+      );
+      
+      if (response.success && response.data != null) {
+        await _handleSuccessfulAuth(response.data!);
+        return true;
+      } else {
+        _setError(response.message ?? 'Registration failed');
+        return false;
+      }
+    } catch (e) {
+      _setError(_getErrorMessage(e));
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  Future<void> logout() async {
+    try {
+      await _apiService.post(ApiEndpoints.logout);
+    } catch (e) {
+      // Continue with local logout even if API call fails
+    }
+    
+    await _handleLogout();
+  }
+  
+  Future<void> getCurrentUser() async {
+    try {
+      final response = await _apiService.get<ApiResponse<Map<String, dynamic>>>(
+        ApiEndpoints.currentUser,
+        fromJson: (json) => ApiResponse.fromJson(json, (data) => data as Map<String, dynamic>),
+      );
+      
+      if (response.success && response.data != null) {
+        _currentUser = User.fromJson(response.data!);
+        _isAuthenticated = true;
+        await DatabaseService.instance.insertUser(_currentUser!);
+        notifyListeners();
+      } else {
+        await _handleLogout();
+      }
+    } catch (e) {
+      await _handleLogout();
+    }
+  }
+  
+  Future<void> refreshToken() async {
+    try {
+      final refreshToken = await _storage.getRefreshToken();
+      if (refreshToken == null) {
+        await _handleLogout();
+        return;
+      }
+      
+      final response = await _apiService.post<ApiResponse<Map<String, dynamic>>>(
+        ApiEndpoints.refreshToken,
+        body: {'refresh_token': refreshToken},
+        fromJson: (json) => ApiResponse.fromJson(json, (data) => data as Map<String, dynamic>),
+      );
+      
+      if (response.success && response.data != null) {
+        await _handleSuccessfulAuth(response.data!);
+      } else {
+        await _handleLogout();
+      }
+    } catch (e) {
+      await _handleLogout();
+    }
+  }
+  
+  Future<void> _handleSuccessfulAuth(Map<String, dynamic> authData) async {
+    final accessToken = authData['access_token'] as String;
+    final refreshToken = authData['refresh_token'] as String;
+    final userData = authData['user'] as Map<String, dynamic>;
+    
+    await _storage.setAccessToken(accessToken);
+    await _storage.setRefreshToken(refreshToken);
+    
+    _currentUser = User.fromJson(userData);
+    _isAuthenticated = true;
+    
+    await DatabaseService.instance.insertUser(_currentUser!);
+    await _storage.setUserData(json.encode(_currentUser!.toJson()));
+    
+    notifyListeners();
+  }
+  
+  Future<void> _handleLogout() async {
+    await _storage.clearAll();
+    await DatabaseService.instance.clearAllData();
+    
+    _currentUser = null;
+    _isAuthenticated = false;
+    
+    notifyListeners();
+  }
+  
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+  
+  void _setError(String error) {
+    _errorMessage = error;
+    notifyListeners();
+  }
+  
+  void _clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+  
+  String _getErrorMessage(dynamic error) {
+    if (error is NetworkException) {
+      return error.message;
+    } else if (error is ApiException) {
+      return error.message;
+    } else {
+      return 'An unexpected error occurred';
+    }
+  }
+  
+  void clearError() {
+    _clearError();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           9. POSTS PROVIDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class PostsProvider extends ChangeNotifier {
+  final ApiService _apiService = ApiService();
+  final DatabaseService _dbService = DatabaseService.instance;
+  
+  List<Post> _posts = [];
+  Post? _selectedPost;
+  bool _isLoading = false;
+  bool _isLoadingMore = false;
+  String? _errorMessage;
+  String _searchQuery = '';
+  Category? _selectedCategory;
+  int _currentPage = 1;
+  bool _hasMorePages = true;
+  
+  List<Post> get posts => _posts;
+  Post? get selectedPost => _selectedPost;
+  bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
+  String? get errorMessage => _errorMessage;
+  String get searchQuery => _searchQuery;
+  Category? get selectedCategory => _selectedCategory;
+  bool get hasMorePages => _hasMorePages;
+  
+  Future<void> loadPosts({bool refresh = false}) async {
+    if (refresh) {
+      _currentPage = 1;
+      _posts.clear();
+      _hasMorePages = true;
+    }
+    
+    if (!_hasMorePages || _isLoading) return;
+    
+    try {
+      if (refresh) {
+        _setLoading(true);
+      } else {
+        _setLoadingMore(true);
+      }
+      
+      _clearError();
+      
+      final queryParams = <String, String>{
+        'page': _currentPage.toString(),
+        'limit': '20',
+      };
+      
+      if (_selectedCategory != null) {
+        queryParams['category_id'] = _selectedCategory!.id;
+      }
+      
+      if (_searchQuery.isNotEmpty) {
+        queryParams['search'] = _searchQuery;
+      }
+      
+      final response = await _apiService.get<PaginatedResponse<Post>>(
+        ApiEndpoints.posts,
+        queryParams: queryParams,
+        fromJson: (json) => PaginatedResponse.fromJson(json, (data) => Post.fromJson(data)),
+      );
+      
+      if (response.success) {
+        if (refresh) {
+          _posts = response.data;
+        } else {
+          _posts.addAll(response.data);
+        }
+        
+        _hasMorePages = response.pagination.hasNext;
+        _currentPage++;
+        
+        // Cache posts locally
+        await _dbService.insertPosts(response.data);
+      } else {
+        _setError(response.message ?? 'Failed to load posts');
+      }
+    } catch (e) {
+      _setError(_getErrorMessage(e));
+      
+      // Load from local database if network fails
+      if (refresh) {
+        await _loadPostsFromLocal();
+      }
+    } finally {
+      _setLoading(false);
+      _setLoadingMore(false);
+    }
+  }
+  
+  Future<void> _loadPostsFromLocal() async {
+    try {
+      final localPosts = await _dbService.getPosts(
+        categoryId: _selectedCategory?.id,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
+      _posts = localPosts;
+      notifyListeners();
+    } catch (e) {
+      // Handle local storage error
+    }
+  }
+  
+  Future<void> loadPost(String postId) async {
+    try {
+      _setLoading(true);
+      _clearError();
+      
+      final response = await _apiService.get<ApiResponse<Post>>(
+        ApiEndpoints.post(postId),
+        fromJson: (json) => ApiResponse.fromJson(json, (data) => Post.fromJson(data)),
+      );
+      
+      if (response.success && response.data != null) {
+        _selectedPost = response.data;
+        await _dbService.insertPost(_selectedPost!);
+      } else {
+        _setError(response.message ?? 'Failed to load post');
+        
+        // Try loading from local database
+        _selectedPost = await _dbService.getPost(postId);
+      }
+    } catch (e) {
+      _setError(_getErrorMessage(e));
+      _selectedPost = await _dbService.getPost(postId);
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  Future<void> likePost(String postId) async {
+    try {
+      final post = _posts.firstWhere((p) => p.id == postId);
+      final isCurrentlyLiked = post.isLiked;
+      
+      // Optimistic update
+      _updatePostLikeStatus(postId, !isCurrentlyLiked);
+      
+      final endpoint = isCurrentlyLiked 
+          ? ApiEndpoints.unlikePost(postId)
+          : ApiEndpoints.likePost(postId);
+      
+      await _apiService.post(endpoint);
+    } catch (e) {
+      // Revert optimistic update on error
+      final post = _posts.firstWhere((p) => p.id == postId);
+      _updatePostLikeStatus(postId, !post.isLiked);
+      _setError(_getErrorMessage(e));
+    }
+  }
+  
+  void _updatePostLikeStatus(String postId, bool isLiked) {
+    final index = _posts.indexWhere((p) => p.id == postId);
+    if (index != -1) {
+      final post = _posts[index];
+      _posts[index] = Post(
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        excerpt: post.excerpt,
+        imageUrl: post.imageUrl,
+        authorId: post.authorId,
+        author: post.author,
+        categoryId: post.categoryId,
+        category: post.category,
+        tags: post.tags,
+        isPublished: post.isPublished,
+        viewCount: post.viewCount,
+        likeCount: isLiked ? post.likeCount + 1 : post.likeCount - 1,
+        commentCount: post.commentCount,
+        isLiked: isLiked,
+        publishedAt: post.publishedAt,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+      );
+      notifyListeners();
+    }
+  }
+  
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    loadPosts(refresh: true);
+  }
+  
+  void setSelectedCategory(Category? category) {
+    _selectedCategory = category;
+    loadPosts(refresh: true);
+  }
+  
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+  
+  void _setLoadingMore(bool loading) {
+    _isLoadingMore = loading;
+    notifyListeners();
+  }
+  
+  void _setError(String error) {
+    _errorMessage = error;
+    notifyListeners();
+  }
+  
+  void _clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+  
+  String _getErrorMessage(dynamic error) {
+    if (error is NetworkException) {
+      return error.message;
+    } else if (error is ApiException) {
+      return error.message;
+    } else {
+      return 'An unexpected error occurred';
+    }
+  }
+  
+  void clearError() {
+    _clearError();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           10. CONNECTIVITY PROVIDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+class ConnectivityProvider extends ChangeNotifier {
+  final Connectivity _connectivity = Connectivity();
+  ConnectivityResult _connectionStatus = ConnectivityResult.none;
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  
+  ConnectivityResult get connectionStatus => _connectionStatus;
+  bool get isConnected => _connectionStatus != ConnectivityResult.none;
+  bool get isWifi => _connectionStatus == ConnectivityResult.wifi;
+  bool get isMobile => _connectionStatus == ConnectivityResult.mobile;
+  
+  ConnectivityProvider() {
+    _initConnectivity();
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+  }
+  
+  Future<void> _initConnectivity() async {
+    try {
+      final result = await _connectivity.checkConnectivity();
+      _updateConnectionStatus(result);
+    } catch (e) {
+      _connectionStatus = ConnectivityResult.none;
+      notifyListeners();
+    }
+  }
+  
+  void _updateConnectionStatus(ConnectivityResult result) {
+    _connectionStatus = result;
+    notifyListeners();
+  }
+  
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           11. ROUTING AND NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class AppRoutes {
+  static const String splash = '/';
+  static const String login = '/login';
+  static const String register = '/register';
+  static const String home = '/home';
+  static const String posts = '/posts';
+  static const String postDetail = '/post-detail';
+  static const String profile = '/profile';
+  static const String settings = '/settings';
+  static const String createPost = '/create-post';
+  
+  static Route<dynamic> generateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case splash:
+        return MaterialPageRoute(builder: (_) => SplashScreen());
+      case login:
+        return MaterialPageRoute(builder: (_) => LoginScreen());
+      case register:
+        return MaterialPageRoute(builder: (_) => RegisterScreen());
+      case home:
+        return MaterialPageRoute(builder: (_) => HomeScreen());
+      case posts:
+        return MaterialPageRoute(builder: (_) => PostsScreen());
+      case postDetail:
+        final args = settings.arguments as Map<String, dynamic>?;
+        final postId = args?['postId'] as String?;
+        if (postId != null) {
+          return MaterialPageRoute(builder: (_) => PostDetailScreen(postId: postId));
+        }
+        return _errorRoute();
+      case profile:
+        return MaterialPageRoute(builder: (_) => ProfileScreen());
+      case settings:
+        return MaterialPageRoute(builder: (_) => SettingsScreen());
+      case createPost:
+        return MaterialPageRoute(builder: (_) => CreatePostScreen());
+      default:
+        return _errorRoute();
+    }
+  }
+  
+  static Route<dynamic> _errorRoute() {
+    return MaterialPageRoute(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: const Text('Error')),
+        body: const Center(
+          child: Text('Page not found'),
+        ),
+      ),
+    );
+  }
+}
+
+class NavigationService {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  
+  static NavigatorState? get navigator => navigatorKey.currentState;
+  
+  static Future<dynamic> navigateTo(String routeName, {Object? arguments}) {
+    return navigator!.pushNamed(routeName, arguments: arguments);
+  }
+  
+  static Future<dynamic> navigateAndReplace(String routeName, {Object? arguments}) {
+    return navigator!.pushReplacementNamed(routeName, arguments: arguments);
+  }
+  
+  static Future<dynamic> navigateAndClearStack(String routeName, {Object? arguments}) {
+    return navigator!.pushNamedAndRemoveUntil(
+      routeName,
+      (route) => false,
+      arguments: arguments,
+    );
+  }
+  
+  static void goBack([dynamic result]) {
+    navigator!.pop(result);
+  }
+  
+  static bool canGoBack() {
+    return navigator!.canPop();
+  }
+}
