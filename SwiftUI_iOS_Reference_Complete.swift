@@ -2900,3 +2900,677 @@ extension Encodable {
         return dictionary
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           13. ADDITIONAL SERVICES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Network Monitor
+
+import Network
+
+class NetworkMonitor: ObservableObject {
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "NetworkMonitor")
+    
+    @Published var isConnected = false
+    @Published var connectionType: ConnectionType = .unknown
+    
+    enum ConnectionType {
+        case wifi
+        case cellular
+        case ethernet
+        case unknown
+    }
+    
+    init() {
+        startMonitoring()
+    }
+    
+    private func startMonitoring() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isConnected = path.status == .satisfied
+                self?.getConnectionType(path)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+    
+    private func getConnectionType(_ path: NWPath) {
+        if path.usesInterfaceType(.wifi) {
+            connectionType = .wifi
+        } else if path.usesInterfaceType(.cellular) {
+            connectionType = .cellular
+        } else if path.usesInterfaceType(.wiredEthernet) {
+            connectionType = .ethernet
+        } else {
+            connectionType = .unknown
+        }
+    }
+    
+    deinit {
+        monitor.cancel()
+    }
+}
+
+// MARK: - Analytics Manager
+
+class AnalyticsManager {
+    static let shared = AnalyticsManager()
+    
+    private init() {}
+    
+    func initialize() {
+        // Initialize analytics services (Firebase, Mixpanel, etc.)
+        print("Analytics initialized")
+    }
+    
+    func track(event: String, parameters: [String: Any]? = nil) {
+        // Track analytics events
+        print("Analytics event: \(event), parameters: \(parameters ?? [:])")
+    }
+    
+    func setUserProperty(key: String, value: String) {
+        // Set user properties for analytics
+        print("User property set: \(key) = \(value)")
+    }
+    
+    func identify(userID: String) {
+        // Identify user for analytics
+        print("User identified: \(userID)")
+    }
+}
+
+// MARK: - Image Cache Manager
+
+import UIKit
+
+class ImageCacheManager {
+    static let shared = ImageCacheManager()
+    
+    private let cache = NSCache<NSString, UIImage>()
+    private let session = URLSession.shared
+    
+    private init() {
+        cache.countLimit = 100
+        cache.totalCostLimit = 1024 * 1024 * 100 // 100 MB
+    }
+    
+    func loadImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
+        let key = NSString(string: url.absoluteString)
+        
+        // Check cache first
+        if let cachedImage = cache.object(forKey: key) {
+            completion(cachedImage)
+            return
+        }
+        
+        // Download image
+        session.dataTask(with: url) { [weak self] data, response, error in
+            guard let data = data,
+                  let image = UIImage(data: data),
+                  error == nil else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+            
+            // Cache the image
+            self?.cache.setObject(image, forKey: key)
+            
+            DispatchQueue.main.async {
+                completion(image)
+            }
+        }.resume()
+    }
+    
+    func clearCache() {
+        cache.removeAllObjects()
+    }
+}
+
+// MARK: - Notification Manager
+
+import UserNotifications
+
+class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationManager()
+    
+    override init() {
+        super.init()
+        UNUserNotificationCenter.current().delegate = self
+    }
+    
+    func requestPermissions() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            if granted {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
+    }
+    
+    func scheduleLocalNotification(title: String, body: String, timeInterval: TimeInterval) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.alert, .badge, .sound])
+    }
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Handle notification tap
+        completionHandler()
+    }
+}
+
+// MARK: - Location Manager
+
+import CoreLocation
+
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    
+    @Published var location: CLLocation?
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+    
+    func requestPermission() {
+        manager.requestWhenInUseAuthorization()
+    }
+    
+    func startLocationUpdates() {
+        guard authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways else {
+            return
+        }
+        manager.startUpdatingLocation()
+    }
+    
+    func stopLocationUpdates() {
+        manager.stopUpdatingLocation()
+    }
+    
+    // MARK: - CLLocationManagerDelegate
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        location = locations.last
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location error: \(error.localizedDescription)")
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        authorizationStatus = manager.authorizationStatus
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           14. TESTING SUPPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Mock Data
+
+#if DEBUG
+extension User {
+    static let mock = User(
+        id: "1",
+        email: "john@example.com",
+        username: "johndoe",
+        firstName: "John",
+        lastName: "Doe",
+        avatarURL: URL(string: "https://via.placeholder.com/150"),
+        bio: "iOS Developer passionate about Swift and SwiftUI",
+        isActive: true,
+        createdAt: Date(),
+        updatedAt: Date()
+    )
+}
+
+extension Post {
+    static let mock = Post(
+        id: "1",
+        title: "Getting Started with SwiftUI",
+        content: "SwiftUI is a powerful framework for building user interfaces across all Apple platforms. In this post, we'll explore the basics of SwiftUI and how to create your first app...",
+        excerpt: "Learn the fundamentals of SwiftUI and start building modern iOS apps",
+        imageURL: URL(string: "https://via.placeholder.com/400x200"),
+        authorID: "1",
+        author: User.mock,
+        categoryID: "1",
+        category: Category.mock,
+        tags: ["SwiftUI", "iOS", "Tutorial"],
+        isPublished: true,
+        viewCount: 256,
+        likeCount: 42,
+        commentCount: 8,
+        isLiked: false,
+        publishedAt: Date(),
+        createdAt: Date(),
+        updatedAt: Date()
+    )
+}
+
+extension Category {
+    static let mock = Category(
+        id: "1",
+        name: "iOS Development",
+        slug: "ios-development",
+        description: "Everything related to iOS app development",
+        color: "#007AFF",
+        postCount: 25
+    )
+}
+#endif
+
+// MARK: - Test Utilities
+
+class MockNetworkManager: NetworkManager {
+    var shouldReturnError = false
+    var mockResponse: Any?
+    
+    override func request<T: Codable>(endpoint: APIEndpoint, responseType: T.Type, completion: @escaping (Result<T, NetworkError>) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.shouldReturnError {
+                completion(.failure(.networkError("Mock error")))
+            } else if let mockResponse = self.mockResponse as? T {
+                completion(.success(mockResponse))
+            } else {
+                completion(.failure(.noData))
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           15. APP CONFIGURATION AND CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - App Configuration
+
+enum AppConfiguration {
+    static let appName = "MyApp"
+    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    static let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    
+    enum API {
+        static let baseURL = "https://api.example.com/v1"
+        static let timeout: TimeInterval = 30
+    }
+    
+    enum Cache {
+        static let maxImageCacheSize = 100 * 1024 * 1024 // 100 MB
+        static let maxImageCacheCount = 100
+    }
+    
+    enum Animation {
+        static let defaultDuration: TimeInterval = 0.3
+        static let springAnimation = Animation.spring(response: 0.5, dampingFraction: 0.8)
+    }
+}
+
+// MARK: - Constants
+
+enum Constants {
+    enum Spacing {
+        static let xs: CGFloat = 4
+        static let sm: CGFloat = 8
+        static let md: CGFloat = 16
+        static let lg: CGFloat = 24
+        static let xl: CGFloat = 32
+    }
+    
+    enum CornerRadius {
+        static let sm: CGFloat = 4
+        static let md: CGFloat = 8
+        static let lg: CGFloat = 12
+        static let xl: CGFloat = 16
+    }
+    
+    enum FontSize {
+        static let caption: CGFloat = 12
+        static let body: CGFloat = 16
+        static let headline: CGFloat = 20
+        static let title: CGFloat = 24
+        static let largeTitle: CGFloat = 32
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           16. DEPLOYMENT AND BUILD CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/*
+DEPLOYMENT CONFIGURATION:
+
+1. Build Configurations:
+   - Debug: Development builds with logging and debug features
+   - Release: Production builds optimized for App Store
+   - Staging: Testing builds for QA environment
+
+2. Info.plist Configuration:
+   - App Transport Security settings
+   - URL schemes for deep linking
+   - Background modes (if needed)
+   - Privacy usage descriptions
+
+3. Entitlements:
+   - App Groups (for sharing data between app extensions)
+   - Keychain sharing
+   - Push notifications
+   - Sign in with Apple
+
+4. Build Scripts:
+   - SwiftLint for code quality
+   - SwiftGen for resource generation
+   - Version bumping scripts
+
+5. App Store Connect:
+   - App icons and screenshots
+   - App Store metadata
+   - TestFlight distribution
+   - App Store review guidelines compliance
+
+6. Continuous Integration:
+   - Automated testing
+   - Code coverage reports
+   - Automated deployment to TestFlight
+
+EXAMPLE BUILD SCRIPT:
+#!/bin/bash
+# Increment build number
+agvtool next-version -all
+# Run tests
+xcodebuild test -project MyApp.xcodeproj -scheme MyApp -destination 'platform=iOS Simulator,name=iPhone 15'
+# Archive for distribution
+xcodebuild archive -project MyApp.xcodeproj -scheme MyApp -archivePath build/MyApp.xcarchive
+# Export IPA
+xcodebuild -exportArchive -archivePath build/MyApp.xcarchive -exportPath build/ -exportOptionsPlist ExportOptions.plist
+*/
+
+// MARK: - Environment Configuration
+
+enum Environment {
+    case development
+    case staging
+    case production
+    
+    static var current: Environment {
+        #if DEBUG
+        return .development
+        #elseif STAGING
+        return .staging
+        #else
+        return .production
+        #endif
+    }
+    
+    var apiBaseURL: String {
+        switch self {
+        case .development:
+            return "https://dev-api.example.com/v1"
+        case .staging:
+            return "https://staging-api.example.com/v1"
+        case .production:
+            return "https://api.example.com/v1"
+        }
+    }
+    
+    var analyticsEnabled: Bool {
+        switch self {
+        case .development:
+            return false
+        case .staging, .production:
+            return true
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           17. ACCESSIBILITY SUPPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Accessibility Extensions
+
+extension View {
+    func accessibilityLabel(_ label: String) -> some View {
+        self.accessibility(label: Text(label))
+    }
+    
+    func accessibilityHint(_ hint: String) -> some View {
+        self.accessibility(hint: Text(hint))
+    }
+    
+    func accessibilityValue(_ value: String) -> some View {
+        self.accessibility(value: Text(value))
+    }
+}
+
+// MARK: - Accessibility Constants
+
+enum AccessibilityIdentifiers {
+    enum Authentication {
+        static let emailField = "email_field"
+        static let passwordField = "password_field"
+        static let loginButton = "login_button"
+        static let registerButton = "register_button"
+    }
+    
+    enum Posts {
+        static let postsList = "posts_list"
+        static let postRow = "post_row"
+        static let likeButton = "like_button"
+        static let searchBar = "search_bar"
+    }
+    
+    enum Navigation {
+        static let tabBar = "main_tab_bar"
+        static let postsTab = "posts_tab"
+        static let exploreTab = "explore_tab"
+        static let favoritesTab = "favorites_tab"
+        static let profileTab = "profile_tab"
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           18. LOCALIZATION SUPPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Localization
+
+enum LocalizedString {
+    case loginTitle
+    case emailPlaceholder
+    case passwordPlaceholder
+    case loginButton
+    case registerButton
+    case postsTitle
+    case searchPlaceholder
+    case errorTitle
+    case loadingMessage
+    
+    var localized: String {
+        switch self {
+        case .loginTitle:
+            return NSLocalizedString("login.title", value: "Welcome Back", comment: "Login screen title")
+        case .emailPlaceholder:
+            return NSLocalizedString("email.placeholder", value: "Enter your email", comment: "Email field placeholder")
+        case .passwordPlaceholder:
+            return NSLocalizedString("password.placeholder", value: "Enter your password", comment: "Password field placeholder")
+        case .loginButton:
+            return NSLocalizedString("login.button", value: "Sign In", comment: "Login button text")
+        case .registerButton:
+            return NSLocalizedString("register.button", value: "Create Account", comment: "Register button text")
+        case .postsTitle:
+            return NSLocalizedString("posts.title", value: "Posts", comment: "Posts screen title")
+        case .searchPlaceholder:
+            return NSLocalizedString("search.placeholder", value: "Search posts...", comment: "Search bar placeholder")
+        case .errorTitle:
+            return NSLocalizedString("error.title", value: "Error", comment: "Error alert title")
+        case .loadingMessage:
+            return NSLocalizedString("loading.message", value: "Loading...", comment: "Loading message")
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           19. PREVIEW PROVIDERS AND DEVELOPMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - SwiftUI Previews
+
+#if DEBUG
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .environmentObject(AppState())
+            .environmentObject(AuthenticationService())
+            .environmentObject(NetworkMonitor())
+    }
+}
+
+struct PostRowView_Previews: PreviewProvider {
+    static var previews: some View {
+        PostRowView(post: Post.mock) {
+            print("Like tapped")
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
+    }
+}
+
+struct LoginView_Previews: PreviewProvider {
+    static var previews: some View {
+        LoginView()
+            .environmentObject(AuthenticationService())
+            .previewLayout(.sizeThatFits)
+    }
+}
+#endif
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                           20. PERFORMANCE OPTIMIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MARK: - Performance Utilities
+
+class PerformanceMonitor {
+    static let shared = PerformanceMonitor()
+    
+    private init() {}
+    
+    func measureTime<T>(operation: () throws -> T) rethrows -> (result: T, time: TimeInterval) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let result = try operation()
+        let timeElapsed = CFAbsoluteTimeGetCurrent() - startTime
+        return (result, timeElapsed)
+    }
+    
+    func logMemoryUsage() {
+        let memoryInfo = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &memoryInfo) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_,
+                         task_flavor_t(MACH_TASK_BASIC_INFO),
+                         $0,
+                         &count)
+            }
+        }
+        
+        if kerr == KERN_SUCCESS {
+            let memoryUsage = Double(memoryInfo.resident_size) / 1024 / 1024
+            print("Memory usage: \(memoryUsage) MB")
+        }
+    }
+}
+
+// MARK: - Image Optimization
+
+extension Image {
+    func optimizedForThumbnail() -> some View {
+        self
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .clipped()
+    }
+    
+    func optimizedForHero() -> some View {
+        self
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                     FINAL NOTES AND DEVELOPMENT BEST PRACTICES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/*
+SWIFT IOS DEVELOPMENT BEST PRACTICES:
+
+1. ARCHITECTURE:
+   - Use MVVM pattern with SwiftUI
+   - Implement proper separation of concerns
+   - Use dependency injection for testability
+   - Follow SOLID principles
+
+2. CODE QUALITY:
+   - Use SwiftLint for consistent code style
+   - Write comprehensive unit tests
+   - Implement proper error handling
+   - Use type-safe networking with Codable
+
+3. PERFORMANCE:
+   - Implement efficient image caching
+   - Use lazy loading for large datasets
+   - Optimize Core Data queries
+   - Monitor memory usage and prevent leaks
+
+4. SECURITY:
+   - Store sensitive data in Keychain
+   - Implement proper authentication
+   - Use HTTPS for all network requests
+   - Validate all user inputs
+
+5. USER EXPERIENCE:
+   - Implement proper loading states
+   - Handle offline scenarios gracefully
+   - Provide meaningful error messages
+   - Support accessibility features
+
+6. DEPLOYMENT:
+   - Use proper build configurations
+   - Implement continuous integration
+   - Follow App Store guidelines
+   - Test on multiple devices and iOS versions
+
+7. MAINTENANCE:
+   - Keep dependencies updated
+   - Monitor crash reports
+   - Implement proper logging
+   - Document complex business logic
+
+This comprehensive Swift iOS reference provides a solid foundation for building
+modern iOS applications with SwiftUI, combining best practices with practical
+implementation examples.
+*/
