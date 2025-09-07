@@ -1716,4 +1716,795 @@ function seasonal_decompose(y::Vector{T}, period::Int;
     
     # Default parameters
     if trend_window === nothing
-        trend_window = ceil(Int, 1.5 * period / (1 - 1
+        trend_window = ceil(Int, 1.5 * period / (1 - 1.5/period))
+    end
+    if seasonal_window === nothing
+        seasonal_window = 7  # Default seasonal smoothing
+    end
+    
+    # Initialize components
+    trend = zeros(T, n)
+    seasonal = zeros(T, n)
+    remainder = zeros(T, n)
+    
+    # Simple trend extraction using moving average
+    half_window = trend_window ÷ 2
+    for i in (half_window+1):(n-half_window)
+        trend[i] = mean(y[(i-half_window):(i+half_window)])
+    end
+    
+    # Extrapolate trend at boundaries
+    trend[1:half_window] .= trend[half_window+1]
+    trend[(n-half_window+1):n] .= trend[n-half_window]
+    
+    # Detrend the series
+    detrended = y .- trend
+    
+    # Extract seasonal component
+    seasonal_matrix = reshape(detrended[1:(period * (n ÷ period))], period, n ÷ period)
+    seasonal_pattern = vec(mean(seasonal_matrix, dims=2))
+    
+    # Repeat seasonal pattern
+    for i in 1:n
+        seasonal[i] = seasonal_pattern[((i-1) % period) + 1]
+    end
+    
+    # Calculate remainder
+    remainder = y .- trend .- seasonal
+    
+    return (trend=trend, seasonal=seasonal, remainder=remainder, original=y)
+end
+
+"""
+ARIMA model implementation with maximum likelihood estimation.
+"""
+mutable struct ARIMA{T<:Real}
+    p::Int  # AR order
+    d::Int  # Differencing order
+    q::Int  # MA order
+    ar_params::Vector{T}
+    ma_params::Vector{T}
+    intercept::T
+    sigma2::T
+    fitted_values::Vector{T}
+    residuals::Vector{T}
+    aic::T
+    bic::T
+    fitted::Bool
+    
+    function ARIMA{T}(p::Int, d::Int, q::Int) where T<:Real
+        new{T}(p, d, q, T[], T[], zero(T), zero(T), T[], T[], 
+               T(Inf), T(Inf), false)
+    end
+end
+
+ARIMA(p::Int, d::Int, q::Int) = ARIMA{Float64}(p, d, q)
+
+"""
+Difference a time series to achieve stationarity.
+"""
+function difference_series(y::Vector{T}, d::Int) where T<:Real
+    result = copy(y)
+    for _ in 1:d
+        result = diff(result)
+    end
+    return result
+end
+
+"""
+Fit ARIMA model using conditional sum of squares.
+"""
+function fit!(model::ARIMA{T}, y::Vector{T}) where T<:Real
+    n = length(y)
+    
+    # Apply differencing
+    y_diff = difference_series(y, model.d)
+    n_diff = length(y_diff)
+    
+    # Initialize parameters
+    initial_params = [zeros(T, model.p); zeros(T, model.q); mean(y_diff)]
+    
+    # Define log-likelihood function
+    function log_likelihood(params)
+        ar_params = params[1:model.p]
+        ma_params = params[model.p+1:model.p+model.q]
+        intercept = params[end]
+        
+        # Initialize residuals and fitted values
+        residuals = zeros(T, n_diff)
+        fitted_vals = zeros(T, n_diff)
+        
+        # Calculate residuals using recursive approach
+        for t in max(model.p, model.q)+1:n_diff
+            # AR component
+            ar_term = sum(ar_params[i] * y_diff[t-i] for i in 1:model.p)
+            
+            # MA component
+            ma_term = sum(ma_params[i] * residuals[t-i] for i in 1:model.q)
+            
+            fitted_vals[t] = intercept + ar_term + ma_term
+            residuals[t] = y_diff[t] - fitted_vals[t]
+        end
+        
+        # Calculate log-likelihood
+        sigma2 = var(residuals[max(model.p, model.q)+1:end])
+        valid_residuals = residuals[max(model.p, model.q)+1:end]
+        n_valid = length(valid_residuals)
+        
+        if sigma2 <= 0
+            return T(Inf)
+        end
+        
+        ll = -0.5 * n_valid * log(2π * sigma2) - 0.5 * sum(valid_residuals.^2) / sigma2
+        return -ll  # Return negative for minimization
+    end
+    
+    # Optimize parameters (simple grid search for demonstration)
+    best_params = initial_params
+    best_ll = log_likelihood(initial_params)
+    
+    # Simple optimization loop
+    for iter in 1:100
+        # Random perturbation
+        candidate = best_params + 0.01 * randn(T, length(best_params))
+        
+        # Check stability constraints for AR parameters
+        ar_candidate = candidate[1:model.p]
+        if model.p > 0
+            # Simple stability check: |ar_params| < 1
+            if any(abs.(ar_candidate) .>= 0.99)
+                continue
+            end
+        end
+        
+        ll = log_likelihood(candidate)
+        if ll < best_ll
+            best_ll = ll
+            best_params = candidate
+        end
+    end
+    
+    # Store fitted parameters
+    model.ar_params = best_params[1:model.p]
+    model.ma_params = best_params[model.p+1:model.p+model.q]
+    model.intercept = best_params[end]
+    
+    # Calculate final residuals and fitted values
+    residuals = zeros(T, n_diff)
+    fitted_vals = zeros(T, n_diff)
+    
+    for t in max(model.p, model.q)+1:n_diff
+        ar_term = sum(model.ar_params[i] * y_diff[t-i] for i in 1:model.p)
+        ma_term = sum(model.ma_params[i] * residuals[t-i] for i in 1:model.q)
+        fitted_vals[t] = model.intercept + ar_term + ma_term
+        residuals[t] = y_diff[t] - fitted_vals[t]
+    end
+    
+    model.fitted_values = fitted_vals
+    model.residuals = residuals
+    model.sigma2 = var(residuals[max(model.p, model.q)+1:end])
+    
+    # Calculate information criteria
+    k = model.p + model.q + 1  # Number of parameters
+    n_eff = n_diff - max(model.p, model.q)
+    model.aic = 2 * k + 2 * best_ll
+    model.bic = k * log(n_eff) + 2 * best_ll
+    
+    model.fitted = true
+    return model
+end
+
+"""
+Forecast using fitted ARIMA model.
+"""
+function forecast(model::ARIMA{T}, n_ahead::Int; confidence_level::T=T(0.95)) where T<:Real
+    @assert model.fitted "Model must be fitted before forecasting"
+    
+    forecasts = zeros(T, n_ahead)
+    forecast_var = zeros(T, n_ahead)
+    
+    # Use last values for initialization
+    last_values = model.fitted_values[end-max(model.p-1, 0):end]
+    last_residuals = model.residuals[end-max(model.q-1, 0):end]
+    
+    for h in 1:n_ahead
+        # AR component
+        ar_term = T(0)
+        for i in 1:min(model.p, length(last_values))
+            if h <= i
+                ar_term += model.ar_params[i] * forecasts[h-i]
+            else
+                ar_term += model.ar_params[i] * last_values[end-(i-h)]
+            end
+        end
+        
+        # MA component (only for h=1, as future errors are unknown)
+        ma_term = T(0)
+        if h == 1
+            for i in 1:min(model.q, length(last_residuals))
+                ma_term += model.ma_params[i] * last_residuals[end-(i-1)]
+            end
+        end
+        
+        forecasts[h] = model.intercept + ar_term + ma_term
+        
+        # Forecast variance (simplified)
+        if h == 1
+            forecast_var[h] = model.sigma2
+        else
+            forecast_var[h] = model.sigma2 * h  # Simplified variance calculation
+        end
+    end
+    
+    # Calculate confidence intervals
+    z_alpha = quantile(Normal(), 1 - (1 - confidence_level) / 2)
+    forecast_se = sqrt.(forecast_var)
+    
+    lower_ci = forecasts .- z_alpha .* forecast_se
+    upper_ci = forecasts .+ z_alpha .* forecast_se
+    
+    return (forecast=forecasts, lower_ci=lower_ci, upper_ci=upper_ci, se=forecast_se)
+end
+
+"""
+Exponential smoothing models (Simple, Holt, Holt-Winters).
+"""
+mutable struct ExponentialSmoothing{T<:Real}
+    model_type::Symbol  # :simple, :holt, :holt_winters
+    alpha::T  # Level smoothing parameter
+    beta::T   # Trend smoothing parameter
+    gamma::T  # Seasonal smoothing parameter
+    level::T
+    trend::T
+    seasonal::Vector{T}
+    period::Int
+    fitted_values::Vector{T}
+    fitted::Bool
+    
+    function ExponentialSmoothing{T}(model_type::Symbol; period::Int=12) where T<:Real
+        new{T}(model_type, T(0.3), T(0.1), T(0.1), zero(T), zero(T), 
+               T[], period, T[], false)
+    end
+end
+
+ExponentialSmoothing(model_type::Symbol; kwargs...) = ExponentialSmoothing{Float64}(model_type; kwargs...)
+
+function fit!(model::ExponentialSmoothing{T}, y::Vector{T}) where T<:Real
+    n = length(y)
+    
+    # Initialize level
+    model.level = y[1]
+    
+    # Initialize trend (for Holt and Holt-Winters)
+    if model.model_type in [:holt, :holt_winters]
+        model.trend = y[2] - y[1]
+    end
+    
+    # Initialize seasonal components (for Holt-Winters)
+    if model.model_type == :holt_winters
+        # Simple seasonal initialization
+        model.seasonal = zeros(T, model.period)
+        for i in 1:model.period
+            if i <= n
+                model.seasonal[i] = y[i] / model.level - 1
+            end
+        end
+    end
+    
+    model.fitted_values = zeros(T, n)
+    
+    # Fit the model
+    for t in 1:n
+        if model.model_type == :simple
+            # Simple exponential smoothing
+            if t == 1
+                model.fitted_values[t] = model.level
+            else
+                prev_level = model.level
+                model.level = model.alpha * y[t] + (1 - model.alpha) * prev_level
+                model.fitted_values[t] = prev_level
+            end
+            
+        elseif model.model_type == :holt
+            # Holt's linear trend method
+            if t == 1
+                model.fitted_values[t] = model.level
+            else
+                prev_level = model.level
+                prev_trend = model.trend
+                
+                model.level = model.alpha * y[t] + (1 - model.alpha) * (prev_level + prev_trend)
+                model.trend = model.beta * (model.level - prev_level) + (1 - model.beta) * prev_trend
+                
+                model.fitted_values[t] = prev_level + prev_trend
+            end
+            
+        elseif model.model_type == :holt_winters
+            # Holt-Winters seasonal method
+            seasonal_idx = ((t - 1) % model.period) + 1
+            
+            if t <= model.period
+                model.fitted_values[t] = model.level * (1 + model.seasonal[seasonal_idx])
+            else
+                prev_level = model.level
+                prev_trend = model.trend
+                prev_seasonal = model.seasonal[seasonal_idx]
+                
+                model.level = model.alpha * y[t] / (1 + prev_seasonal) + 
+                             (1 - model.alpha) * (prev_level + prev_trend)
+                model.trend = model.beta * (model.level - prev_level) + 
+                             (1 - model.beta) * prev_trend
+                model.seasonal[seasonal_idx] = model.gamma * (y[t] / model.level - 1) + 
+                                              (1 - model.gamma) * prev_seasonal
+                
+                model.fitted_values[t] = (prev_level + prev_trend) * (1 + prev_seasonal)
+            end
+        end
+    end
+    
+    model.fitted = true
+    return model
+end
+
+"""
+Forecast using exponential smoothing model.
+"""
+function forecast(model::ExponentialSmoothing{T}, n_ahead::Int) where T<:Real
+    @assert model.fitted "Model must be fitted before forecasting"
+    
+    forecasts = zeros(T, n_ahead)
+    
+    for h in 1:n_ahead
+        if model.model_type == :simple
+            forecasts[h] = model.level
+            
+        elseif model.model_type == :holt
+            forecasts[h] = model.level + h * model.trend
+            
+        elseif model.model_type == :holt_winters
+            seasonal_idx = ((h - 1) % model.period) + 1
+            forecasts[h] = (model.level + h * model.trend) * (1 + model.seasonal[seasonal_idx])
+        end
+    end
+    
+    return forecasts
+end
+
+"""
+Change point detection using PELT (Pruned Exact Linear Time) algorithm.
+"""
+function detect_changepoints(y::Vector{T}; penalty::T=T(2.0), min_size::Int=5) where T<:Real
+    n = length(y)
+    
+    # Cost function (sum of squared errors)
+    function segment_cost(start::Int, end::Int)
+        if end <= start
+            return T(Inf)
+        end
+        
+        segment = y[start:end]
+        μ = mean(segment)
+        return sum((segment .- μ) .^ 2)
+    end
+    
+    # Dynamic programming arrays
+    F = fill(T(Inf), n + 1)  # Optimal cost up to time t
+    F[1] = T(0)
+    changepoints = Vector{Int}[]
+    
+    # PELT algorithm (simplified)
+    for t in 2:(n + 1)
+        candidates = Int[]
+        costs = T[]
+        
+        for s in 1:(t - min_size)
+            if F[s] < Inf
+                cost = F[s] + segment_cost(s, t - 1) + penalty
+                push!(candidates, s)
+                push!(costs, cost)
+            end
+        end
+        
+        if !isempty(costs)
+            min_idx = argmin(costs)
+            F[t] = costs[min_idx]
+            
+            if min_idx > 1  # Found a changepoint
+                push!(changepoints, candidates[min_idx])
+            end
+        end
+    end
+    
+    # Extract final changepoints
+    final_changepoints = unique(sort([cp for cp in changepoints if cp > 1 && cp < n]))
+    
+    return final_changepoints
+end
+
+"""
+Calculate forecast accuracy metrics.
+"""
+function forecast_accuracy(actual::Vector{T}, predicted::Vector{T}) where T<:Real
+    @assert length(actual) == length(predicted) "Vectors must have same length"
+    
+    n = length(actual)
+    errors = actual .- predicted
+    
+    metrics = Dict{String, T}()
+    
+    # Mean Error
+    metrics["ME"] = mean(errors)
+    
+    # Mean Absolute Error
+    metrics["MAE"] = mean(abs.(errors))
+    
+    # Mean Squared Error
+    metrics["MSE"] = mean(errors .^ 2)
+    
+    # Root Mean Squared Error
+    metrics["RMSE"] = sqrt(metrics["MSE"])
+    
+    # Mean Absolute Percentage Error
+    non_zero_actual = actual[actual .!= 0]
+    non_zero_predicted = predicted[actual .!= 0]
+    if !isempty(non_zero_actual)
+        metrics["MAPE"] = mean(abs.((non_zero_actual .- non_zero_predicted) ./ non_zero_actual)) * 100
+    else
+        metrics["MAPE"] = T(Inf)
+    end
+    
+    # Mean Absolute Scaled Error (MASE)
+    if n > 1
+        naive_errors = abs.(actual[2:end] .- actual[1:end-1])
+        mae_naive = mean(naive_errors)
+        metrics["MASE"] = metrics["MAE"] / mae_naive
+    else
+        metrics["MASE"] = T(Inf)
+    end
+    
+    return metrics
+end
+
+end # module TimeSeriesAnalysis
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           8. OPTIMIZATION AND NUMERICAL METHODS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+"""
+Advanced optimization algorithms for ML parameter estimation.
+"""
+module OptimizationMethods
+
+using LinearAlgebra, Random
+using Optim, ForwardDiff
+using Statistics
+
+export GradientDescent, AdaptiveGradient, LBFGS, PSO, GeneticAlgorithm
+export optimize_function, constrained_optimization
+
+"""
+Advanced gradient descent with adaptive learning rates.
+"""
+mutable struct AdaptiveGradient{T<:Real}
+    learning_rate::T
+    decay_rate::T
+    epsilon::T
+    accumulated_gradients::Vector{T}
+    iteration::Int
+    
+    function AdaptiveGradient{T}(learning_rate::T=T(0.01), decay_rate::T=T(0.9), 
+                               epsilon::T=T(1e-8)) where T<:Real
+        new{T}(learning_rate, decay_rate, epsilon, T[], 0)
+    end
+end
+
+AdaptiveGradient(; kwargs...) = AdaptiveGradient{Float64}(; kwargs...)
+
+function update!(optimizer::AdaptiveGradient{T}, parameters::Vector{T}, 
+                gradients::Vector{T}) where T<:Real
+    
+    optimizer.iteration += 1
+    
+    if isempty(optimizer.accumulated_gradients)
+        optimizer.accumulated_gradients = zeros(T, length(parameters))
+    end
+    
+    # AdaGrad update
+    optimizer.accumulated_gradients .+= gradients .^ 2
+    
+    # Adaptive learning rate
+    adaptive_lr = optimizer.learning_rate ./ 
+                 (sqrt.(optimizer.accumulated_gradients) .+ optimizer.epsilon)
+    
+    # Update parameters
+    parameters .-= adaptive_lr .* gradients
+    
+    return parameters
+end
+
+"""
+Particle Swarm Optimization for global optimization.
+"""
+mutable struct PSO{T<:Real}
+    n_particles::Int
+    n_dimensions::Int
+    bounds::Tuple{Vector{T}, Vector{T}}
+    inertia_weight::T
+    cognitive_coeff::T
+    social_coeff::T
+    particles::Matrix{T}
+    velocities::Matrix{T}
+    personal_best::Matrix{T}
+    personal_best_fitness::Vector{T}
+    global_best::Vector{T}
+    global_best_fitness::T
+    iteration::Int
+    max_iterations::Int
+    
+    function PSO{T}(n_particles::Int, bounds::Tuple{Vector{T}, Vector{T}};
+                   inertia_weight::T=T(0.7), cognitive_coeff::T=T(1.5),
+                   social_coeff::T=T(1.5), max_iterations::Int=1000) where T<:Real
+        
+        n_dimensions = length(bounds[1])
+        
+        # Initialize particles randomly within bounds
+        particles = zeros(T, n_particles, n_dimensions)
+        for i in 1:n_particles
+            for j in 1:n_dimensions
+                particles[i, j] = bounds[1][j] + rand(T) * (bounds[2][j] - bounds[1][j])
+            end
+        end
+        
+        # Initialize velocities
+        velocities = zeros(T, n_particles, n_dimensions)
+        
+        # Initialize personal bests
+        personal_best = copy(particles)
+        personal_best_fitness = fill(T(Inf), n_particles)
+        
+        # Initialize global best
+        global_best = zeros(T, n_dimensions)
+        global_best_fitness = T(Inf)
+        
+        new{T}(n_particles, n_dimensions, bounds, inertia_weight, cognitive_coeff,
+               social_coeff, particles, velocities, personal_best, personal_best_fitness,
+               global_best, global_best_fitness, 0, max_iterations)
+    end
+end
+
+PSO(n_particles::Int, bounds; kwargs...) = PSO{Float64}(n_particles, bounds; kwargs...)
+
+function optimize!(pso::PSO{T}, objective_function) where T<:Real
+    
+    for iteration in 1:pso.max_iterations
+        pso.iteration = iteration
+        
+        # Evaluate fitness for each particle
+        for i in 1:pso.n_particles
+            position = pso.particles[i, :]
+            fitness = objective_function(position)
+            
+            # Update personal best
+            if fitness < pso.personal_best_fitness[i]
+                pso.personal_best_fitness[i] = fitness
+                pso.personal_best[i, :] = position
+                
+                # Update global best
+                if fitness < pso.global_best_fitness
+                    pso.global_best_fitness = fitness
+                    pso.global_best = copy(position)
+                end
+            end
+        end
+        
+        # Update velocities and positions
+        for i in 1:pso.n_particles
+            for j in 1:pso.n_dimensions
+                r1, r2 = rand(T), rand(T)
+                
+                # Velocity update
+                pso.velocities[i, j] = pso.inertia_weight * pso.velocities[i, j] +
+                                      pso.cognitive_coeff * r1 * (pso.personal_best[i, j] - pso.particles[i, j]) +
+                                      pso.social_coeff * r2 * (pso.global_best[j] - pso.particles[i, j])
+                
+                # Position update
+                pso.particles[i, j] += pso.velocities[i, j]
+                
+                # Enforce bounds
+                pso.particles[i, j] = clamp(pso.particles[i, j], pso.bounds[1][j], pso.bounds[2][j])
+            end
+        end
+        
+        # Print progress
+        if iteration % 100 == 0
+            println("Iteration $iteration: Best fitness = $(pso.global_best_fitness)")
+        end
+    end
+    
+    return (best_solution=pso.global_best, best_fitness=pso.global_best_fitness)
+end
+
+"""
+Genetic Algorithm for evolutionary optimization.
+"""
+mutable struct GeneticAlgorithm{T<:Real}
+    population_size::Int
+    n_genes::Int
+    bounds::Tuple{Vector{T}, Vector{T}}
+    mutation_rate::T
+    crossover_rate::T
+    elitism_rate::T
+    population::Matrix{T}
+    fitness::Vector{T}
+    generation::Int
+    max_generations::Int
+    
+    function GeneticAlgorithm{T}(population_size::Int, bounds::Tuple{Vector{T}, Vector{T}};
+                                mutation_rate::T=T(0.1), crossover_rate::T=T(0.8),
+                                elitism_rate::T=T(0.1), max_generations::Int=1000) where T<:Real
+        
+        n_genes = length(bounds[1])
+        
+        # Initialize population randomly
+        population = zeros(T, population_size, n_genes)
+        for i in 1:population_size
+            for j in 1:n_genes
+                population[i, j] = bounds[1][j] + rand(T) * (bounds[2][j] - bounds[1][j])
+            end
+        end
+        
+        fitness = fill(T(Inf), population_size)
+        
+        new{T}(population_size, n_genes, bounds, mutation_rate, crossover_rate,
+               elitism_rate, population, fitness, 0, max_generations)
+    end
+end
+
+GeneticAlgorithm(population_size::Int, bounds; kwargs...) = 
+    GeneticAlgorithm{Float64}(population_size, bounds; kwargs...)
+
+function tournament_selection(ga::GeneticAlgorithm{T}, tournament_size::Int=3) where T<:Real
+    # Select random individuals for tournament
+    tournament_indices = rand(1:ga.population_size, tournament_size)
+    tournament_fitness = ga.fitness[tournament_indices]
+    
+    # Return index of best individual in tournament
+    best_idx = argmin(tournament_fitness)
+    return tournament_indices[best_idx]
+end
+
+function crossover(parent1::Vector{T}, parent2::Vector{T}) where T<:Real
+    n = length(parent1)
+    crossover_point = rand(1:n-1)
+    
+    child1 = [parent1[1:crossover_point]; parent2[crossover_point+1:end]]
+    child2 = [parent2[1:crossover_point]; parent1[crossover_point+1:end]]
+    
+    return child1, child2
+end
+
+function mutate!(individual::Vector{T}, bounds::Tuple{Vector{T}, Vector{T}}, 
+                mutation_rate::T) where T<:Real
+    
+    for i in 1:length(individual)
+        if rand(T) < mutation_rate
+            # Gaussian mutation
+            mutation_strength = T(0.1) * (bounds[2][i] - bounds[1][i])
+            individual[i] += randn(T) * mutation_strength
+            
+            # Enforce bounds
+            individual[i] = clamp(individual[i], bounds[1][i], bounds[2][i])
+        end
+    end
+    
+    return individual
+end
+
+function evolve!(ga::GeneticAlgorithm{T}, objective_function) where T<:Real
+    
+    # Evaluate initial population
+    for i in 1:ga.population_size
+        ga.fitness[i] = objective_function(ga.population[i, :])
+    end
+    
+    for generation in 1:ga.max_generations
+        ga.generation = generation
+        
+        # Create new population
+        new_population = zeros(T, ga.population_size, ga.n_genes)
+        new_fitness = zeros(T, ga.population_size)
+        
+        # Elitism: keep best individuals
+        n_elite = round(Int, ga.elitism_rate * ga.population_size)
+        elite_indices = sortperm(ga.fitness)[1:n_elite]
+        
+        for i in 1:n_elite
+            new_population[i, :] = ga.population[elite_indices[i], :]
+            new_fitness[i] = ga.fitness[elite_indices[i]]
+        end
+        
+        # Generate offspring
+        offspring_count = n_elite
+        while offspring_count < ga.population_size
+            # Selection
+            parent1_idx = tournament_selection(ga)
+            parent2_idx = tournament_selection(ga)
+            
+            parent1 = ga.population[parent1_idx, :]
+            parent2 = ga.population[parent2_idx, :]
+            
+            # Crossover
+            if rand(T) < ga.crossover_rate
+                child1, child2 = crossover(parent1, parent2)
+            else
+                child1, child2 = copy(parent1), copy(parent2)
+            end
+            
+            # Mutation
+            mutate!(child1, ga.bounds, ga.mutation_rate)
+            mutate!(child2, ga.bounds, ga.mutation_rate)
+            
+            # Add to new population
+            if offspring_count + 1 <= ga.population_size
+                new_population[offspring_count + 1, :] = child1
+                new_fitness[offspring_count + 1] = objective_function(child1)
+                offspring_count += 1
+            end
+            
+            if offspring_count + 1 <= ga.population_size
+                new_population[offspring_count + 1, :] = child2
+                new_fitness[offspring_count + 1] = objective_function(child2)
+                offspring_count += 1
+            end
+        end
+        
+        # Replace population
+        ga.population = new_population
+        ga.fitness = new_fitness
+        
+        # Print progress
+        if generation % 100 == 0
+            best_fitness = minimum(ga.fitness)
+            println("Generation $generation: Best fitness = $best_fitness")
+        end
+    end
+    
+    best_idx = argmin(ga.fitness)
+    return (best_solution=ga.population[best_idx, :], best_fitness=ga.fitness[best_idx])
+end
+
+"""
+General optimization interface supporting multiple algorithms.
+"""
+function optimize_function(objective_function, initial_guess::Vector{T};
+                         method::Symbol=:lbfgs, bounds=nothing,
+                         max_iterations::Int=1000) where T<:Real
+    
+    if method == :lbfgs
+        result = optimize(objective_function, initial_guess, LBFGS(),
+                         Optim.Options(iterations=max_iterations))
+        return (solution=Optim.minimizer(result), 
+                objective=Optim.minimum(result),
+                converged=Optim.converged(result))
+        
+    elseif method == :pso && bounds !== nothing
+        pso = PSO(50, bounds, max_iterations=max_iterations)
+        result = optimize!(pso, objective_function)
+        return (solution=result.best_solution, 
+                objective=result.best_fitness,
+                converged=true)
+        
+    elseif method == :genetic && bounds !== nothing
+        ga = GeneticAlgorithm(100, bounds, max_generations=max_iterations)
+        result = evolve!(ga, objective_function)
+        return (solution=result.best_solution,
+                objective=result.best_fitness,
+                converged=true)
+        
+    else
+        throw(ArgumentError("Unsupported optimization method: $method"))
+    end
+end
+
+end # module OptimizationMethods
