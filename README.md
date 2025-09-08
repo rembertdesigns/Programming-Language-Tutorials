@@ -88,3 +88,61 @@ Modern development requires expertise across dozens of technologies, frameworks,
 ## 📁 Repository Architecture
 
 ```bash
+``bash
+programming-reference-hub/
+│
+├── 🌐 Web Development
+│   ├── HTML.html                    # Semantic markup & accessibility
+│   ├── CSS.css                      # Modern styling & layouts
+│   ├── JS.js                        # ES6+ JavaScript patterns
+│   ├── TypeScript.ts                # Type-safe development
+│   ├── SASS.scss                    # Advanced CSS preprocessing
+│   ├── react.js                     # Component architecture
+│   ├── Angular.ts                   # Enterprise framework patterns
+│   ├── Node.js                      # Server-side JavaScript
+│   ├── Web3-JavaScript.js           # Blockchain integration
+│   └── AJAX.js                      # API communication
+│
+├── 📱 Mobile & App Development
+│   ├── Dart_Flutter_Mobile_Reference_Complete.dart
+│   ├── Flutter_web_complete_reference.dart
+│   ├── Kotlin_Android_Mobile_Reference.kt
+│   ├── SwiftUI_iOS_Reference_Complete.swift
+│   └── EnterpriseMLFramework.java
+│
+├── 🛠️ Backend & DevOps
+│   ├── main.py                      # Python fundamentals
+│   ├── Python-AI.py                # AI/ML with Python
+│   ├── PHP.php                      # Server-side scripting
+│   ├── C#.cs                        # Enterprise development
+│   ├── Go-Blockchain.go             # Go blockchain patterns
+│   ├── Go_Golang_Microservices_Reference.go
+│   ├── Ruby_Rails_web_reference.rb  # Rails web development
+│   ├── Bash.txt                     # Shell automation
+│   ├── Terminal.txt                 # CLI mastery
+│   ├── GIT.txt                      # Version control
+│   ├── Docker.txt                   # Containerization
+│   ├── YAML.txt                     # Configuration management
+│   ├── Terraform.txt                # Infrastructure as Code
+│   └── Cloud-Init.txt               # Cloud provisioning
+│
+├── 🤖 AI & Machine Learning
+│   ├── Python-AI.py                # ML with Python
+│   ├── R_AI_ML_Complete_Reference.R # Statistical computing
+│   ├── Julia_AI_ML_HighPerformance_Reference.jl
+│   └── Cpp_AI_ML_Comprehensive_Reference.cpp
+│
+├── ⛓️ Blockchain & Crypto
+│   ├── Solidity.sol                 # Smart contracts
+│   ├── Rust-Blockchain.rs           # Secure blockchain development
+│   ├── Go-Blockchain.go             # Distributed systems
+│   ├── Blockchain-Python.py         # Python blockchain
+│   └── Cpp_Blockchain_Core_Complete.cpp
+│
+├── 🎨 Specialist Topics
+│   ├── Email.html                   # Email markup
+│   └── PUG.pug                     # Template preprocessing
+│
+└── 📋 Documentation
+    └── README.md                    # This comprehensive guide
+```
