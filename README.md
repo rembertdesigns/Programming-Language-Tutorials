@@ -122,9 +122,15 @@ Expected Output: Decentralized app with wallet integration
 | **Gemini** | Multi-modal code analysis and generation | All reference files |
 | **Perplexity** | Research-driven development and documentation | All reference files, especially newer frameworks |
 | **Cursor AI** | Full-stack development | Frontend + Backend file combinations |
+| **Windsurf** | AI-powered IDE with contextual code understanding | All reference files, especially for project-wide refactoring |
 | **Lovable** | Full-stack web app generation | react.js, TypeScript.ts, CSS.css, Node.js |
+| **CodeGPT** | VS Code extension for code generation | Any language-specific files |
+| **Amazon CodeWhisperer** | AWS-focused code suggestions | Cloud-Init.txt, Terraform.txt, Python files |
+| **Sourcegraph Cody** | Codebase search and understanding | All reference files for context-aware suggestions |
 | **Replit AI** | Rapid prototyping | HTML.html, CSS.css, JS.js |
 | **Tabnine** | Intelligent autocomplete | Language-specific patterns |
+| **Codeium** | Free AI code completion | Any language-specific files |
+| **Continue** | Open-source AI coding assistant | All reference files for customizable workflows |
 
 ---
 
