@@ -1,5 +1,12 @@
 # 📚 Programming Language Tutorials & Code References
 
+[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/rembertdesigns/Programming-Language-Tutorials.svg?style=social&label=Star)](https://github.com/rembertdesigns/Programming-Language-Tutorials)
+[![GitHub forks](https://img.shields.io/github/forks/rembertdesigns/Programming-Language-Tutorials.svg?style=social&label=Fork)](https://github.com/rembertdesigns/Programming-Language-Tutorials/fork)
+[![GitHub issues](https://img.shields.io/github/issues/rembertdesigns/Programming-Language-Tutorials.svg)](https://github.com/rembertdesigns/Programming-Language-Tutorials/issues)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/rembertdesigns/Programming-Language-Tutorials/blob/main/CONTRIBUTING.md)
+[![Last Update](https://img.shields.io/badge/last%20update-September%202025-blue.svg)](https://github.com/rembertdesigns/Programming-Language-Tutorials)
+
 A comprehensive collection of programming tutorials, code references, and architectural guidelines designed as a learning hub for developers and AI companions. This repository serves as both a practical coding resource and a ruleset for building robust projects across multiple technology ecosystems.
 
 ## 🎯 Project Vision
