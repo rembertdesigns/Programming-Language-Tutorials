@@ -1,0 +1,2972 @@
+# YAML - Yet Another Markup Language / YAML Ain't Markup Language Reference - by Richard Rembert
+
+# YAML is a human-readable data serialization standard for configuration files and data exchange
+# Widely used in DevOps, cloud infrastructure, CI/CD pipelines, and application configuration
+
+# YAML BASICS AND SYNTAX
+
+# YAML is case sensitive and uses indentation (spaces, not tabs) to denote structure
+# Files typically use .yml or .yaml extension
+# YAML documents can contain multiple documents separated by ---
+
+# Comments
+# This is a single line comment
+# YAML only supports single-line comments starting with #
+
+# Document separators
+---
+# First document
+name: "John Doe"
+---
+# Second document  
+name: "Jane Smith"
+
+# Basic data types
+string_value: "Hello World"
+string_unquoted: Hello World
+string_multiline: |
+  This is a multi-line string
+  that preserves line breaks
+string_folded: >
+  This is a folded string
+  that joins lines with spaces
+integer: 42
+float: 3.14159
+boolean_true: true
+boolean_false: false
+null_value: null
+date: 2023-12-25
+datetime: 2023-12-25T10:30:00Z
+
+# Quotes in strings
+single_quotes: 'Can contain "double quotes"'
+double_quotes: "Can contain 'single quotes' and \n escape sequences"
+no_quotes: Simple strings don't need quotes
+
+# Special characters and escaping
+escaped_string: "Line 1\nLine 2\tTabbed"
+raw_string: 'No escaping here: \n \t'
+yaml_special: "YAML special chars: : { } [ ] , & * # | > ' \" % @ `"
+
+# Numbers in different formats
+decimal: 123
+octal: 0123
+hexadecimal: 0x1A
+binary: 0b1010
+scientific: 1.23e+3
+infinity: .inf
+not_a_number: .nan
+
+# Collections - Lists (Arrays)
+simple_list:
+  - item1
+  - item2
+  - item3
+
+inline_list: [item1, item2, item3]
+
+nested_list:
+  - item1
+  - 
+    - nested_item1
+    - nested_item2
+  - item3
+
+mixed_list:
+  - string_item
+  - 42
+  - true
+  - null
+
+# Collections - Dictionaries (Objects/Maps)
+simple_dict:
+  key1: value1
+  key2: value2
+  key3: value3
+
+inline_dict: {key1: value1, key2: value2}
+
+nested_dict:
+  level1:
+    level2:
+      key: value
+      another_key: another_value
+
+# Complex nested structures
+complex_structure:
+  users:
+    - name: "John Doe"
+      age: 30
+      roles: [admin, user]
+      settings:
+        theme: dark
+        notifications: true
+    - name: "Jane Smith"
+      age: 25
+      roles: [user]
+      settings:
+        theme: light
+        notifications: false
+
+# Multi-line strings
+literal_block: |
+  This preserves line breaks.
+  Each line will appear exactly
+  as written in the YAML file.
+  
+  Including blank lines.
+
+folded_block: >
+  This folds lines into a single
+  paragraph. Line breaks are
+  converted to spaces, except
+  for blank lines which create
+  paragraph breaks.
+
+strip_final_newlines: |-
+  This literal block strips
+  the final newline character.
+
+keep_final_newlines: |+
+  This literal block preserves
+  trailing newlines.
+
+
+# YAML ANCHORS AND ALIASES
+
+# Anchors (&) create reusable nodes
+# Aliases (*) reference anchored nodes
+default_settings: &default
+  timeout: 30
+  retries: 3
+  debug: false
+
+# Using aliases to reuse configurations
+service1:
+  name: web-service
+  <<: *default
+  port: 8080
+
+service2:
+  name: api-service
+  <<: *default
+  port: 3000
+  timeout: 60  # Override default value
+
+# Complex anchor example
+database_config: &db_config
+  host: localhost
+  port: 5432
+  ssl: true
+  connection_pool:
+    min: 5
+    max: 20
+
+# Reference the anchor
+production:
+  database:
+    <<: *db_config
+    host: prod-db.example.com
+    username: prod_user
+    password: prod_password
+
+development:
+  database:
+    <<: *db_config
+    host: dev-db.example.com
+    username: dev_user
+    password: dev_password
+
+# Anchoring lists
+common_volumes: &common_volumes
+  - /var/log
+  - /tmp
+  - /opt/app
+
+container1:
+  volumes: *common_volumes
+
+container2:
+  volumes:
+    - *common_volumes
+    - /additional/volume
+
+# Merge multiple anchors
+defaults: &defaults
+  image: ubuntu:20.04
+  restart: unless-stopped
+
+logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: 3
+
+web_service:
+  <<: [*defaults, *logging]
+  ports:
+    - "80:80"
+
+
+# DOCKER COMPOSE YAML
+
+# Complete Docker Compose example
+version: '3.8'
+
+# Define reusable configurations
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-restart-policy: &restart-policy
+  restart: unless-stopped
+
+services:
+  # Web application
+  web:
+    <<: [*default-logging, *restart-policy]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://user:password@db:5432/myapp
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./app:/usr/src/app:ro
+      - app_data:/usr/src/app/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 100M
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Database
+  db:
+    <<: [*default-logging, *restart-policy]
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend
+    secrets:
+      - db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d myapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis cache
+  redis:
+    <<: [*default-logging, *restart-policy]
+    image: redis:6-alpine
+    command: redis-server --appendonly yes --requirepass mypassword
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - backend
+    sysctls:
+      net.core.somaxconn: 1024
+
+  # Nginx reverse proxy
+  nginx:
+    <<: [*default-logging, *restart-policy]
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - web
+    networks:
+      - frontend
+    labels:
+      - "com.example.description=Nginx reverse proxy"
+      - "com.example.department=ops"
+
+  # Background worker
+  worker:
+    <<: [*default-logging, *restart-policy]
+    build:
+      context: .
+      target: worker
+    environment:
+      - NODE_ENV=production
+      - QUEUE_URL=redis://redis:6379/1
+    volumes:
+      - worker_data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - backend
+    deploy:
+      replicas: 3
+
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/postgres
+  redis_data:
+    driver: local
+  app_data:
+    external: true
+  worker_data:
+    name: myapp_worker_data
+  nginx_logs:
+    driver: local
+
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  backend:
+    driver: bridge
+    internal: true
+  default:
+    external:
+      name: myapp_network
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  api_key:
+    external: true
+
+configs:
+  nginx_config:
+    file: ./nginx/nginx.conf
+  app_config:
+    external: true
+
+
+# KUBERNETES YAML MANIFESTS
+
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myapp
+  labels:
+    environment: production
+    team: backend
+---
+
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: myapp
+data:
+  database.properties: |
+    database.host=postgres-service
+    database.port=5432
+    database.name=myapp
+  redis.conf: |
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+  nginx.conf: |
+    upstream backend {
+        server web-service:3000;
+    }
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+---
+
+# Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: myapp
+type: Opaque
+data:
+  database-password: cGFzc3dvcmQxMjM=  # base64 encoded
+  api-key: YWJjZGVmZ2hpams=  # base64 encoded
+stringData:
+  redis-password: myredispassword  # plain text, will be base64 encoded
+---
+
+# Persistent Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: fast-ssd
+  hostPath:
+    path: /data/postgres
+---
+
+# Persistent Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: myapp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+---
+
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-deployment
+  namespace: myapp
+  labels:
+    app: web
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        version: v1.0.0
+    spec:
+      containers:
+      - name: web
+        image: myapp:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: DATABASE_URL
+          value: postgres://$(DB_USER):$(DB_PASSWORD)@postgres-service:5432/myapp
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: database-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: database-password
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: app-storage
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
+      volumes:
+      - name: config-volume
+        configMap:
+          name: app-config
+      - name: app-storage
+        persistentVolumeClaim:
+          claimName: app-pvc
+      imagePullSecrets:
+      - name: regcred
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web
+              topologyKey: kubernetes.io/hostname
+---
+
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: myapp
+  labels:
+    app: web
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  namespace: myapp
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - myapp.example.com
+    secretName: myapp-tls
+  rules:
+  - host: myapp.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+---
+
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  namespace: myapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+
+
+# CI/CD PIPELINE YAML
+
+# GitHub Actions
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+
+env:
+  NODE_VERSION: '16'
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: myorg/myapp
+
+jobs:
+  # Test job
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [14, 16, 18]
+        database: [postgres, mysql]
+        exclude:
+          - node-version: 14
+            database: mysql
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        npm install -g @angular/cli
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run tests
+      run: |
+        npm run test:unit
+        npm run test:integration
+      env:
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+        NODE_ENV: test
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Build application
+      run: npm run build
+
+    - name: Run security scan
+      run: |
+        npm audit --audit-level high
+        npx snyk test
+
+  # Build and push Docker image
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.DOCKER_REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          NODE_ENV=production
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VCS_REF=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+
+  # Deploy to staging
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.myapp.com
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.21.0'
+
+    - name: Deploy to Kubernetes
+      run: |
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
+        export KUBECONFIG=kubeconfig
+        
+        # Update image in deployment
+        kubectl set image deployment/web-deployment \
+          web=${{ needs.build.outputs.image-tag }} \
+          -n staging
+        
+        # Wait for rollout
+        kubectl rollout status deployment/web-deployment -n staging --timeout=300s
+        
+        # Run smoke tests
+        kubectl run smoke-test --rm -i --restart=Never \
+          --image=curlimages/curl:latest \
+          -- curl -f http://web-service.staging.svc.cluster.local/health
+
+  # Deploy to production
+  deploy-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://myapp.com
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Manual approval
+      uses: trstringer/manual-approval@v1
+      with:
+        secret: ${{ github.TOKEN }}
+        approvers: team-leads
+        minimum-approvals: 2
+
+    - name: Deploy to production
+      run: |
+        # Production deployment logic here
+        echo "Deploying to production..."
+
+
+# GITLAB CI YAML
+stages:
+  - validate
+  - test
+  - build
+  - deploy-staging
+  - deploy-production
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  KUBECONFIG: /tmp/kubeconfig
+
+# Global before_script
+before_script:
+  - echo "Starting pipeline for commit $CI_COMMIT_SHA"
+
+# Validate stage
+validate-yaml:
+  stage: validate
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache yamllint
+  script:
+    - yamllint -d relaxed .
+  rules:
+    - changes:
+        - "**/*.yml"
+        - "**/*.yaml"
+
+validate-dockerfile:
+  stage: validate
+  image: hadolint/hadolint:latest-debian
+  script:
+    - hadolint Dockerfile
+  rules:
+    - changes:
+        - Dockerfile
+
+# Test stage
+unit-tests:
+  stage: test
+  image: node:16-alpine
+  services:
+    - postgres:13-alpine
+  variables:
+    POSTGRES_DB: testdb
+    POSTGRES_USER: testuser
+    POSTGRES_PASSWORD: testpass
+    DATABASE_URL: postgres://testuser:testpass@postgres:5432/testdb
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - npm ci
+    - npm run test:coverage
+  coverage: '/Lines\s*:\s*(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    expire_in: 1 week
+
+security-scan:
+  stage: test
+  image: securecodewarrior/docker-auto-labels:latest
+  script:
+    - npm audit --audit-level high
+    - docker run --rm -v "$PWD":/app securecodewarrior/docker-auto-labels:latest /app
+  allow_failure: true
+
+# Build stage
+build-image:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build --pull -t $IMAGE_TAG .
+    - docker push $IMAGE_TAG
+    - docker tag $IMAGE_TAG $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# Deploy staging
+deploy-staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  environment:
+    name: staging
+    url: https://staging.myapp.com
+  before_script:
+    - echo $KUBE_CONFIG | base64 -d > $KUBECONFIG
+  script:
+    - kubectl set image deployment/web-deployment web=$IMAGE_TAG -n staging
+    - kubectl rollout status deployment/web-deployment -n staging
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# Deploy production
+deploy-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://myapp.com
+  before_script:
+    - echo $KUBE_CONFIG_PROD | base64 -d > $KUBECONFIG
+  script:
+    - kubectl set image deployment/web-deployment web=$IMAGE_TAG -n production
+    - kubectl rollout status deployment/web-deployment -n production
+  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+
+# ANSIBLE YAML PLAYBOOKS
+
+# Site playbook
+---
+- name: Deploy web application
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+  vars:
+    app_name: myapp
+    app_version: "{{ version | default('latest') }}"
+    app_port: 3000
+    app_user: webapp
+    app_directory: "/opt/{{ app_name }}"
+    
+  vars_files:
+    - vars/{{ ansible_environment }}.yml
+    - vault/secrets.yml
+
+  pre_tasks:
+    - name: Update system packages
+      package:
+        name: "*"
+        state: latest
+      when: update_packages | default(false)
+
+    - name: Install required packages
+      package:
+        name:
+          - docker.io
+          - docker-compose
+          - nginx
+          - certbot
+        state: present
+
+  roles:
+    - { role: common, tags: ['common'] }
+    - { role: docker, tags: ['docker'] }
+    - { role: nginx, tags: ['nginx'] }
+    - { role: application, tags: ['app'] }
+
+  tasks:
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        shell: /bin/bash
+        home: "{{ app_directory }}"
+        create_home: yes
+        system: yes
+
+    - name: Create application directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+      loop:
+        - "{{ app_directory }}"
+        - "{{ app_directory }}/logs"
+        - "{{ app_directory }}/data"
+        - "{{ app_directory }}/config"
+
+    - name: Deploy application configuration
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - src: app.conf.j2
+          dest: "{{ app_directory }}/config/app.conf"
+        - src: docker-compose.yml.j2
+          dest: "{{ app_directory }}/docker-compose.yml"
+        - src: .env.j2
+          dest: "{{ app_directory }}/.env"
+          mode: '0600'
+      notify:
+        - restart application
+
+    - name: Pull Docker images
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+        force_source: yes
+      loop:
+        - "{{ app_name }}:{{ app_version }}"
+        - "postgres:13-alpine"
+        - "redis:6-alpine"
+
+    - name: Deploy application stack
+      docker_compose:
+        project_src: "{{ app_directory }}"
+        state: present
+        pull: yes
+      notify:
+        - restart application
+
+    - name: Wait for application to be ready
+      uri:
+        url: "http://localhost:{{ app_port }}/health"
+        method: GET
+        status_code: 200
+      retries: 30
+      delay: 10
+
+    - name: Configure Nginx reverse proxy
+      template:
+        src: nginx-site.conf.j2
+        dest: "/etc/nginx/sites-available/{{ app_name }}"
+      notify:
+        - reload nginx
+
+    - name: Enable Nginx site
+      file:
+        src: "/etc/nginx/sites-available/{{ app_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ app_name }}"
+        state: link
+      notify:
+        - reload nginx
+
+    - name: Setup SSL certificate
+      shell: |
+        certbot --nginx -d {{ domain_name }} \
+          --email {{ admin_email }} \
+          --agree-tos --non-interactive
+      when: enable_ssl | default(true)
+
+    - name: Setup log rotation
+      template:
+        src: logrotate.j2
+        dest: "/etc/logrotate.d/{{ app_name }}"
+        mode: '0644'
+
+    - name: Setup monitoring
+      include_tasks: monitoring.yml
+      when: enable_monitoring | default(true)
+
+  handlers:
+    - name: restart application
+      docker_compose:
+        project_src: "{{ app_directory }}"
+        restarted: yes
+
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+  post_tasks:
+    - name: Verify deployment
+      uri:
+        url: "https://{{ domain_name }}/health"
+        method: GET
+        status_code: 200
+        validate_certs: yes
+      delegate_to: localhost
+
+    - name: Send deployment notification
+      mail:
+        to: "{{ notification_email }}"
+        subject: "Deployment Complete: {{ app_name }} {{ app_version }}"
+        body: |
+          Application {{ app_name }} version {{ app_version }} 
+          has been successfully deployed to {{ inventory_hostname }}.
+          
+          URL: https://{{ domain_name }}
+          Deployed by: {{ ansible_user_id }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+      delegate_to: localhost
+      when: send_notifications | default(false)
+
+# Inventory example
+[webservers]
+web1.example.com ansible_host=10.0.1.10 ansible_user=ubuntu
+web2.example.com ansible_host=10.0.1.11 ansible_user=ubuntu
+web3.example.com ansible_host=10.0.1.12 ansible_user=ubuntu
+
+[databases]
+db1.example.com ansible_host=10.0.2.10 ansible_user=ubuntu
+
+[loadbalancers]
+lb1.example.com ansible_host=10.0.3.10 ansible_user=ubuntu
+
+[all:vars]
+ansible_ssh_private_key_file=~/.ssh/ansible_key
+ansible_python_interpreter=/usr/bin/python3
+
+
+# HELM CHARTS YAML
+
+# Chart.yaml
+apiVersion: v2
+name: myapp
+description: A Helm chart for MyApp web application
+type: application
+version: 1.0.0
+appVersion: "2.1.0"
+keywords:
+  - web
+  - nodejs
+  - microservice
+home: https://github.com/myorg/myapp
+sources:
+  - https://github.com/myorg/myapp
+maintainers:
+  - name: Development Team
+    email: dev-team@example.com
+    url: https://myorg.com
+dependencies:
+  - name: postgresql
+    version: 11.9.13
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 17.3.7
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+annotations:
+  category: Application
+  licenses: Apache-2.0
+
+# values.yaml
+# Default values for myapp
+replicaCount: 3
+
+image:
+  repository: myorg/myapp
+  pullPolicy: IfNotPresent
+  tag: ""  # Overrides the image tag whose default is the chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3000"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: myapp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: myapp-tls
+      hosts:
+        - myapp.example.com
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - myapp
+        topologyKey: kubernetes.io/hostname
+
+# Application configuration
+config:
+  nodeEnv: production
+  logLevel: info
+  port: 3000
+  database:
+    host: postgresql
+    port: 5432
+    name: myapp
+    sslMode: require
+  redis:
+    host: redis-master
+    port: 6379
+    db: 0
+  features:
+    enableMetrics: true
+    enableHealthCheck: true
+    enableSwagger: false
+
+# Secrets (will be base64 encoded)
+secrets:
+  databasePassword: ""
+  redisPassword: ""
+  jwtSecret: ""
+  apiKey: ""
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: postgres
+    username: myapp
+    password: myapppassword
+    database: myapp
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "fast-ssd"
+  metrics:
+    enabled: true
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: myredispassword
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+  metrics:
+    enabled: true
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Backup configuration
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: 7
+
+# templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myapp.fullname" . }}
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "myapp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "myapp.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "myapp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.port }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.config.nodeEnv }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel }}
+            - name: PORT
+              value: {{ .Values.config.port | quote }}
+            - name: DATABASE_URL
+              value: postgres://{{ .Values.postgresql.auth.username }}:$(DATABASE_PASSWORD)@{{ include "myapp.databaseHost" . }}:{{ .Values.config.database.port }}/{{ .Values.config.database.name }}?sslmode={{ .Values.config.database.sslMode }}
+            - name: REDIS_URL
+              value: redis://:$(REDIS_PASSWORD)@{{ include "myapp.redisHost" . }}:{{ .Values.config.redis.port }}/{{ .Values.config.redis.db }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "myapp.fullname" . }}
+                  key: database-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "myapp.fullname" . }}
+                  key: redis-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "myapp.fullname" . }}
+                  key: jwt-secret
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "myapp.fullname" . }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+
+# CONFIGURATION FILES
+
+# Spring Boot application.yml
+spring:
+  application:
+    name: myapp
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:development}
+  
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:myapp}
+    username: ${DATABASE_USERNAME:myapp}
+    password: ${DATABASE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:validate}
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-wait: -1ms
+        max-idle: 8
+        min-idle: 0
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid,email,profile
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+  error:
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    com.myorg.myapp: ${LOG_LEVEL:INFO}
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE:logs/application.log}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:defaultsecret}
+    expiration: ${JWT_EXPIRATION:86400}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,https://myapp.com}
+  rate-limiting:
+    enabled: ${RATE_LIMITING_ENABLED:true}
+    requests-per-minute: ${RATE_LIMIT_RPM:100}
+  features:
+    swagger-ui: ${SWAGGER_ENABLED:false}
+    actuator-security: ${ACTUATOR_SECURITY:true}
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: development
+  
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  
+  h2:
+    console:
+      enabled: true
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+logging:
+  level:
+    com.myorg.myapp: DEBUG
+    org.hibernate.SQL: DEBUG
+
+app:
+  features:
+    swagger-ui: true
+    actuator-security: false
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: production
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+logging:
+  level:
+    root: WARN
+    com.myorg.myapp: INFO
+
+
+# CLOUD-INIT / CLOUD-CONFIG
+
+#cloud-config
+
+# Basic system configuration
+hostname: web-server-01
+fqdn: web-server-01.example.com
+manage_etc_hosts: true
+
+# User management
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin, docker
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... user@example.com
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... admin@example.com
+  - name: webapp
+    system: true
+    shell: /bin/false
+    home: /opt/webapp
+    create_home: true
+
+# SSH configuration
+ssh_pwauth: false
+disable_root: true
+ssh_keys:
+  rsa_private: |
+    -----BEGIN RSA PRIVATE KEY-----
+    MIIEpAIBAAKCAQEA...
+    -----END RSA PRIVATE KEY-----
+  rsa_public: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...
+
+# Package management
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - docker.io
+  - docker-compose
+  - nginx
+  - certbot
+  - python3-certbot-nginx
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+
+# APT configuration
+apt:
+  preserve_sources_list: false
+  sources:
+    docker:
+      source: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+    kubernetes:
+      source: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+      keyid: BA07F4FB
+
+# File system configuration
+disk_setup:
+  /dev/nvme1n1:
+    table_type: gpt
+    layout: true
+    overwrite: false
+
+fs_setup:
+  - label: data
+    filesystem: ext4
+    device: /dev/nvme1n1p1
+    partition: auto
+
+mounts:
+  - ["/dev/nvme1n1p1", "/data", "ext4", "defaults,nofail", "0", "2"]
+
+# File and directory creation
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        },
+        "storage-driver": "overlay2"
+      }
+    owner: root:root
+    permissions: '0644'
+
+  - path: /opt/webapp/docker-compose.yml
+    content: |
+      version: '3.8'
+      services:
+        web:
+          image: nginx:alpine
+          ports:
+            - "80:80"
+          volumes:
+            - ./html:/usr/share/nginx/html:ro
+          restart: unless-stopped
+    owner: webapp:webapp
+    permissions: '0644'
+
+  - path: /etc/nginx/sites-available/default
+    content: |
+      server {
+          listen 80 default_server;
+          listen [::]:80 default_server;
+          
+          root /var/www/html;
+          index index.html index.htm index.nginx-debian.html;
+          
+          server_name _;
+          
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+          
+          location /health {
+              access_log off;
+              return 200 "healthy\n";
+              add_header Content-Type text/plain;
+          }
+      }
+    owner: root:root
+    permissions: '0644'
+
+  - path: /etc/systemd/system/webapp.service
+    content: |
+      [Unit]
+      Description=Web Application
+      Requires=docker.service
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/opt/webapp
+      ExecStart=/usr/bin/docker-compose up -d
+      ExecStop=/usr/bin/docker-compose down
+      TimeoutStartSec=0
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root:root
+    permissions: '0644'
+
+  - path: /etc/cron.d/backup
+    content: |
+      # Daily backup at 2 AM
+      0 2 * * * webapp /opt/webapp/scripts/backup.sh >> /var/log/backup.log 2>&1
+    owner: root:root
+    permissions: '0644'
+
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime = 1h
+      findtime = 10m
+      maxretry = 5
+      
+      [sshd]
+      enabled = true
+      port = ssh
+      logpath = %(sshd_log)s
+      backend = %(sshd_backend)s
+    owner: root:root
+    permissions: '0644'
+
+# Commands to run
+runcmd:
+  # System setup
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker ubuntu
+  - usermod -aG docker webapp
+
+  # Security configuration
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow ssh
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # SSL certificate setup
+  - certbot --nginx -d example.com --email admin@example.com --agree-tos --non-interactive
+
+  # Service setup
+  - systemctl daemon-reload
+  - systemctl enable webapp
+  - systemctl start webapp
+  - systemctl enable nginx
+  - systemctl start nginx
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Application deployment
+  - cd /opt/webapp && docker-compose pull
+  - cd /opt/webapp && docker-compose up -d
+
+  # Log setup
+  - mkdir -p /var/log/webapp
+  - chown webapp:webapp /var/log/webapp
+
+  # Cleanup
+  - apt autoremove -y
+  - apt autoclean
+
+# System configuration
+timezone: UTC
+locale: en_US.UTF-8
+
+# Network configuration
+network:
+  config: disabled
+
+# Bootcmd (runs early in boot process)
+bootcmd:
+  - echo 'System booting...' >> /var/log/boot.log
+  - cloud-init-per once ssh-users-ca echo "TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pub" >> /etc/ssh/sshd_config
+
+# Power state (reboot after cloud-init completes)
+power_state:
+  delay: now
+  mode: reboot
+  message: Rebooting after cloud-init completion
+  condition: true
+
+
+# OPENAPI / SWAGGER YAML
+
+openapi: 3.0.3
+info:
+  title: MyApp API
+  description: |
+    RESTful API for MyApp web application
+    
+    ## Authentication
+    This API uses JWT tokens for authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+    
+    ## Rate Limiting
+    API calls are limited to 1000 requests per hour per user.
+    
+    ## Error Handling
+    All errors follow the RFC 7807 Problem Details specification.
+  version: 2.1.0
+  contact:
+    name: API Support
+    url: https://myapp.com/support
+    email: api-support@myapp.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://myapp.com/terms
+
+servers:
+  - url: https://api.myapp.com/v2
+    description: Production server
+  - url: https://staging-api.myapp.com/v2
+    description: Staging server
+  - url: http://localhost:3000/api/v2
+    description: Development server
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and return JWT token
+      operationId: loginUser
+      security: []  # No auth required for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              standard:
+                summary: Standard login
+                value:
+                  email: user@example.com
+                  password: password123
+              admin:
+                summary: Admin login
+                value:
+                  email: admin@example.com
+                  password: adminpass123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                success:
+                  summary: Successful login
+                  value:
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    user:
+                      id: 123
+                      email: user@example.com
+                      name: John Doe
+                      role: user
+                    expiresIn: 3600
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      description: Retrieve a paginated list of users
+      operationId: getUsers
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: role
+          in: query
+          description: Filter by user role
+          required: false
+          schema:
+            type: string
+            enum: [admin, user, moderator]
+        - name: search
+          in: query
+          description: Search users by name or email
+          required: false
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 100
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      filtered:
+                        type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Users
+      summary: Create user
+      description: Create a new user account
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Retrieve user information by user ID
+      operationId: getUserById
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Update user information
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      description: Delete a user account
+      operationId: deleteUser
+      responses:
+        '204':
+          description: User deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/UserIdParam'
+    
+    post:
+      tags:
+        - Users
+      summary: Upload user avatar
+      description: Upload a new avatar image for the user
+      operationId: uploadUserAvatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Avatar image file (JPEG, PNG, max 5MB)
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatarUrl:
+                    type: string
+                    format: uri
+                    example: https://cdn.myapp.com/avatars/123.jpg
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+    
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service communication
+
+  parameters:
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      description: Unique identifier for the user
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 123
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number for pagination
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Number of items per page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - role
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the user
+          example: 123
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: User's full name
+          example: John Doe
+        role:
+          type: string
+          enum: [admin, user, moderator]
+          description: User's role in the system
+          example: user
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user's avatar image
+          example: https://cdn.myapp.com/avatars/123.jpg
+        isActive:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of user's last login
+          example: 2023-12-25T10:30:00Z
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when user was created
+          example: 2023-01-15T08:00:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when user was last updated
+          example: 2023-12-20T14:30:00Z
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: User's password
+          example: password123
+        rememberMe:
+          type: boolean
+          default: false
+          description: Whether to extend token expiration
+          example: false
+
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - user
+        - expiresIn
+      properties:
+        token:
+          type: string
+          description: JWT authentication token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+        expiresIn:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+
+    CreateUserRequest:
+      type: object
+      required:
+        - email
+        - name
+        - password
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: newuser@example.com
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: User's full name
+          example: Jane Smith
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}
+          description: Password with at least 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+          example: SecurePass123!
+        role:
+          type: string
+          enum: [admin, user, moderator]
+          description: User's role in the system
+          example: user
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: User's full name
+          example: John Updated Doe
+        role:
+          type: string
+          enum: [admin, user, moderator]
+          description: User's role in the system
+          example: moderator
+        isActive:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - limit
+        - total
+        - pages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of items per page
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          description: Total number of items
+          example: 150
+        pages:
+          type: integer
+          minimum: 0
+          description: Total number of pages
+          example: 8
+        hasNext:
+          type: boolean
+          description: Whether there is a next page
+          example: true
+        hasPrev:
+          type: boolean
+          description: Whether there is a previous page
+          example: false
+
+    Error:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          description: A URI reference that identifies the problem type
+          example: https://myapp.com/problems/validation-error
+        title:
+          type: string
+          description: A short, human-readable summary of the problem
+          example: Validation Error
+        status:
+          type: integer
+          description: The HTTP status code
+          example: 422
+        detail:
+          type: string
+          description: A human-readable explanation specific to this occurrence
+          example: The email field is required and must be a valid email address
+        instance:
+          type: string
+          format: uri
+          description: A URI reference that identifies the specific occurrence
+          example: /users/123
+        errors:
+          type: array
+          description: Detailed validation errors
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: Email is required
+              code:
+                type: string
+                example: REQUIRED
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://myapp.com/problems/unauthorized
+            title: Unauthorized
+            status: 401
+            detail: Valid authentication token is required
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://myapp.com/problems/forbidden
+            title: Forbidden
+            status: 403
+            detail: You do not have permission to access this resource
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://myapp.com/problems/not-found
+            title: Not Found
+            status: 404
+            detail: The requested resource was not found
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://myapp.com/problems/validation-error
+            title: Validation Error
+            status: 422
+            detail: One or more fields failed validation
+            errors:
+              - field: email
+                message: Email is required
+                code: REQUIRED
+              - field: password
+                message: Password must be at least 8 characters
+                code: MIN_LENGTH
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          description: The number of allowed requests in the current period
+          schema:
+            type: integer
+            example: 1000
+        X-RateLimit-Remaining:
+          description: The number of remaining requests in the current period
+          schema:
+            type: integer
+            example: 0
+        X-RateLimit-Reset:
+          description: The time at which the rate limit resets (Unix timestamp)
+          schema:
+            type: integer
+            example: 1640995200
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://myapp.com/problems/rate-limit-exceeded
+            title: Rate Limit Exceeded
+            status: 429
+            detail: You have exceeded the rate limit of 1000 requests per hour
+
+  examples:
+    UserExample:
+      summary: Standard user
+      value:
+        id: 123
+        email: user@example.com
+        name: John Doe
+        role: user
+        avatarUrl: https://cdn.myapp.com/avatars/123.jpg
+        isActive: true
+        lastLoginAt: 2023-12-25T10:30:00Z
+        createdAt: 2023-01-15T08:00:00Z
+        updatedAt: 2023-12-20T14:30:00Z
+
+    AdminUserExample:
+      summary: Admin user
+      value:
+        id: 456
+        email: admin@example.com
+        name: Jane Admin
+        role: admin
+        avatarUrl: null
+        isActive: true
+        lastLoginAt: 2023-12-25T09:15:00Z
+        createdAt: 2023-01-10T12:00:00Z
+        updatedAt: 2023-12-25T09:15:00Z
+
+
+# YAML VALIDATION AND BEST PRACTICES
+
+# YAML Syntax Rules
+# 1. Indentation: Use spaces, not tabs (typically 2 spaces)
+# 2. Case sensitivity: YAML is case-sensitive
+# 3. Comments: Only single-line comments with #
+# 4. Document separators: Use --- to separate documents
+# 5. Strings: Can be quoted or unquoted (be careful with special characters)
+# 6. Lists: Use - for list items or [item1, item2] for inline
+# 7. Objects: Use key: value pairs or {key1: value1, key2: value2} for inline
+
+# Common YAML Validation Tools
+yamllint_config: |
+  extends: default
+  
+  rules:
+    # Line length
+    line-length:
+      max: 120
+      allow-non-breakable-words: true
+      allow-non-breakable-inline-mappings: false
+    
+    # Indentation
+    indentation:
+      spaces: 2
+      indent-sequences: true
+      check-multi-line-strings: false
+    
+    # Comments
+    comments:
+      min-spaces-from-content: 2
+      min-spaces-from-beginning: 1
+    
+    # Empty lines
+    empty-lines:
+      max: 2
+      max-start: 0
+      max-end: 1
+    
+    # Brackets and braces
+    brackets:
+      min-spaces-inside: 0
+      max-spaces-inside: 1
+    
+    braces:
+      min-spaces-inside: 0
+      max-spaces-inside: 1
+    
+    # Truthy values
+    truthy:
+      allowed-values: ['true', 'false', 'yes', 'no']
+
+# YAML Schema validation example (JSON Schema for YAML)
+user_schema:
+  $schema: "http://json-schema.org/draft-07/schema#"
+  type: object
+  required:
+    - name
+    - email
+    - age
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 100
+    email:
+      type: string
+      format: email
+    age:
+      type: integer
+      minimum: 0
+      maximum: 150
+    hobbies:
+      type: array
+      items:
+        type: string
+      maxItems: 10
+    address:
+      type: object
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        zipcode:
+          type: string
+          pattern: "^[0-9]{5}(-[0-9]{4})?$"
+      required:
+        - city
+
+# Best Practices
+best_practices:
+  consistency:
+    - "Use consistent indentation (2 spaces recommended)"
+    - "Be consistent with quoting (prefer unquoted when possible)"
+    - "Use consistent naming conventions (snake_case or camelCase)"
+  
+  readability:
+    - "Add comments to explain complex configurations"
+    - "Use meaningful key names"
+    - "Group related configurations together"
+    - "Use blank lines to separate logical sections"
+  
+  security:
+    - "Never commit secrets directly in YAML files"
+    - "Use environment variables or secret management tools"
+    - "Validate YAML files in CI/CD pipelines"
+    - "Use schemas to validate structure and types"
+  
+  maintenance:
+    - "Use anchors and aliases for repeated configurations"
+    - "Keep files focused (don't create monolithic YAML files)"
+    - "Version your configuration files"
+    - "Document breaking changes in comments"
+
+
+# COMMON YAML PATTERNS
+
+# Environment-specific configurations
+environment_pattern: &env_pattern
+  development:
+    database_url: "postgres://localhost:5432/myapp_dev"
+    debug: true
+    log_level: "DEBUG"
+  
+  staging:
+    database_url: "postgres://staging-db:5432/myapp_staging"
+    debug: false
+    log_level: "INFO"
+  
+  production:
+    database_url: "postgres://prod-db:5432/myapp_prod"
+    debug: false
+    log_level: "WARN"
+
+# Feature flags pattern
+feature_flags:
+  defaults: &default_features
+    enable_new_ui: false
+    enable_analytics: true
+    enable_beta_features: false
+    max_upload_size: 10485760  # 10MB
+  
+  development:
+    <<: *default_features
+    enable_new_ui: true
+    enable_beta_features: true
+  
+  production:
+    <<: *default_features
+    enable_analytics: true
+
+# Service discovery pattern
+services:
+  database: &database_service
+    host: "${DATABASE_HOST:-localhost}"
+    port: "${DATABASE_PORT:-5432}"
+    name: "${DATABASE_NAME:-myapp}"
+    ssl: "${DATABASE_SSL:-true}"
+  
+  cache: &cache_service
+    host: "${REDIS_HOST:-localhost}"
+    port: "${REDIS_PORT:-6379}"
+    db: "${REDIS_DB:-0}"
+  
+  message_queue: &queue_service
+    host: "${RABBITMQ_HOST:-localhost}"
+    port: "${RABBITMQ_PORT:-5672}"
+    vhost: "${RABBITMQ_VHOST:-/}"
+
+# Resource requirements pattern
+resource_profiles:
+  small: &small_resources
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+  
+  medium: &medium_resources
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  large: &large_resources
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+# Deployment strategy pattern
+deployment_strategies:
+  rolling_update: &rolling_update
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  
+  recreate: &recreate
+    type: Recreate
+  
+  blue_green: &blue_green
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 100%
+
+
+# YAML PROCESSING AND TOOLS
+
+# Common YAML processing commands
+
+# Validation
+validate_yaml_commands: |
+  # Using yamllint
+  yamllint file.yml
+  yamllint -d relaxed file.yml
+  yamllint -c .yamllint.yml directory/
+  
+  # Using Python
+  python -c "import yaml; yaml.safe_load(open('file.yml'))"
+  
+  # Using yq (YAML processor)
+  yq eval file.yml
+  yq validate file.yml
+
+# Transformation and querying
+yaml_processing_commands: |
+  # Using yq to query YAML
+  yq eval '.services.web.image' docker-compose.yml
+  yq eval '.spec.containers[0].name' k8s-deployment.yml
+  yq eval '.environments.production.database_url' config.yml
+  
+  # Modify YAML with yq
+  yq eval '.spec.replicas = 5' -i deployment.yml
+  yq eval '.services.web.ports[0] = "8080:80"' -i docker-compose.yml
+  
+  # Convert between formats
+  yq eval -o json file.yml > file.json
+  yq eval file.json > file.yml
+  
+  # Merge YAML files
+  yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' base.yml override.yml
+
+# Environment variable substitution
+envsubst_example: |
+  # Original YAML with variables
+  database:
+    host: ${DB_HOST}
+    port: ${DB_PORT:-5432}
+    name: ${DB_NAME}
+  
+  # Process with envsubst
+  envsubst < template.yml > config.yml
+  
+  # Or with custom delimiter
+  envsubst '$DB_HOST,$DB_PORT,$DB_NAME' < template.yml > config.yml
+
+# Template processing with Helm
+helm_template_commands: |
+  # Generate YAML from Helm templates
+  helm template myapp ./chart
+  helm template myapp ./chart --values values-prod.yml
+  helm template myapp ./chart --set image.tag=v2.1.0
+  
+  # Validate Helm templates
+  helm lint ./chart
+  helm template myapp ./chart --validate
+
+# JSON Schema validation
+json_schema_validation: |
+  # Using ajv-cli
+  ajv validate -s schema.json -d config.yml
+  
+  # Using check-jsonschema
+  check-jsonschema --schemafile schema.json config.yml
+  
+  # Using Python jsonschema
+  python -c "
+  import yaml, jsonschema
+  with open('config.yml') as f: data = yaml.safe_load(f)
+  with open('schema.json') as f: schema = json.load(f)
+  jsonschema.validate(data, schema)
+  "
+
+
+# TROUBLESHOOTING YAML
+
+# Common YAML errors and solutions
+common_errors:
+  indentation_error:
+    problem: "Inconsistent indentation"
+    example_bad: |
+      services:
+        web:
+          image: nginx
+         ports:  # Wrong indentation
+           - "80:80"
+    example_good: |
+      services:
+        web:
+          image: nginx
+          ports:  # Correct indentation
+            - "80:80"
+  
+  tab_character_error:
+    problem: "Using tabs instead of spaces"
+    solution: "Replace all tabs with spaces (use editor setting)"
+    command: "sed 's/\t/  /g' file.yml"
+  
+  quote_character_error:
+    problem: "Smart quotes instead of straight quotes"
+    example_bad: |
+      message: "Hello World"  # Smart quotes
+    example_good: |
+      message: "Hello World"  # Straight quotes
+  
+  colon_spacing_error:
+    problem: "Missing space after colon"
+    example_bad: |
+      key:value  # No space after colon
+    example_good: |
+      key: value  # Space after colon
+  
+  list_indentation_error:
+    problem: "Incorrect list item indentation"
+    example_bad: |
+      items:
+      - item1  # Should be indented
+      - item2
+    example_good: |
+      items:
+        - item1  # Properly indented
+        - item2
+  
+  anchor_reference_error:
+    problem: "Using undefined anchor"
+    example_bad: |
+      service1:
+        <<: *undefined_anchor  # Anchor not defined
+    example_good: |
+      defaults: &defaults
+        restart: unless-stopped
+      service1:
+        <<: *defaults  # Anchor properly defined
+
+# Debugging techniques
+debugging_yaml:
+  validation_steps:
+    - "Check file encoding (should be UTF-8)"
+    - "Validate basic YAML syntax"
+    - "Check indentation consistency"
+    - "Verify anchor/alias references"
+    - "Validate against schema if available"
+  
+  tools_for_debugging:
+    - "yamllint: Syntax and style checking"
+    - "yq: Query and validate structure"
+    - "JSON Schema validators: Data validation"
+    - "IDE plugins: Real-time syntax checking"
+    - "Online validators: Quick syntax checking"
+  
+  common_checks: |
+    # Basic syntax check
+    python -c "import yaml; print('Valid YAML' if yaml.safe_load(open('file.yml')) else 'Invalid')"
+    
+    # Check for tabs
+    grep -P '\t' file.yml
+    
+    # Check line endings
+    file file.yml
+    
+    # Find long lines
+    awk 'length > 120 {print NR ": " $0}' file.yml
+
+
+# YAML SECURITY CONSIDERATIONS
+
+security_guidelines:
+  secrets_management:
+    - "Never store secrets in plaintext YAML files"
+    - "Use environment variables for sensitive data"
+    - "Implement proper secret rotation"
+    - "Use secret management tools (Vault, K8s secrets, etc.)"
+  
+  validation_security:
+    - "Always validate YAML input from external sources"
+    - "Use safe_load() instead of load() in Python"
+    - "Implement schema validation for user input"
+    - "Set resource limits to prevent DoS attacks"
+  
+  access_control:
+    - "Restrict access to configuration files"
+    - "Use proper file permissions (600/644)"
+    - "Implement RBAC for configuration management"
+    - "Audit configuration changes"
+
+# Safe YAML loading examples
+safe_yaml_loading: |
+  # Python - Safe loading
+  import yaml
+  with open('config.yml', 'r') as file:
+      data = yaml.safe_load(file)  # Use safe_load, not load
+  
+  # Python - Custom loader with restrictions
+  class SafeLoader(yaml.SafeLoader):
+      pass
+  
+  # Remove dangerous constructors
+  SafeLoader.yaml_constructors.pop('tag:yaml.org,2002:python/object/apply', None)
+  
+  # Node.js - Safe loading with js-yaml
+  const yaml = require('js-yaml');
+  const fs = require('fs');
+  
+  try {
+      const doc = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
+      console.log(doc);
+  } catch (e) {
+      console.log(e);
+  }
+
+# Secret management patterns
+secret_management_patterns: |
+  # Using environment variables
+  database:
+    host: postgres.example.com
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  
+  # Using external secret references (Kubernetes)
+  env:
+    - name: DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: db-secret
+          key: password
+  
+  # Using Helm secrets
+  database:
+    password: {{ .Values.secrets.dbPassword | b64enc | quote }}
+  
+  # Using HashiCorp Vault annotations (Kubernetes)
+  metadata:
+    annotations:
+      vault.hashicorp.com/agent-inject: "true"
+      vault.hashicorp.com/agent-inject-secret-db: "database/creds/db-app"
+
+
+echo "YAML Reference Complete!"
+echo "YAML is essential for modern DevOps and cloud infrastructure"
+echo "Practice with different tools: Docker Compose, Kubernetes, CI/CD pipelines"
+echo "Remember: Proper indentation and validation are crucial for YAML success"
