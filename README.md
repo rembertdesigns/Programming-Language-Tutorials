@@ -200,7 +200,8 @@ Expected Output: Decentralized app with wallet integration
 
 Our files follow consistent, production-ready patterns with comprehensive documentation. Here's what you can expect across different technology stacks:
 
-### **React Component Example (from react.js)**
+### **React Component Example**
+**From: `react.js`**
 ```jsx
 // Modern React with TypeScript and hooks - Safe Dynamic Content Rendering
 import React, { useState, useEffect } from 'react';
@@ -257,7 +258,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
 export default UserDashboard;
 ```
-### **Infrastructure Example (from Terraform.txt)**
+### **Infrastructure Example**
+**From: `Terraform.txt`**
 ```hcl
 # AWS EKS cluster with security best practices and comprehensive documentation
 resource "aws_eks_cluster" "main" {
@@ -302,7 +304,8 @@ resource "aws_eks_cluster" "main" {
   }
 }
 ```
-### **Docker Multi-Stage Build Example (from Docker.txt)**
+### **Docker Multi-Stage Build Example**
+**From: `Docker.txt`**
 ```dockerfile
 # Multi-stage build for optimized production images
 # Build stage - Contains all build dependencies
@@ -344,7 +347,8 @@ EXPOSE 3000
 # Use exec form for proper signal handling
 CMD ["npm", "start"]
 ```
-### **Swift iOS Development Example (from SwiftUI_iOS_Reference_Complete.swift)**
+### **Swift iOS Development Example**
+**From: `SwiftUI_iOS_Reference_Complete.swift`**
 ```swift
 // Modern SwiftUI with MVVM architecture and best practices
 import SwiftUI
@@ -447,7 +451,8 @@ struct UserProfileView: View {
     }
 }
 ```
-### **Python API Development Example (from main.py)**
+### **Python API Development Example**
+**From: `main.py`**
 ```python
 # FastAPI with comprehensive error handling and security
 from fastapi import FastAPI, HTTPException, Depends, status
@@ -625,6 +630,8 @@ Every file includes:
 - **Focus management** for dynamic content updates
 
 This standardized approach ensures every code example serves as both a working implementation and a learning resource for best practices across the entire technology stack.
+
+**📁 See examples above or [browse the repository](https://github.com/rembertdesigns/Programming-Language-Tutorials) for more comprehensive patterns and implementations.**
 
 ---
 
