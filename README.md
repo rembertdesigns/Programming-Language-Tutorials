@@ -9,6 +9,21 @@
 
 A comprehensive collection of programming tutorials, code references, and architectural guidelines designed as a learning hub for developers and AI companions. This repository serves as both a practical coding resource and a ruleset for building robust projects across multiple technology ecosystems.
 
+## 🚀 Quick Navigation
+
+| Section | Description |
+|---------|-------------|
+| [🎯 Project Vision](#-project-vision) | Core problem solved and our solution approach |
+| [✨ Technologies](#-technologies--file-structure) | Complete file structure and technology coverage |
+| [📁 Repository Architecture](#-repository-architecture) | Organized file tree and groupings |
+| [🤖 AI Integration Guide](#-getting-started-for-ai-integrations) | Concrete AI automation scenarios |
+| [🚀 How to Use](#-how-developers--ai-can-use-this-hub) | Usage patterns for humans and AI |
+| [📚 Learning Paths](#-learning-paths-by-specialization) | Specialized development tracks |
+| [🛠️ Development Workflow](#-development-workflow) | Step-by-step implementation guide |
+| [🤝 Contributing](#-contributing-to-the-hub) | How to contribute and guidelines |
+
+---
+
 ## 🎯 Project Vision
 
 This repository is more than just a collection of programming tutorials—it's a **comprehensive learning hub and ruleset** for modern developers and their AI companions. It provides practical code, architectural guidelines, and the knowledge needed to build robust projects across diverse technology ecosystems.
